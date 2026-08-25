@@ -1100,6 +1100,8 @@ struct ArticleReaderView: View {
     @State private var tappedLinkURL:      URL? = nil
     @State private var lightboxState:      LightboxState? = nil
     @State private var youtubePlayerState: YouTubePlayerState? = nil
+    /// Nur für den Dev-Mode-Dialog unten, siehe dortigen Kommentar.
+    @State private var nativeVideoHostMismatchURL: String?
     @State private var showTagSheet        = false
     @State private var showReportSheet     = false
     @State private var showShareLinkSheet  = false
@@ -1207,17 +1209,6 @@ struct ArticleReaderView: View {
 
                     if NativeVideoHost.matches(current.url) {
                         NativeVideoPlayerCard(articleId: current.id)
-                    } else if developerMode {
-                        // Sichtbar machen statt raten: wenn NativeVideoPlayerCard fehlt UND
-                        // diese Zeile fehlt, ist der Reader gar nicht neu genug gebaut. Wenn
-                        // diese Zeile erscheint, sagt sie exakt, welche URL der Host-Check
-                        // gesehen hat - z. B. weil die gespeicherte article.url doch nicht auf
-                        // ardmediathek.de/zdf.de/arte.tv zeigt.
-                        Text("NativeVideo: kein Host-Match für \"\(current.url)\"")
-                            .font(.system(size: 9, design: .monospaced))
-                            .foregroundStyle(.orange)
-                            .padding(.horizontal, 20)
-                            .padding(.top, 8)
                     }
 
                     if let content = current.content, !content.isEmpty {
@@ -1563,6 +1554,24 @@ struct ArticleReaderView: View {
             )
             .presentationDetents([.height(320)])
             .presentationDragIndicator(.visible)
+        }
+        // ── Dev-Mode: sichtbar machen statt raten, ob NativeVideoHost.matches()
+        // für einen ARD/ZDF/Arte-Link tatsächlich greift. Ein Inline-Debug-Label
+        // war hier schon einmal unbemerkt geblieben (leicht mit dem Bild-Cache-
+        // Debug-Overlay der WebView zu verwechseln oder im Scroll zu übersehen) -
+        // ein Alert ist unübersehbar und beweist auch, ob dieser Codepfad
+        // überhaupt ausgeführt wird.
+        .task(id: current.id) {
+            guard developerMode, !NativeVideoHost.matches(current.url) else { return }
+            nativeVideoHostMismatchURL = current.url
+        }
+        .alert("NativeVideo Debug", isPresented: Binding(
+            get: { nativeVideoHostMismatchURL != nil },
+            set: { if !$0 { nativeVideoHostMismatchURL = nil } }
+        )) {
+            Button(L("common.ok")) { nativeVideoHostMismatchURL = nil }
+        } message: {
+            Text("kein Host-Match für:\n\(nativeVideoHostMismatchURL ?? "")")
         }
         // ── Bilder nachladen, die der Hintergrund-Prefetch verpasst hat ─────
         .task(id: current.id) {

@@ -30,12 +30,13 @@ struct NativeVideoPlayerCard: View {
     @State private var variants: [MerlinAPI.VideoStreamVariant] = []
     @State private var selectedIndex = 0
     @State private var player: AVPlayer?
-    /// Nur für den Dev-Mode-Banner unten — es gibt hier kein Xcode-Konsolenfenster, da
+    /// Nur für den Dev-Mode-Dialog unten — es gibt hier kein Xcode-Konsolenfenster, da
     /// dieses Repo mit xtool statt Xcode gebaut wird (`swift build`/auf dem Gerät ohne
     /// angeschlossenen Debugger). Ein stiller Fehlschlag (Netzwerk, 404 weil das Backend
     /// den Endpunkt noch nicht kennt, Decoding) sah für den Nutzer sonst identisch zu
-    /// "kein Stream verfügbar" aus und war so nicht diagnostizierbar.
-    @State private var debugStatus: String?
+    /// "kein Stream verfügbar" aus und war so nicht diagnostizierbar. Ein Alert statt eines
+    /// Inline-Labels, weil Letzteres schon einmal unbemerkt geblieben ist.
+    @State private var debugFailure: String?
 
     var body: some View {
         Group {
@@ -63,50 +64,39 @@ struct NativeVideoPlayerCard: View {
                     loadPlayer(for: variants[newIndex])
                 }
             }
-
-            if developerMode, let debugStatus {
-                debugBanner(debugStatus)
-            }
         }
         .task(id: articleId) {
             await load()
         }
-    }
-
-    @ViewBuilder
-    private func debugBanner(_ text: String) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: text.hasPrefix("ok:") ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(text.hasPrefix("ok:") ? Color.green : Color.orange)
-            Text(text)
-                .font(.system(size: 9, design: .monospaced))
-                .foregroundStyle(text.hasPrefix("ok:") ? Color.green : Color.orange)
-                .lineLimit(3)
+        .alert("NativeVideo Debug", isPresented: Binding(
+            get: { developerMode && debugFailure != nil },
+            set: { if !$0 { debugFailure = nil } }
+        )) {
+            Button(L("common.ok")) { debugFailure = nil }
+        } message: {
+            Text(debugFailure ?? "")
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 8)
     }
 
     private func load() async {
         variants = []
         player = nil
+        debugFailure = nil
 
         do {
             let response = try await MerlinAPI.shared.getVideoStream(articleId: articleId)
             guard response.available,
                   let responseVariants = response.variants, !responseVariants.isEmpty
             else {
-                debugStatus = "video-stream: available=\(response.available), variants=\(response.variants?.count ?? 0)"
+                debugFailure = "video-stream: available=\(response.available), variants=\(response.variants?.count ?? 0)"
                 return
             }
 
             variants = responseVariants
             selectedIndex = min(max(response.defaultIndex ?? 0, 0), responseVariants.count - 1)
-            debugStatus = "ok: \(responseVariants.count) Variante(n)"
             loadPlayer(for: responseVariants[selectedIndex])
         } catch {
-            debugStatus = "video-stream fehlgeschlagen: \(error.localizedDescription)"
+            debugFailure = "video-stream fehlgeschlagen: \(error.localizedDescription)"
         }
     }
 
