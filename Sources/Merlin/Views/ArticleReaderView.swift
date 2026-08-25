@@ -1207,6 +1207,17 @@ struct ArticleReaderView: View {
 
                     if NativeVideoHost.matches(current.url) {
                         NativeVideoPlayerCard(articleId: current.id)
+                    } else if developerMode {
+                        // Sichtbar machen statt raten: wenn NativeVideoPlayerCard fehlt UND
+                        // diese Zeile fehlt, ist der Reader gar nicht neu genug gebaut. Wenn
+                        // diese Zeile erscheint, sagt sie exakt, welche URL der Host-Check
+                        // gesehen hat - z. B. weil die gespeicherte article.url doch nicht auf
+                        // ardmediathek.de/zdf.de/arte.tv zeigt.
+                        Text("NativeVideo: kein Host-Match für \"\(current.url)\"")
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(.orange)
+                            .padding(.horizontal, 20)
+                            .padding(.top, 8)
                     }
 
                     if let content = current.content, !content.isEmpty {
