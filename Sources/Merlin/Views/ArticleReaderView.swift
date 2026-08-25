@@ -1100,8 +1100,6 @@ struct ArticleReaderView: View {
     @State private var tappedLinkURL:      URL? = nil
     @State private var lightboxState:      LightboxState? = nil
     @State private var youtubePlayerState: YouTubePlayerState? = nil
-    /// Nur für den Dev-Mode-Dialog unten, siehe dortigen Kommentar.
-    @State private var nativeVideoHostMismatchURL: String?
     @State private var showTagSheet        = false
     @State private var showReportSheet     = false
     @State private var showShareLinkSheet  = false
@@ -1554,24 +1552,6 @@ struct ArticleReaderView: View {
             )
             .presentationDetents([.height(320)])
             .presentationDragIndicator(.visible)
-        }
-        // ── Dev-Mode: TEMPORÄR für JEDEN Artikel auslösen (nicht nur ARD/ZDF/Arte-
-        // Treffer) - weder das Inline-Label noch der erste Alert-Versuch waren
-        // beim Nutzer sichtbar, obwohl der Build nachweislich aktuell war. Das
-        // bisexiert zwei Möglichkeiten: (a) dieser .task-Block läuft nie, oder
-        // (b) `developerMode` ist zur Laufzeit doch nicht `true`. Sobald das
-        // geklärt ist, wieder auf den eigentlichen Host-Mismatch-Fall eingrenzen.
-        .task(id: current.id) {
-            guard developerMode else { return }
-            nativeVideoHostMismatchURL = "match=\(NativeVideoHost.matches(current.url)) url=\(current.url)"
-        }
-        .alert("NativeVideo Debug (Canary)", isPresented: Binding(
-            get: { nativeVideoHostMismatchURL != nil },
-            set: { if !$0 { nativeVideoHostMismatchURL = nil } }
-        )) {
-            Button(L("common.ok")) { nativeVideoHostMismatchURL = nil }
-        } message: {
-            Text(nativeVideoHostMismatchURL ?? "")
         }
         // ── Bilder nachladen, die der Hintergrund-Prefetch verpasst hat ─────
         .task(id: current.id) {
