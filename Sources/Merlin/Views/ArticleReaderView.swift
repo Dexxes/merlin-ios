@@ -1206,7 +1206,8 @@ struct ArticleReaderView: View {
                     articleHeader
 
                     if NativeVideoHost.matches(current.url) {
-                        NativeVideoPlayerCard(articleId: current.id)
+                        NativeVideoPlayerCard(articleId: current.id,
+                                              posterURL: current.imageUrl.flatMap(URL.init(string:)))
                     }
 
                     if let content = current.content, !content.isEmpty {

@@ -24,12 +24,15 @@ enum NativeVideoHost {
 /// `VideoPlayer.vue`, das bei `available == false` ebenfalls nichts rendert.
 struct NativeVideoPlayerCard: View {
     let articleId: Int
+    /// Artikel-Titelbild - dient als Player-Cover (wie das `poster`-Attribut bei HTML5-Video),
+    /// bis der Nutzer auf Play tippt, statt sofort einen schwarzen Player-Rahmen zu zeigen.
+    let posterURL: URL?
 
-    /// TEMPORÄR unconditional (nicht mehr durch `developerMode`/`.alert` verdeckt) - weder
-    /// ein Inline-Label noch ein `.alert()` waren trotz bestätigtem Host-Match beim Nutzer
-    /// sichtbar, auf mehreren Sender-Domains (ardmediathek.de UND arte.tv). Diese Zeile
-    /// beweist unzweideutig, ob diese View überhaupt gemountet wird, unabhängig von
-    /// AppStorage-Timing oder konkurrierenden .alert()-Präsentationen andernorts im Reader.
+    /// Diagnose-Ausgabe für den `/video-stream`-Ladezustand - nur bei Developer Mode sichtbar
+    /// (siehe Settings → Entwickler). War zeitweise unconditional, um zu beweisen, dass diese
+    /// View überhaupt gemountet wird; jetzt bestätigt, also wieder hinter dem Toggle.
+    @AppStorage("merlin_developer_mode") private var developerMode: Bool = false
+
     private enum LoadPhase {
         case idle, loading, failed(String), ok(Int)
     }
@@ -38,23 +41,51 @@ struct NativeVideoPlayerCard: View {
     @State private var selectedIndex = 0
     @State private var player: AVPlayer?
     @State private var phase: LoadPhase = .idle
+    @State private var showCover = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("NativeVideoPlayerCard aktiv (Artikel \(articleId))")
-                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                .foregroundStyle(.red)
-            phaseText
-                .font(.system(size: 9, design: .monospaced))
-                .foregroundStyle(.orange)
+            if developerMode {
+                Text("NativeVideoPlayerCard aktiv (Artikel \(articleId))")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.red)
+                phaseText
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.orange)
+            }
 
             if !variants.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
                     if let player {
-                        VideoPlayer(player: player)
-                            .aspectRatio(16.0 / 9.0, contentMode: .fit)
-                            .frame(maxWidth: .infinity)
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        ZStack {
+                            VideoPlayer(player: player)
+                                .aspectRatio(16.0 / 9.0, contentMode: .fit)
+                                .frame(maxWidth: .infinity)
+
+                            if showCover, let posterURL {
+                                CachedAsyncImage(url: posterURL) { image in
+                                    image.aspectRatio(16.0 / 9.0, contentMode: .fill)
+                                } placeholder: {
+                                    Color.black
+                                }
+                                .aspectRatio(16.0 / 9.0, contentMode: .fit)
+                                .frame(maxWidth: .infinity)
+                                .clipped()
+                                .overlay {
+                                    Image(systemName: "play.circle.fill")
+                                        .font(.system(size: 54))
+                                        .foregroundStyle(.white)
+                                        .shadow(radius: 6)
+                                }
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    showCover = false
+                                    player.play()
+                                }
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     }
 
                     if variants.count > 1 {
@@ -116,6 +147,7 @@ struct NativeVideoPlayerCard: View {
         guard let url = URL(string: variant.url) else { return }
         let item = AVPlayerItem(url: url)
         player = AVPlayer(playerItem: item)
+        showCover = true
 
         // Arte liefert mehrsprachige Untertitelspuren im selben Manifest — ohne explizite
         // Auswahl spielt AVPlayer die erste Spur, die selten zur Sprachfassung passt (siehe
