@@ -25,9 +25,17 @@ enum NativeVideoHost {
 struct NativeVideoPlayerCard: View {
     let articleId: Int
 
+    @AppStorage("merlin_developer_mode") private var developerMode: Bool = false
+
     @State private var variants: [MerlinAPI.VideoStreamVariant] = []
     @State private var selectedIndex = 0
     @State private var player: AVPlayer?
+    /// Nur für den Dev-Mode-Banner unten — es gibt hier kein Xcode-Konsolenfenster, da
+    /// dieses Repo mit xtool statt Xcode gebaut wird (`swift build`/auf dem Gerät ohne
+    /// angeschlossenen Debugger). Ein stiller Fehlschlag (Netzwerk, 404 weil das Backend
+    /// den Endpunkt noch nicht kennt, Decoding) sah für den Nutzer sonst identisch zu
+    /// "kein Stream verfügbar" aus und war so nicht diagnostizierbar.
+    @State private var debugStatus: String?
 
     var body: some View {
         Group {
@@ -55,35 +63,50 @@ struct NativeVideoPlayerCard: View {
                     loadPlayer(for: variants[newIndex])
                 }
             }
+
+            if developerMode, let debugStatus {
+                debugBanner(debugStatus)
+            }
         }
         .task(id: articleId) {
             await load()
         }
     }
 
+    @ViewBuilder
+    private func debugBanner(_ text: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: text.hasPrefix("ok:") ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(text.hasPrefix("ok:") ? Color.green : Color.orange)
+            Text(text)
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(text.hasPrefix("ok:") ? Color.green : Color.orange)
+                .lineLimit(3)
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 8)
+    }
+
     private func load() async {
         variants = []
         player = nil
 
-        // Bewusst nicht `try?`: ein stiller Fehlschlag (Netzwerk, 404 weil das
-        // Backend den Endpunkt noch nicht kennt, Decoding) sah für den Nutzer
-        // identisch zu "kein Stream verfügbar" aus und war so nicht von der
-        // Reader-Seite aus diagnostizierbar. Ein Log-Eintrag (Konsole/Xcode)
-        // trennt beide Fälle, ohne die fail-closed-UI zu ändern.
         do {
             let response = try await MerlinAPI.shared.getVideoStream(articleId: articleId)
             guard response.available,
                   let responseVariants = response.variants, !responseVariants.isEmpty
             else {
-                print("[NativeVideo] Kein Stream für Artikel \(articleId) verfügbar (available=\(response.available), variants=\(response.variants?.count ?? 0))")
+                debugStatus = "video-stream: available=\(response.available), variants=\(response.variants?.count ?? 0)"
                 return
             }
 
             variants = responseVariants
             selectedIndex = min(max(response.defaultIndex ?? 0, 0), responseVariants.count - 1)
+            debugStatus = "ok: \(responseVariants.count) Variante(n)"
             loadPlayer(for: responseVariants[selectedIndex])
         } catch {
-            print("[NativeVideo] Video-Stream-Abruf für Artikel \(articleId) fehlgeschlagen: \(error)")
+            debugStatus = "video-stream fehlgeschlagen: \(error.localizedDescription)"
         }
     }
 
