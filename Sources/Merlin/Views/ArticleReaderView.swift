@@ -1555,23 +1555,23 @@ struct ArticleReaderView: View {
             .presentationDetents([.height(320)])
             .presentationDragIndicator(.visible)
         }
-        // ── Dev-Mode: sichtbar machen statt raten, ob NativeVideoHost.matches()
-        // für einen ARD/ZDF/Arte-Link tatsächlich greift. Ein Inline-Debug-Label
-        // war hier schon einmal unbemerkt geblieben (leicht mit dem Bild-Cache-
-        // Debug-Overlay der WebView zu verwechseln oder im Scroll zu übersehen) -
-        // ein Alert ist unübersehbar und beweist auch, ob dieser Codepfad
-        // überhaupt ausgeführt wird.
+        // ── Dev-Mode: TEMPORÄR für JEDEN Artikel auslösen (nicht nur ARD/ZDF/Arte-
+        // Treffer) - weder das Inline-Label noch der erste Alert-Versuch waren
+        // beim Nutzer sichtbar, obwohl der Build nachweislich aktuell war. Das
+        // bisexiert zwei Möglichkeiten: (a) dieser .task-Block läuft nie, oder
+        // (b) `developerMode` ist zur Laufzeit doch nicht `true`. Sobald das
+        // geklärt ist, wieder auf den eigentlichen Host-Mismatch-Fall eingrenzen.
         .task(id: current.id) {
-            guard developerMode, !NativeVideoHost.matches(current.url) else { return }
-            nativeVideoHostMismatchURL = current.url
+            guard developerMode else { return }
+            nativeVideoHostMismatchURL = "match=\(NativeVideoHost.matches(current.url)) url=\(current.url)"
         }
-        .alert("NativeVideo Debug", isPresented: Binding(
+        .alert("NativeVideo Debug (Canary)", isPresented: Binding(
             get: { nativeVideoHostMismatchURL != nil },
             set: { if !$0 { nativeVideoHostMismatchURL = nil } }
         )) {
             Button(L("common.ok")) { nativeVideoHostMismatchURL = nil }
         } message: {
-            Text("kein Host-Match für:\n\(nativeVideoHostMismatchURL ?? "")")
+            Text(nativeVideoHostMismatchURL ?? "")
         }
         // ── Bilder nachladen, die der Hintergrund-Prefetch verpasst hat ─────
         .task(id: current.id) {
