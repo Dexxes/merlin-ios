@@ -479,6 +479,35 @@ actor MerlinAPI {
         return url
     }
 
+    // MARK: – Native video (ARD/ZDF/Arte direct-stream playback)
+
+    /// Eine abspielbare Variante aus `GET /articles/{id}/video-stream` (z. B. eine
+    /// Sprachfassung oder Gebärdensprachversion). `subtitleLanguage` ist Arte-spezifisch
+    /// (bei ARD/ZDF nicht gesetzt) und erzwingt nach dem Laden die passende Untertitelspur.
+    struct VideoStreamVariant: Decodable {
+        let label: String
+        let url: String
+        let subtitleLanguage: String?
+    }
+
+    /// Antwort des Stream-Resolvers. `available == false`, wenn die Artikel-URL zwar von
+    /// `ardmediathek.de`/`zdf.de`/`arte.tv` stammt, sich aber kein Stream auflösen ließ.
+    struct VideoStreamResponse: Decodable {
+        let available: Bool
+        let type: String?
+        let variants: [VideoStreamVariant]?
+        let defaultIndex: Int?
+    }
+
+    /// Löst die native HLS-Stream-URL für ARD/ZDF/Arte-Artikel auf (siehe
+    /// `VideoStreamResolverService`/`VideoStreamController` in beiden Backends – identischer
+    /// Pfad und identisches Antwortformat auf Nextcloud und merlin-server, nur das
+    /// API-Präfix unterscheidet sich, siehe `makeRequest()`).
+    func getVideoStream(articleId: Int) async throws -> VideoStreamResponse {
+        let req = try makeRequest("/articles/\(articleId)/video-stream")
+        return try await perform(req)
+    }
+
     // MARK: – Settings
 
     /// Lädt alle Merlin-Einstellungen des aktuellen Nutzers vom Server.

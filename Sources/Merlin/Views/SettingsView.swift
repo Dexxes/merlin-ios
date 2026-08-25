@@ -266,6 +266,13 @@ struct SettingsView: View {
                         Text(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0")
                             .foregroundStyle(.secondary)
                     }
+                    HStack {
+                        Text(L("settings.about.commitLabel"))
+                        Spacer()
+                        Text(BuildInfo.commit)
+                            .font(.system(.body, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
                 } header: {
                     Text(L("settings.about.sectionHeader"))
                 }

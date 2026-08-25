@@ -68,6 +68,7 @@
 "articleReader.tagSheet.newTagPlaceholder" = "Neuen Tag erstellen…";
 "articleReader.tagSheet.title" = "Tags bearbeiten";
 "articleReader.ttsPanel.preparing" = "Audio wird vorbereitet …";
+"articleReader.video.variant" = "Fassung";
 "common.add" = "Hinzufügen";
 "common.back" = "Zurück";
 "common.cancel" = "Abbrechen";
@@ -358,6 +359,7 @@
 "report.submitButton" = "Melden";
 "report.successMessage" = "Danke – Artikel wurde gemeldet.";
 "report.title" = "Artikel melden";
+"settings.about.commitLabel" = "Commit";
 "settings.about.sectionHeader" = "Über";
 "settings.about.versionLabel" = "Version";
 "settings.account.footer" = "Tippe auf \"Mit Nextcloud anmelden\", um dich über deinen Browser zu authentifizieren.";

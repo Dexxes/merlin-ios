@@ -1205,6 +1205,11 @@ struct ArticleReaderView: View {
 
                     articleHeader
 
+                    if NativeVideoHost.matches(current.url) {
+                        NativeVideoPlayerCard(articleId: current.id,
+                                              posterURL: current.imageUrl.flatMap(URL.init(string:)))
+                    }
+
                     if let content = current.content, !content.isEmpty {
                         ArticleWebView(
                             html: buildReaderHTML(content: content, fontSize: fontSize,
@@ -2462,6 +2467,11 @@ struct ArticleReaderView: View {
     /// `<figcaption`).  Only fires when the image is already on disk so no
     /// network request is triggered here.
     private func injectHeroImageIfNeeded(into content: String) -> String {
+        // Bei ARD/ZDF/Arte dient dasselbe Titelbild bereits als Player-Cover
+        // (siehe NativeVideoPlayerCard) - ein zusätzliches Einfügen hier würde es
+        // nur gleich wieder per stripHeroImageIfShownAsVideoCover() entfernen.
+        guard !NativeVideoHost.matches(current.url) else { return content }
+
         let prefix     = content.prefix(500).lowercased()
         let hasImage   = prefix.contains("<img")
                       || prefix.contains("<figure")
@@ -2476,6 +2486,36 @@ struct ArticleReaderView: View {
         let imgHTML = "<figure><img src=\"\(localURL.lastPathComponent)\" alt=\"\"></figure>\n"
         return imgHTML + content
     }
+
+    /// Entfernt das erste Bild aus dem gerenderten Artikeltext, wenn ARD/ZDF/Arte bereits als
+    /// Player-Cover dasselbe Titelbild zeigt (siehe NativeVideoPlayerCard) - sonst erscheint es
+    /// doppelt: einmal als Cover, einmal im Text darunter.
+    ///
+    /// Matched absichtlich NICHT über die exakte Bild-URL (`data-merlin-original-src` vs.
+    /// `current.imageUrl`): ARD liefert für dasselbe Foto im Artikeltext oft eine andere
+    /// Auflösungs-/Query-Variante als für das separat gespeicherte Teaser-Bild, ein
+    /// URL-Abgleich schlug deshalb in der Praxis fehl und blendete gar nichts aus. Da
+    /// injectHeroImageIfNeeded() für Video-Artikel ohnehin nichts mehr einfügt, ist das erste
+    /// Bild im Text zuverlässig genau das Titelbild, das gescrapte ARD-Seiten selbst voranstellen.
+    private func stripHeroImageIfShownAsVideoCover(in content: String) -> String {
+        guard NativeVideoHost.matches(current.url),
+              let regex = Self.firstImageOrFigureRegex
+        else { return content }
+
+        let ns = content as NSString
+        guard let match = regex.firstMatch(in: content, range: NSRange(location: 0, length: ns.length)),
+              let range = Range(match.range, in: content)
+        else { return content }
+
+        var result = content
+        result.removeSubrange(range)
+        return result
+    }
+
+    private static let firstImageOrFigureRegex: NSRegularExpression? = try? NSRegularExpression(
+        pattern: #"<figure>\s*<img\b[^>]*>\s*(?:<figcaption>.*?</figcaption>\s*)?</figure>|<img\b[^>]*>"#,
+        options: [.caseInsensitive, .dotMatchesLineSeparators]
+    )
 
     // MARK: – Lazy-loading-Fallback
 
@@ -2886,7 +2926,7 @@ struct ArticleReaderView: View {
           </style>
         </head>
         <body>
-          \(rewriteYouTubeEmbeds(in: rewriteImageURLs(in: injectHeroImageIfNeeded(into: promoteLazyImageAttributes(in: content)))))
+          \(rewriteYouTubeEmbeds(in: stripHeroImageIfShownAsVideoCover(in: rewriteImageURLs(in: injectHeroImageIfNeeded(into: promoteLazyImageAttributes(in: content))))))
           <script>\(merlinHighlightJS)</script>
           <script>
           (function(){
