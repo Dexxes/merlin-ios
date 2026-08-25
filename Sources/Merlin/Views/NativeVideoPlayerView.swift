@@ -42,6 +42,7 @@ struct NativeVideoPlayerCard: View {
     @State private var player: AVPlayer?
     @State private var phase: LoadPhase = .idle
     @State private var showCover = true
+    @State private var isFullScreen = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -57,7 +58,7 @@ struct NativeVideoPlayerCard: View {
             if !variants.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
                     if let player {
-                        ZStack {
+                        ZStack(alignment: .topTrailing) {
                             VideoPlayer(player: player)
                                 .aspectRatio(16.0 / 9.0, contentMode: .fit)
                                 .frame(maxWidth: .infinity)
@@ -82,6 +83,19 @@ struct NativeVideoPlayerCard: View {
                                     showCover = false
                                     player.play()
                                 }
+                            } else {
+                                // Vollbild-Umschalter erst sichtbar, sobald die Wiedergabe
+                                // begonnen hat - auf dem Cover würde er nur den Play-Tap stören.
+                                Button {
+                                    isFullScreen = true
+                                } label: {
+                                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundStyle(.white)
+                                        .padding(8)
+                                        .background(.black.opacity(0.45), in: Circle())
+                                }
+                                .padding(8)
                             }
                         }
                         .frame(maxWidth: .infinity)
@@ -107,6 +121,11 @@ struct NativeVideoPlayerCard: View {
         .padding(.top, 8)
         .task(id: articleId) {
             await load()
+        }
+        .fullScreenCover(isPresented: $isFullScreen) {
+            if let player {
+                NativeVideoFullScreenView(player: player) { isFullScreen = false }
+            }
         }
     }
 
@@ -160,6 +179,36 @@ struct NativeVideoPlayerCard: View {
             if let option = matches.first {
                 item.select(option, in: group)
             }
+        }
+    }
+}
+
+// MARK: – Fullscreen presentation
+
+/// Vollbild-Ansicht für den nativen ARD/ZDF/Arte-Player - denselben `AVPlayer` weiterreichen
+/// statt einen zweiten zu erzeugen, damit Wiedergabeposition und -status beim Auf-/Zuklappen
+/// erhalten bleiben. Stil (Close-Button oben rechts, schwarzer Hintergrund) folgt bewusst
+/// `YouTubePlayerView`, damit sich beide Vollbild-Player im Reader identisch anfühlen.
+private struct NativeVideoFullScreenView: View {
+    let player: AVPlayer
+    let onDismiss: () -> Void
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.black.ignoresSafeArea()
+
+            VideoPlayer(player: player)
+                .ignoresSafeArea()
+
+            Button { onDismiss() } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.title)
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(.white, Color.white.opacity(0.25))
+                    .shadow(color: .black.opacity(0.4), radius: 4)
+            }
+            .padding(.top, 56)
+            .padding(.trailing, 20)
         }
     }
 }
