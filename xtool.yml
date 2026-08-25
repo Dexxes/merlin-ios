@@ -1,0 +1,12 @@
+version: 1
+product: Merlin
+bundleID: dev.merlin.app
+infoPath: Sources/Merlin/Info.plist
+entitlementsPath: Sources/Merlin/Merlin.entitlements
+iconPath: Sources/Merlin/Assets.xcassets/AppIcon.appiconset/AppIcon.png
+extensions:
+  - product: MerlinShare
+    bundleID: dev.merlin.app.MerlinShare
+    type: share
+    infoPath: Sources/MerlinShare/Info.plist
+    entitlementsPath: Sources/MerlinShare/MerlinShare.entitlements
