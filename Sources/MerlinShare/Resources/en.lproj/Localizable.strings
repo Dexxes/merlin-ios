@@ -359,6 +359,7 @@
 "report.submitButton" = "Report";
 "report.successMessage" = "Thanks – the article has been reported.";
 "report.title" = "Report Article";
+"settings.about.commitLabel" = "Commit";
 "settings.about.sectionHeader" = "About";
 "settings.about.versionLabel" = "Version";
 "settings.account.footer" = "Tap \"Login with Nextcloud\" to authenticate via your browser.";
