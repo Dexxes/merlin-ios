@@ -68,6 +68,7 @@
 "articleReader.tagSheet.newTagPlaceholder" = "Create new tag…";
 "articleReader.tagSheet.title" = "Edit Tags";
 "articleReader.ttsPanel.preparing" = "Preparing audio…";
+"articleReader.video.variant" = "Version";
 "common.add" = "Add";
 "common.back" = "Back";
 "common.cancel" = "Cancel";

@@ -68,6 +68,7 @@
 "articleReader.tagSheet.newTagPlaceholder" = "Neuen Tag erstellen…";
 "articleReader.tagSheet.title" = "Tags bearbeiten";
 "articleReader.ttsPanel.preparing" = "Audio wird vorbereitet …";
+"articleReader.video.variant" = "Fassung";
 "common.add" = "Hinzufügen";
 "common.back" = "Zurück";
 "common.cancel" = "Abbrechen";

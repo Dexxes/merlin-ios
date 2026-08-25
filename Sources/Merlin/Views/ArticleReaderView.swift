@@ -1205,6 +1205,10 @@ struct ArticleReaderView: View {
 
                     articleHeader
 
+                    if NativeVideoHost.matches(current.url) {
+                        NativeVideoPlayerCard(articleId: current.id)
+                    }
+
                     if let content = current.content, !content.isEmpty {
                         ArticleWebView(
                             html: buildReaderHTML(content: content, fontSize: fontSize,
