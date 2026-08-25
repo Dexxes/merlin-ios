@@ -64,14 +64,27 @@ struct NativeVideoPlayerCard: View {
     private func load() async {
         variants = []
         player = nil
-        guard let response = try? await MerlinAPI.shared.getVideoStream(articleId: articleId),
-              response.available,
-              let responseVariants = response.variants, !responseVariants.isEmpty
-        else { return }
 
-        variants = responseVariants
-        selectedIndex = min(max(response.defaultIndex ?? 0, 0), responseVariants.count - 1)
-        loadPlayer(for: responseVariants[selectedIndex])
+        // Bewusst nicht `try?`: ein stiller Fehlschlag (Netzwerk, 404 weil das
+        // Backend den Endpunkt noch nicht kennt, Decoding) sah für den Nutzer
+        // identisch zu "kein Stream verfügbar" aus und war so nicht von der
+        // Reader-Seite aus diagnostizierbar. Ein Log-Eintrag (Konsole/Xcode)
+        // trennt beide Fälle, ohne die fail-closed-UI zu ändern.
+        do {
+            let response = try await MerlinAPI.shared.getVideoStream(articleId: articleId)
+            guard response.available,
+                  let responseVariants = response.variants, !responseVariants.isEmpty
+            else {
+                print("[NativeVideo] Kein Stream für Artikel \(articleId) verfügbar (available=\(response.available), variants=\(response.variants?.count ?? 0))")
+                return
+            }
+
+            variants = responseVariants
+            selectedIndex = min(max(response.defaultIndex ?? 0, 0), responseVariants.count - 1)
+            loadPlayer(for: responseVariants[selectedIndex])
+        } catch {
+            print("[NativeVideo] Video-Stream-Abruf für Artikel \(articleId) fehlgeschlagen: \(error)")
+        }
     }
 
     private func loadPlayer(for variant: MerlinAPI.VideoStreamVariant) {
