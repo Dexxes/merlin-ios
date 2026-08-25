@@ -2487,26 +2487,20 @@ struct ArticleReaderView: View {
         return imgHTML + content
     }
 
-    /// Entfernt das Titelbild aus dem gerenderten Artikeltext, wenn es bereits als Player-
-    /// Cover über dem nativen ARD/ZDF/Arte-Player angezeigt wird (siehe NativeVideoPlayerCard)
-    /// - sonst erscheint dasselbe Bild doppelt: einmal als Cover, einmal im Text darunter.
-    /// Läuft nach rewriteImageURLs(), damit `data-merlin-original-src` bereits gesetzt ist -
-    /// das identifiziert das Titelbild zuverlässig über die ursprüngliche Remote-URL, egal ob
-    /// es aus dem gescrapten HTML selbst stammt (wie bei ARD-Artikeln beobachtet) oder von
-    /// injectHeroImageIfNeeded() eingefügt wurde (was bei Video-Artikeln inzwischen entfällt).
+    /// Entfernt das erste Bild aus dem gerenderten Artikeltext, wenn ARD/ZDF/Arte bereits als
+    /// Player-Cover dasselbe Titelbild zeigt (siehe NativeVideoPlayerCard) - sonst erscheint es
+    /// doppelt: einmal als Cover, einmal im Text darunter.
+    ///
+    /// Matched absichtlich NICHT über die exakte Bild-URL (`data-merlin-original-src` vs.
+    /// `current.imageUrl`): ARD liefert für dasselbe Foto im Artikeltext oft eine andere
+    /// Auflösungs-/Query-Variante als für das separat gespeicherte Teaser-Bild, ein
+    /// URL-Abgleich schlug deshalb in der Praxis fehl und blendete gar nichts aus. Da
+    /// injectHeroImageIfNeeded() für Video-Artikel ohnehin nichts mehr einfügt, ist das erste
+    /// Bild im Text zuverlässig genau das Titelbild, das gescrapte ARD-Seiten selbst voranstellen.
     private func stripHeroImageIfShownAsVideoCover(in content: String) -> String {
-        guard NativeVideoHost.matches(current.url), let imageUrlStr = current.imageUrl else { return content }
-
-        let escapedTarget = imageUrlStr
-            .replacingOccurrences(of: "&", with: "&amp;")
-            .replacingOccurrences(of: "\"", with: "&quot;")
-        let quotedTarget = NSRegularExpression.escapedPattern(for: escapedTarget)
-
-        guard let regex = try? NSRegularExpression(
-            pattern: #"<figure>\s*<img\b[^>]*\bdata-merlin-original-src="\#(quotedTarget)"[^>]*>\s*</figure>"#
-                   + #"|<img\b[^>]*\bdata-merlin-original-src="\#(quotedTarget)"[^>]*>"#,
-            options: .caseInsensitive
-        ) else { return content }
+        guard NativeVideoHost.matches(current.url),
+              let regex = Self.firstImageOrFigureRegex
+        else { return content }
 
         let ns = content as NSString
         guard let match = regex.firstMatch(in: content, range: NSRange(location: 0, length: ns.length)),
@@ -2517,6 +2511,11 @@ struct ArticleReaderView: View {
         result.removeSubrange(range)
         return result
     }
+
+    private static let firstImageOrFigureRegex: NSRegularExpression? = try? NSRegularExpression(
+        pattern: #"<figure>\s*<img\b[^>]*>\s*(?:<figcaption>.*?</figcaption>\s*)?</figure>|<img\b[^>]*>"#,
+        options: [.caseInsensitive, .dotMatchesLineSeparators]
+    )
 
     // MARK: – Lazy-loading-Fallback
 
