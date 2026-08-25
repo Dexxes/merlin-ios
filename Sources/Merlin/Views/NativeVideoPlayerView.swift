@@ -25,21 +25,29 @@ enum NativeVideoHost {
 struct NativeVideoPlayerCard: View {
     let articleId: Int
 
-    @AppStorage("merlin_developer_mode") private var developerMode: Bool = false
+    /// TEMPORÄR unconditional (nicht mehr durch `developerMode`/`.alert` verdeckt) - weder
+    /// ein Inline-Label noch ein `.alert()` waren trotz bestätigtem Host-Match beim Nutzer
+    /// sichtbar, auf mehreren Sender-Domains (ardmediathek.de UND arte.tv). Diese Zeile
+    /// beweist unzweideutig, ob diese View überhaupt gemountet wird, unabhängig von
+    /// AppStorage-Timing oder konkurrierenden .alert()-Präsentationen andernorts im Reader.
+    private enum LoadPhase {
+        case idle, loading, failed(String), ok(Int)
+    }
 
     @State private var variants: [MerlinAPI.VideoStreamVariant] = []
     @State private var selectedIndex = 0
     @State private var player: AVPlayer?
-    /// Nur für den Dev-Mode-Dialog unten — es gibt hier kein Xcode-Konsolenfenster, da
-    /// dieses Repo mit xtool statt Xcode gebaut wird (`swift build`/auf dem Gerät ohne
-    /// angeschlossenen Debugger). Ein stiller Fehlschlag (Netzwerk, 404 weil das Backend
-    /// den Endpunkt noch nicht kennt, Decoding) sah für den Nutzer sonst identisch zu
-    /// "kein Stream verfügbar" aus und war so nicht diagnostizierbar. Ein Alert statt eines
-    /// Inline-Labels, weil Letzteres schon einmal unbemerkt geblieben ist.
-    @State private var debugFailure: String?
+    @State private var phase: LoadPhase = .idle
 
     var body: some View {
-        Group {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("NativeVideoPlayerCard aktiv (Artikel \(articleId))")
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .foregroundStyle(.red)
+            phaseText
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(.orange)
+
             if !variants.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
                     if let player {
@@ -58,45 +66,49 @@ struct NativeVideoPlayerCard: View {
                         .pickerStyle(.menu)
                     }
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 12)
+                .padding(.top, 4)
                 .onChange(of: selectedIndex) { _, newIndex in
                     loadPlayer(for: variants[newIndex])
                 }
             }
         }
+        .padding(.horizontal, 20)
+        .padding(.top, 8)
         .task(id: articleId) {
             await load()
         }
-        .alert("NativeVideo Debug", isPresented: Binding(
-            get: { developerMode && debugFailure != nil },
-            set: { if !$0 { debugFailure = nil } }
-        )) {
-            Button(L("common.ok")) { debugFailure = nil }
-        } message: {
-            Text(debugFailure ?? "")
+    }
+
+    @ViewBuilder
+    private var phaseText: some View {
+        switch phase {
+        case .idle:                Text("Phase: idle (task noch nicht gestartet)")
+        case .loading:              Text("Phase: lädt /video-stream …")
+        case .failed(let message): Text("Phase: fehlgeschlagen – \(message)")
+        case .ok(let count):       Text("Phase: ok – \(count) Variante(n)")
         }
     }
 
     private func load() async {
+        phase = .loading
         variants = []
         player = nil
-        debugFailure = nil
 
         do {
             let response = try await MerlinAPI.shared.getVideoStream(articleId: articleId)
             guard response.available,
                   let responseVariants = response.variants, !responseVariants.isEmpty
             else {
-                debugFailure = "video-stream: available=\(response.available), variants=\(response.variants?.count ?? 0)"
+                phase = .failed("available=\(response.available), variants=\(response.variants?.count ?? 0)")
                 return
             }
 
             variants = responseVariants
             selectedIndex = min(max(response.defaultIndex ?? 0, 0), responseVariants.count - 1)
+            phase = .ok(responseVariants.count)
             loadPlayer(for: responseVariants[selectedIndex])
         } catch {
-            debugFailure = "video-stream fehlgeschlagen: \(error.localizedDescription)"
+            phase = .failed(error.localizedDescription)
         }
     }
 
