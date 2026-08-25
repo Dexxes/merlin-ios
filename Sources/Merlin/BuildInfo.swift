@@ -10,5 +10,5 @@ import Foundation
 /// Push tatsächlich enthält, kann aber hinter dem wirklich ausgecheckten Commit
 /// zurückliegen, wenn seitdem committet wurde, ohne diesen Wert mit anzupassen.
 enum BuildInfo {
-    static let commit = "801dcb5"
+    static let commit = "b25007a"
 }
