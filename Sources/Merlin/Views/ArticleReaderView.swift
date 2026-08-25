@@ -2467,6 +2467,11 @@ struct ArticleReaderView: View {
     /// `<figcaption`).  Only fires when the image is already on disk so no
     /// network request is triggered here.
     private func injectHeroImageIfNeeded(into content: String) -> String {
+        // Bei ARD/ZDF/Arte dient dasselbe Titelbild bereits als Player-Cover
+        // (siehe NativeVideoPlayerCard) - ein zusätzliches Einfügen hier würde es
+        // nur gleich wieder per stripHeroImageIfShownAsVideoCover() entfernen.
+        guard !NativeVideoHost.matches(current.url) else { return content }
+
         let prefix     = content.prefix(500).lowercased()
         let hasImage   = prefix.contains("<img")
                       || prefix.contains("<figure")
@@ -2480,6 +2485,37 @@ struct ArticleReaderView: View {
 
         let imgHTML = "<figure><img src=\"\(localURL.lastPathComponent)\" alt=\"\"></figure>\n"
         return imgHTML + content
+    }
+
+    /// Entfernt das Titelbild aus dem gerenderten Artikeltext, wenn es bereits als Player-
+    /// Cover über dem nativen ARD/ZDF/Arte-Player angezeigt wird (siehe NativeVideoPlayerCard)
+    /// - sonst erscheint dasselbe Bild doppelt: einmal als Cover, einmal im Text darunter.
+    /// Läuft nach rewriteImageURLs(), damit `data-merlin-original-src` bereits gesetzt ist -
+    /// das identifiziert das Titelbild zuverlässig über die ursprüngliche Remote-URL, egal ob
+    /// es aus dem gescrapten HTML selbst stammt (wie bei ARD-Artikeln beobachtet) oder von
+    /// injectHeroImageIfNeeded() eingefügt wurde (was bei Video-Artikeln inzwischen entfällt).
+    private func stripHeroImageIfShownAsVideoCover(in content: String) -> String {
+        guard NativeVideoHost.matches(current.url), let imageUrlStr = current.imageUrl else { return content }
+
+        let escapedTarget = imageUrlStr
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
+        let quotedTarget = NSRegularExpression.escapedPattern(for: escapedTarget)
+
+        guard let regex = try? NSRegularExpression(
+            pattern: #"<figure>\s*<img\b[^>]*\bdata-merlin-original-src="\#(quotedTarget)"[^>]*>\s*</figure>"#
+                   + #"|<img\b[^>]*\bdata-merlin-original-src="\#(quotedTarget)"[^>]*>"#,
+            options: .caseInsensitive
+        ) else { return content }
+
+        let ns = content as NSString
+        guard let match = regex.firstMatch(in: content, range: NSRange(location: 0, length: ns.length)),
+              let range = Range(match.range, in: content)
+        else { return content }
+
+        var result = content
+        result.removeSubrange(range)
+        return result
     }
 
     // MARK: – Lazy-loading-Fallback
@@ -2891,7 +2927,7 @@ struct ArticleReaderView: View {
           </style>
         </head>
         <body>
-          \(rewriteYouTubeEmbeds(in: rewriteImageURLs(in: injectHeroImageIfNeeded(into: promoteLazyImageAttributes(in: content)))))
+          \(rewriteYouTubeEmbeds(in: stripHeroImageIfShownAsVideoCover(in: rewriteImageURLs(in: injectHeroImageIfNeeded(into: promoteLazyImageAttributes(in: content))))))
           <script>\(merlinHighlightJS)</script>
           <script>
           (function(){
