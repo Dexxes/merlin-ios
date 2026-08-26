@@ -49,6 +49,8 @@
 "articleReader.labels.readingTime" = "READING TIME";
 "articleReader.labels.saved" = "SAVED";
 "articleReader.linkDialog.addToReadingList" = "Add to Reading List";
+"articleReader.noContent.processing" = "Loading article…";
+"articleReader.noContent.retry" = "Try Again";
 "articleReader.noContent.title" = "No content available";
 "articleReader.sideMenu.addFavorite" = "Add to Favorites";
 "articleReader.sideMenu.appearance" = "Appearance";

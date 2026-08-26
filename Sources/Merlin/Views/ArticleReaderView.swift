@@ -1248,6 +1248,13 @@ struct ArticleReaderView: View {
                         } action: { _, frame in
                             webViewScreenFrame = frame
                         }
+                    } else if current.isProcessing {
+                        VStack(spacing: 16) {
+                            ProgressView()
+                            Text(L("articleReader.noContent.processing"))
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 300)
                     } else {
                         VStack(spacing: 16) {
                             Image(systemName: "doc.text")
@@ -1255,9 +1262,13 @@ struct ArticleReaderView: View {
                                 .foregroundStyle(.secondary)
                             Text(L("articleReader.noContent.title"))
                                 .foregroundStyle(.secondary)
+                            Button(L("articleReader.noContent.retry")) {
+                                Task { await viewModel.retryExtraction(current) }
+                            }
+                            .buttonStyle(.borderedProminent)
                             if let url = URL(string: current.url) {
                                 Link(L("articleReader.sideMenu.openInBrowser"), destination: url)
-                                    .buttonStyle(.borderedProminent)
+                                    .buttonStyle(.bordered)
                             }
                         }
                         .frame(maxWidth: .infinity, minHeight: 300)
