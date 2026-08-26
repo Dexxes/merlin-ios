@@ -193,6 +193,9 @@ private struct NativeVideoFullScreenView: View {
     let player: AVPlayer
     let onDismiss: () -> Void
 
+    @State private var closeButtonVisible = true
+    @State private var hideTask: Task<Void, Never>?
+
     var body: some View {
         ZStack(alignment: .topTrailing) {
             Color.black.ignoresSafeArea()
@@ -200,15 +203,37 @@ private struct NativeVideoFullScreenView: View {
             VideoPlayer(player: player)
                 .ignoresSafeArea()
 
-            Button { onDismiss() } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.title)
-                    .symbolRenderingMode(.palette)
-                    .foregroundStyle(.white, Color.white.opacity(0.25))
-                    .shadow(color: .black.opacity(0.4), radius: 4)
+            if closeButtonVisible {
+                Button { onDismiss() } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title)
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(.white, Color.white.opacity(0.25))
+                        .shadow(color: .black.opacity(0.4), radius: 4)
+                }
+                .padding(.top, 56)
+                .padding(.trailing, 20)
+                .transition(.opacity)
             }
-            .padding(.top, 56)
-            .padding(.trailing, 20)
+        }
+        .animation(.easeInOut(duration: 0.25), value: closeButtonVisible)
+        // Der eigene Close-Button ist ein SwiftUI-Overlay über dem AVKit-Player und
+        // bekommt dessen automatisches Ein-/Ausblenden der Bedienelemente während der
+        // Wiedergabe nicht mit (AVKit bietet dafür keine öffentliche API). Deshalb hier
+        // ein eigenes, an Taps gekoppeltes Auto-Hide, damit der Button nicht dauerhaft
+        // über einem sonst ausgeblendeten Player schwebt.
+        .simultaneousGesture(TapGesture().onEnded { scheduleAutoHide() })
+        .onAppear { scheduleAutoHide() }
+        .onDisappear { hideTask?.cancel() }
+    }
+
+    private func scheduleAutoHide() {
+        hideTask?.cancel()
+        closeButtonVisible = true
+        hideTask = Task {
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { return }
+            closeButtonVisible = false
         }
     }
 }

@@ -33,6 +33,9 @@ struct YouTubePlayerView: View {
     let state: YouTubePlayerState
     let onDismiss: () -> Void
 
+    @State private var closeButtonVisible = true
+    @State private var hideTask: Task<Void, Never>?
+
     var body: some View {
         ZStack(alignment: .topTrailing) {
             Color.black.ignoresSafeArea()
@@ -55,15 +58,36 @@ struct YouTubePlayerView: View {
                 }
             }
 
-            Button { onDismiss() } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.title)
-                    .symbolRenderingMode(.palette)
-                    .foregroundStyle(.white, Color.white.opacity(0.25))
-                    .shadow(color: .black.opacity(0.4), radius: 4)
+            if closeButtonVisible {
+                Button { onDismiss() } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title)
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(.white, Color.white.opacity(0.25))
+                        .shadow(color: .black.opacity(0.4), radius: 4)
+                }
+                .padding(.top, 56)
+                .padding(.trailing, 20)
+                .transition(.opacity)
             }
-            .padding(.top, 56)
-            .padding(.trailing, 20)
+        }
+        .animation(.easeInOut(duration: 0.25), value: closeButtonVisible)
+        // Wie beim nativen ARD/ZDF/Arte-Player (siehe NativeVideoPlayerView) ist der
+        // Close-Button ein eigenes SwiftUI-Overlay, das vom Auto-Hide der YouTube-eigenen
+        // Bedienelemente im WebView nichts mitbekommt - daher dasselbe tap-gekoppelte
+        // Auto-Hide hier, statt dauerhaft über einem sonst ausgeblendeten Player zu schweben.
+        .simultaneousGesture(TapGesture().onEnded { scheduleAutoHide() })
+        .onAppear { scheduleAutoHide() }
+        .onDisappear { hideTask?.cancel() }
+    }
+
+    private func scheduleAutoHide() {
+        hideTask?.cancel()
+        closeButtonVisible = true
+        hideTask = Task {
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { return }
+            closeButtonVisible = false
         }
     }
 
