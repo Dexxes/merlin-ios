@@ -33,6 +33,8 @@ struct YouTubePlayerView: View {
     let state: YouTubePlayerState
     let onDismiss: () -> Void
 
+    @State private var controlsVisible = true
+
     var body: some View {
         ZStack(alignment: .topTrailing) {
             Color.black.ignoresSafeArea()
@@ -55,16 +57,26 @@ struct YouTubePlayerView: View {
                 }
             }
 
-            Button { onDismiss() } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.title)
-                    .symbolRenderingMode(.palette)
-                    .foregroundStyle(.white, Color.white.opacity(0.25))
-                    .shadow(color: .black.opacity(0.4), radius: 4)
+            if controlsVisible {
+                Button { onDismiss() } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title)
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(.white, Color.white.opacity(0.25))
+                        .shadow(color: .black.opacity(0.4), radius: 4)
+                }
+                .padding(.top, 56)
+                .padding(.trailing, 20)
+                .transition(.opacity)
             }
-            .padding(.top, 56)
-            .padding(.trailing, 20)
         }
+        .animation(.easeInOut(duration: 0.25), value: controlsVisible)
+        // Wie beim nativen ARD/ZDF/Arte-Player (siehe NativeVideoPlayerView) ist der
+        // Close-Button ein eigenes SwiftUI-Overlay, das vom Ein-/Ausblenden der
+        // YouTube-eigenen Bedienelemente im WebView nichts mitbekommt. Ein Tap auf den
+        // Player toggelt daher zusätzlich unseren Button, exakt wie YouTube die eigenen
+        // Bedienelemente togglet - kein Timer, kein Auto-Hide.
+        .simultaneousGesture(TapGesture().onEnded { controlsVisible.toggle() })
     }
 
     private static func embedURL(for state: YouTubePlayerState) -> URL? {
