@@ -1,5 +1,6 @@
 import SwiftUI
 import AVKit
+import UIKit
 
 // MARK: – Host detection (mirrors VideoPlayer.vue's NATIVE_VIDEO_HOSTS/hasNativeVideoHost())
 
@@ -124,7 +125,8 @@ struct NativeVideoPlayerCard: View {
         }
         .fullScreenCover(isPresented: $isFullScreen) {
             if let player {
-                NativeVideoFullScreenView(player: player) { isFullScreen = false }
+                NativeVideoFullScreenView(player: player, isPresented: $isFullScreen)
+                    .ignoresSafeArea()
             }
         }
     }
@@ -187,40 +189,57 @@ struct NativeVideoPlayerCard: View {
 
 /// Vollbild-Ansicht für den nativen ARD/ZDF/Arte-Player - denselben `AVPlayer` weiterreichen
 /// statt einen zweiten zu erzeugen, damit Wiedergabeposition und -status beim Auf-/Zuklappen
-/// erhalten bleiben. Stil (Close-Button oben rechts, schwarzer Hintergrund) folgt bewusst
-/// `YouTubePlayerView`, damit sich beide Vollbild-Player im Reader identisch anfühlen.
-private struct NativeVideoFullScreenView: View {
+/// erhalten bleiben.
+///
+/// Der Schließen-Button ist bewusst kein eigenes SwiftUI-Overlay mehr: AVKit bietet keine
+/// öffentliche API, um den Sichtbarkeits-Status seiner eigenen (automatisch ein-/ausblendenden)
+/// Bedienelemente abzufragen, ein separater Button liefe also zwangsläufig aus dem Takt.
+/// Steckt man den `AVPlayerViewController` dagegen in einen `UINavigationController`, blendet
+/// AVKit dessen Navigationsleiste selbst zusammen mit den Bedienelementen ein und aus - der
+/// "Fertig"-Button in dieser Leiste ist dadurch garantiert synchron, ganz ohne eigenen Timer
+/// oder Toggle-State.
+private struct NativeVideoFullScreenView: UIViewControllerRepresentable {
     let player: AVPlayer
-    let onDismiss: () -> Void
+    @Binding var isPresented: Bool
 
-    @State private var controlsVisible = true
+    func makeUIViewController(context: Context) -> UINavigationController {
+        let playerViewController = AVPlayerViewController()
+        playerViewController.player = player
+        playerViewController.view.backgroundColor = .black
+        playerViewController.navigationItem.leftBarButtonItem = UIBarButtonItem(
+            title: L("common.done"),
+            style: .done,
+            target: context.coordinator,
+            action: #selector(Coordinator.done)
+        )
 
-    var body: some View {
-        ZStack(alignment: .topTrailing) {
-            Color.black.ignoresSafeArea()
+        let navigationController = UINavigationController(rootViewController: playerViewController)
+        navigationController.view.backgroundColor = .black
+        navigationController.hidesBarsOnTap = true
 
-            VideoPlayer(player: player)
-                .ignoresSafeArea()
+        let appearance = UINavigationBarAppearance()
+        appearance.configureWithTransparentBackground()
+        navigationController.navigationBar.standardAppearance = appearance
+        navigationController.navigationBar.scrollEdgeAppearance = appearance
+        navigationController.navigationBar.tintColor = .white
+        return navigationController
+    }
 
-            if controlsVisible {
-                Button { onDismiss() } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.title)
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(.white, Color.white.opacity(0.25))
-                        .shadow(color: .black.opacity(0.4), radius: 4)
-                }
-                .padding(.top, 56)
-                .padding(.trailing, 20)
-                .transition(.opacity)
-            }
+    func updateUIViewController(_ uiViewController: UINavigationController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(isPresented: $isPresented)
+    }
+
+    final class Coordinator {
+        private let isPresented: Binding<Bool>
+
+        init(isPresented: Binding<Bool>) {
+            self.isPresented = isPresented
         }
-        .animation(.easeInOut(duration: 0.25), value: controlsVisible)
-        // Der eigene Close-Button ist ein SwiftUI-Overlay über dem AVKit-Player und
-        // bekommt dessen Ein-/Ausblenden der Bedienelemente per Tap nicht mit (AVKit
-        // bietet dafür keine öffentliche API). Ein Tap auf den Player toggelt daher
-        // zusätzlich unseren Button, exakt wie AVKit die eigenen Bedienelemente togglet
-        // - kein Timer, kein Auto-Hide.
-        .simultaneousGesture(TapGesture().onEnded { controlsVisible.toggle() })
+
+        @objc func done() {
+            isPresented.wrappedValue = false
+        }
     }
 }
