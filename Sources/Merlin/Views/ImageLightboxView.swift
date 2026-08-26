@@ -20,9 +20,11 @@ struct ImageLightboxView: View {
 
     @State private var currentPage:  Int
     @State private var dragOffset:   CGFloat = 0
-    /// Tracks the zoom scale of the currently visible page so the dismiss
-    /// gesture can be blocked while the image is zoomed in.
-    @State private var currentScale: CGFloat = 1.0
+    /// Tracks whether the currently visible page is zoomed in, so the dismiss
+    /// gesture can be blocked while the image is zoomed. Only updated when the
+    /// zoomed/not-zoomed boundary is actually crossed — not on every pinch delta —
+    /// to avoid flooding this view with re-renders during a live pinch gesture.
+    @State private var isZoomed: Bool = false
 
     init(state: LightboxState, onDismiss: @escaping () -> Void) {
         self.state     = state
@@ -32,7 +34,6 @@ struct ImageLightboxView: View {
     }
 
     private var visibleIndex: Int { currentPage % state.imageURLs.count }
-    private var isZoomed:     Bool { currentScale > 1.05 }
 
     private var backdropOpacity: Double {
         isZoomed ? 1.0 : max(0.15, 1.0 - Double(abs(dragOffset)) / 320)
@@ -50,9 +51,9 @@ struct ImageLightboxView: View {
                 ForEach(0 ..< totalPages, id: \.self) { page in
                     ZoomableImageView(
                         urlString: state.imageURLs[page % state.imageURLs.count],
-                        onScaleChange: { scale in
-                            // Only track scale for the visible page
-                            if page == currentPage { currentScale = scale }
+                        onZoomChange: { zoomed in
+                            // Only track zoom state for the visible page
+                            if page == currentPage { isZoomed = zoomed }
                         }
                     )
                     // Disable the TabView's backing UIScrollView while zoomed
@@ -65,8 +66,8 @@ struct ImageLightboxView: View {
             .offset(y: dragOffset)
             .scaleEffect(isZoomed ? 1.0 : max(0.88, 1.0 - abs(dragOffset) / 1_200))
             .animation(.interactiveSpring(), value: dragOffset)
-            // Reset tracked scale whenever the user swipes to a new page
-            .onChange(of: currentPage) { currentScale = 1.0 }
+            // Reset tracked zoom state whenever the user swipes to a new page
+            .onChange(of: currentPage) { isZoomed = false }
 
             // ── X button ─────────────────────────────────────────────────────
             VStack {
@@ -141,7 +142,7 @@ struct ImageLightboxView: View {
 private struct ZoomableImageView: View {
 
     let urlString: String
-    var onScaleChange: (CGFloat) -> Void = { _ in }
+    var onZoomChange: (Bool) -> Void = { _ in }
 
     /// Scale committed after each gesture ends.
     @State private var committedScale: CGFloat = 1.0
@@ -154,14 +155,18 @@ private struct ZoomableImageView: View {
     /// Pan offset committed after each drag ends.
     @State private var committedOffset: CGSize = .zero
 
+    /// Last zoomed/not-zoomed state reported to the parent, so it's only
+    /// notified when the boundary is actually crossed rather than on every
+    /// pinch delta — that used to fire a parent re-render on every frame of
+    /// a live pinch, which is what made zooming back out feel choppy.
+    @State private var reportedZoomed = false
+
     private let maxScale: CGFloat = 5.0
 
-    /// Effective scale applied to the image every frame.
+    /// Effective scale applied to the image every frame. Kept free of side
+    /// effects since it's evaluated during view body computation.
     private var liveScale: CGFloat {
-        let s = max(1.0, min(maxScale, committedScale * pinchDelta))
-        // Report live scale so the parent can lock/unlock TabView paging in real time.
-        if s != committedScale { DispatchQueue.main.async { onScaleChange(s) } }
-        return s
+        max(1.0, min(maxScale, committedScale * pinchDelta))
     }
     /// Effective offset applied to the image every frame.
     private var liveOffset: CGSize {
@@ -195,13 +200,16 @@ private struct ZoomableImageView: View {
                                 .updating($pinchDelta) { value, state, _ in
                                     state = value
                                 }
+                                .onChanged { value in
+                                    reportZoom(committedScale * value)
+                                }
                                 .onEnded { value in
                                     let next = max(1.0, min(maxScale, committedScale * value))
                                     if next < 1.05 {
                                         withAnimation(.spring(response: 0.3)) { resetZoom() }
                                     } else {
                                         committedScale = next
-                                        onScaleChange(next)
+                                        reportZoom(next)
                                     }
                                 }
                         )
@@ -227,7 +235,7 @@ private struct ZoomableImageView: View {
                                     resetZoom()
                                 } else {
                                     committedScale = 2.5
-                                    onScaleChange(2.5)
+                                    reportZoom(2.5)
                                 }
                             }
                         }
@@ -248,7 +256,15 @@ private struct ZoomableImageView: View {
     private func resetZoom() {
         committedScale  = 1.0
         committedOffset = .zero
-        onScaleChange(1.0)
+        reportZoom(1.0)
+    }
+
+    /// Notifies the parent only when the zoomed/not-zoomed boundary changes.
+    private func reportZoom(_ scale: CGFloat) {
+        let zoomed = scale > 1.05
+        guard zoomed != reportedZoomed else { return }
+        reportedZoomed = zoomed
+        onZoomChange(zoomed)
     }
 }
 
@@ -268,7 +284,7 @@ private struct TabViewScrollEnabler: UIViewRepresentable {
             var v: UIView? = uiView.superview
             while let current = v {
                 if let sv = current as? UIScrollView {
-                    sv.isScrollEnabled = isEnabled
+                    if sv.isScrollEnabled != isEnabled { sv.isScrollEnabled = isEnabled }
                     return
                 }
                 v = current.superview
