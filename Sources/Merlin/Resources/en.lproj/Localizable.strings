@@ -387,6 +387,11 @@
 "settings.preferences.resumeOnOpenLabel" = "Resume where I left off";
 "settings.preferences.saveProgressLabel" = "Save reading position";
 "settings.preferences.sectionHeader" = "Preferences";
+"settings.storage.footer" = "Shows how much storage your articles and highlights use on the server and in the local cache.";
+"settings.storage.loadError" = "Couldn't load";
+"settings.storage.localLabel" = "Local Cache";
+"settings.storage.sectionHeader" = "Storage";
+"settings.storage.serverLabel" = "Server";
 "settings.testConnection.button" = "Test Connection";
 "share.extracting.subtitle" = "Reading shared content…";
 "share.rateLimited.subtitle" = "Rate limited";

@@ -28,6 +28,9 @@ struct SettingsView: View {
     @State private var showLogoutConfirm      = false
     @State private var cacheCleared           = false
     @State private var testResult: TestResult? = nil
+    @State private var serverStorageUsage: MerlinAPI.StorageUsage? = nil
+    @State private var serverStorageError     = false
+    @State private var localCacheBytes: Int64? = nil
     @FocusState private var focusedField: Field?
 
     @StateObject private var loginFlow   = LoginFlowService()
@@ -258,6 +261,36 @@ struct SettingsView: View {
                     Text(L("settings.cache.footer"))
                 }
 
+                // MARK: - Storage
+                Section {
+                    LabeledContent(L("settings.storage.serverLabel")) {
+                        if let usage = serverStorageUsage {
+                            Text(Self.byteFormatter.string(fromByteCount: Int64(usage.totalBytes)))
+                                .foregroundStyle(.secondary)
+                        } else if serverStorageError {
+                            Text(L("settings.storage.loadError"))
+                                .font(.footnote)
+                                .foregroundStyle(.red)
+                        } else if CredentialsStore.shared.isConfigured {
+                            ProgressView().progressViewStyle(.circular)
+                        } else {
+                            Text("–").foregroundStyle(.secondary)
+                        }
+                    }
+                    LabeledContent(L("settings.storage.localLabel")) {
+                        if let bytes = localCacheBytes {
+                            Text(Self.byteFormatter.string(fromByteCount: bytes))
+                                .foregroundStyle(.secondary)
+                        } else {
+                            ProgressView().progressViewStyle(.circular)
+                        }
+                    }
+                } header: {
+                    Text(L("settings.storage.sectionHeader"))
+                } footer: {
+                    Text(L("settings.storage.footer"))
+                }
+
                 // MARK: - About
                 Section {
                     HStack {
@@ -298,6 +331,7 @@ struct SettingsView: View {
                 SafariLoginView(url: item.url)
                     .ignoresSafeArea()
             }
+            .task { await loadStorageUsage() }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button(L("common.done")) { dismiss() }
@@ -410,9 +444,6 @@ struct SettingsView: View {
 
     private func clearCache() {
         PreferencesStore.shared.clearReadingPositions()
-        Task { await ArticleCacheService.shared.clear() }
-        Task { await ImageCacheService.shared.clear() }
-        Task { await HighlightCacheService.shared.clear() }
         URLCache.shared.removeAllCachedResponses()
         WKWebsiteDataStore.default().removeData(
             ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(),
@@ -423,6 +454,38 @@ struct SettingsView: View {
         username     = ""
         appPassword  = ""
         cacheCleared = true
+        serverStorageUsage = nil
+        serverStorageError = false
+        Task {
+            await ArticleCacheService.shared.clear()
+            await ImageCacheService.shared.clear()
+            await HighlightCacheService.shared.clear()
+            await loadStorageUsage()
+        }
+    }
+
+    // MARK: - Storage
+
+    private static let byteFormatter: ByteCountFormatter = {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        return formatter
+    }()
+
+    private func loadStorageUsage() async {
+        // Verzeichnis-Enumeration ist blockierendes IO — vom Main-Actor weg,
+        // damit die Form beim Öffnen der Settings nicht ruckelt.
+        localCacheBytes = await Task.detached(priority: .utility) {
+            LocalStorageService.totalCacheBytes()
+        }.value
+
+        guard CredentialsStore.shared.isConfigured else { return }
+        do {
+            serverStorageUsage = try await MerlinAPI.shared.getStorageUsage()
+            serverStorageError = false
+        } catch {
+            serverStorageError = true
+        }
     }
 
     private func testConnection() {
