@@ -239,6 +239,16 @@ actor MerlinAPI {
         return try await perform(req)
     }
 
+    /// Re-triggers server-side content extraction for an article whose
+    /// extraction previously failed (e.g. transient network error while the
+    /// server fetched the source URL), leaving it with `content == nil` and
+    /// `isProcessing == false` forever. See `ArticlesViewModel.retryExtraction`.
+    func retryExtraction(_ id: Int) async throws -> Article {
+        var req = try makeRequest("/articles/\(id)/retry-extraction", method: "POST")
+        req.httpBody = Data()
+        return try await perform(req)
+    }
+
     func deleteArticle(_ id: Int) async throws {
         let req = try makeRequest("/articles/\(id)", method: "DELETE")
         _ = try await performRaw(req)

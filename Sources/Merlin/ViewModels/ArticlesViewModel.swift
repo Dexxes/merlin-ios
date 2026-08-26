@@ -289,6 +289,17 @@ final class ArticlesViewModel {
         startProcessingListenerIfNeeded()
     }
 
+    /// Retries extraction for an article that got stuck without content
+    /// (server-side extraction failed once and gave up, e.g. because of a
+    /// transient network error while fetching the source URL). Called from
+    /// the "no content" empty state in `ArticleReaderView`.
+    func retryExtraction(_ article: Article) async {
+        guard let refreshed = try? await MerlinAPI.shared.retryExtraction(article.id) else { return }
+        applyUpdate(refreshed)
+        await ArticleCacheService.shared.upsert(refreshed)
+        startProcessingListenerIfNeeded()
+    }
+
     // MARK: – Processing listener
 
     /// Stored handle for the active image prefetch task.
