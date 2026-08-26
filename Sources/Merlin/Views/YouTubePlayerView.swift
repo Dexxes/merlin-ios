@@ -33,8 +33,7 @@ struct YouTubePlayerView: View {
     let state: YouTubePlayerState
     let onDismiss: () -> Void
 
-    @State private var closeButtonVisible = true
-    @State private var hideTask: Task<Void, Never>?
+    @State private var controlsVisible = true
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -58,7 +57,7 @@ struct YouTubePlayerView: View {
                 }
             }
 
-            if closeButtonVisible {
+            if controlsVisible {
                 Button { onDismiss() } label: {
                     Image(systemName: "xmark.circle.fill")
                         .font(.title)
@@ -71,24 +70,13 @@ struct YouTubePlayerView: View {
                 .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.25), value: closeButtonVisible)
+        .animation(.easeInOut(duration: 0.25), value: controlsVisible)
         // Wie beim nativen ARD/ZDF/Arte-Player (siehe NativeVideoPlayerView) ist der
-        // Close-Button ein eigenes SwiftUI-Overlay, das vom Auto-Hide der YouTube-eigenen
-        // Bedienelemente im WebView nichts mitbekommt - daher dasselbe tap-gekoppelte
-        // Auto-Hide hier, statt dauerhaft über einem sonst ausgeblendeten Player zu schweben.
-        .simultaneousGesture(TapGesture().onEnded { scheduleAutoHide() })
-        .onAppear { scheduleAutoHide() }
-        .onDisappear { hideTask?.cancel() }
-    }
-
-    private func scheduleAutoHide() {
-        hideTask?.cancel()
-        closeButtonVisible = true
-        hideTask = Task {
-            try? await Task.sleep(for: .seconds(3))
-            guard !Task.isCancelled else { return }
-            closeButtonVisible = false
-        }
+        // Close-Button ein eigenes SwiftUI-Overlay, das vom Ein-/Ausblenden der
+        // YouTube-eigenen Bedienelemente im WebView nichts mitbekommt. Ein Tap auf den
+        // Player toggelt daher zusätzlich unseren Button, exakt wie YouTube die eigenen
+        // Bedienelemente togglet - kein Timer, kein Auto-Hide.
+        .simultaneousGesture(TapGesture().onEnded { controlsVisible.toggle() })
     }
 
     private static func embedURL(for state: YouTubePlayerState) -> URL? {
