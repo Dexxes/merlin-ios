@@ -178,7 +178,7 @@ struct ArticleCardView: View {
             }
             .onChange(of: activeSwipeId) { oldId, newId in
                 // Close swipe if another card becomes active — but never interrupt
-                // our own in-flight drag (grid scroll jitter resets activeSwipeId).
+                // our own in-flight drag.
                 if newId != article.id && oldId == article.id && !dragActive {
                     closeSwipe()
                 }
