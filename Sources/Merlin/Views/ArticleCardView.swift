@@ -278,7 +278,7 @@ struct ArticleCardView: View {
         if !dragActive {
             // ── Directional lock: decide ONCE at activation, then track without
             // re-checking the angle — mid-swipe finger drift must not freeze the card.
-            let horizontal = abs(v.translation.width) > abs(v.translation.height) * 1.5
+            let horizontal = abs(v.translation.width) > abs(v.translation.height)
             if !horizontal {
                 // Vertical scroll: close open buttons and ignore the rest of this
                 // gesture (no dragBase re-capture mid-close-animation).
@@ -343,14 +343,28 @@ struct ArticleCardView: View {
         // ── Velocity-aware snap: a quick flick opens/closes even when the
         // travelled distance alone would stay below the threshold.
         let projected = dragBase + (v.predictedEndTranslation.width - activationDx)
+        // A slow, deliberate drag that already crossed the threshold can still
+        // decelerate (or micro-bounce back) right as the finger lifts, which
+        // pulls predictedEndTranslation back under the threshold even though
+        // the card was clearly dragged far enough open. Anchor the decision to
+        // whichever of the raw released position or the velocity projection
+        // commits harder in the same direction, so that case still opens.
+        let effective: CGFloat
+        if raw < 0 && projected < 0 {
+            effective = min(raw, projected)
+        } else if raw > 0 && projected > 0 {
+            effective = max(raw, projected)
+        } else {
+            effective = projected
+        }
         let newOffset: CGFloat
         if dragBase < 0 {
-            newOffset = projected > -actionW + closeDist ? 0 : -actionW
+            newOffset = effective > -actionW + closeDist ? 0 : -actionW
         } else if dragBase > 0 {
-            newOffset = projected < shareW - closeDist   ? 0 : shareW
+            newOffset = effective < shareW - closeDist   ? 0 : shareW
         } else {
-            newOffset = projected < -snapDist     ? -actionW :
-                        projected > shareSnapDist ?  shareW  : 0
+            newOffset = effective < -snapDist     ? -actionW :
+                        effective > shareSnapDist ?  shareW  : 0
         }
         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
             swipeOffset = newOffset
