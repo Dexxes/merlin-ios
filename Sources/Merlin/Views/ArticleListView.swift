@@ -306,9 +306,6 @@ struct ArticleListView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
         }
-        .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, _ in
-            if activeSwipeId != nil { activeSwipeId = nil }
-        }
         .refreshable { await viewModel.load() }
         .background(Color(.systemGroupedBackground))
     }
