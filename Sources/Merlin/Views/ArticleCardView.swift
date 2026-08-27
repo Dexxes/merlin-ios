@@ -176,10 +176,6 @@ struct ArticleCardView: View {
                     ShareSheet(url: url, title: article.displayTitle)
                 }
             }
-            .onDisappear {
-                // Close swipe buttons when card leaves the visible area
-                closeSwipe()
-            }
             .onChange(of: activeSwipeId) { oldId, newId in
                 // Close swipe if another card becomes active — but never interrupt
                 // our own in-flight drag (grid scroll jitter resets activeSwipeId).
@@ -280,9 +276,10 @@ struct ArticleCardView: View {
             // re-checking the angle — mid-swipe finger drift must not freeze the card.
             let horizontal = abs(v.translation.width) > abs(v.translation.height)
             if !horizontal {
-                // Vertical scroll: close open buttons and ignore the rest of this
-                // gesture (no dragBase re-capture mid-close-animation).
-                if swipeOffset != 0 { closeSwipe() }
+                // Vertical scroll: leave any open swipe buttons as they are —
+                // they should only close when another card gets swiped, not
+                // just because the list scrolled. Ignore the rest of this
+                // gesture (no dragBase re-capture mid-scroll).
                 gestureConsumed = true
                 return
             }
@@ -355,7 +352,11 @@ struct ArticleCardView: View {
         } else if raw > 0 && projected > 0 {
             effective = max(raw, projected)
         } else {
-            effective = projected
+            // Signs disagree — the velocity at release pointed the opposite way
+            // from where the finger actually ended up (a soft/loose swipe often
+            // has a tiny recoil as it's released). Trust the real position, not
+            // a projection built from that unreliable, near-zero velocity.
+            effective = raw
         }
         let newOffset: CGFloat
         if dragBase < 0 {
