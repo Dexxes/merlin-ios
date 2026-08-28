@@ -413,6 +413,11 @@
 "settings.preferences.resumeOnOpenLabel" = "Beim Öffnen fortsetzen";
 "settings.preferences.saveProgressLabel" = "Leseposition speichern";
 "settings.preferences.sectionHeader" = "Einstellungen";
+"settings.storage.footer" = "Zeigt, wie viel Speicherplatz deine Artikel und Highlights auf dem Server sowie im lokalen Zwischenspeicher belegen.";
+"settings.storage.loadError" = "Konnte nicht geladen werden";
+"settings.storage.localLabel" = "Lokaler Zwischenspeicher";
+"settings.storage.sectionHeader" = "Speicher";
+"settings.storage.serverLabel" = "Server";
 "settings.testConnection.button" = "Verbindung testen";
 "share.extracting.subtitle" = "Geteilten Inhalt wird gelesen…";
 "share.rateLimited.subtitle" = "Rate-Limit erreicht";

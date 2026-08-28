@@ -546,6 +546,27 @@ actor MerlinAPI {
         _ = try await performRaw(req)
     }
 
+    // MARK: – Storage usage
+
+    /// Antwort von `GET /storage` (identischer Pfad und identisches
+    /// Antwortformat auf Nextcloud und merlin-server, siehe
+    /// StorageController::get()/AccountController::storageUsage()).
+    struct StorageUsage: Decodable {
+        let articleCount: Int
+        let highlightCount: Int
+        let articleBytes: Int
+        let highlightBytes: Int
+        let totalBytes: Int
+    }
+
+    /// Lädt den Speicherverbrauch des Nutzers in der Server-Datenbank
+    /// (Artikel- + Highlight-Textspalten), für die Anzeige in den
+    /// iOS-Einstellungen.
+    func getStorageUsage() async throws -> StorageUsage {
+        let req = try makeRequest("/storage")
+        return try await perform(req)
+    }
+
     // MARK: – Connection test
 
     func testConnection() async throws {
