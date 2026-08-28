@@ -386,6 +386,7 @@
 "settings.account.footer" = "Tap \"Login with Nextcloud\" to authenticate via your browser.";
 "settings.account.loggedInSuccess" = "Logged in successfully!";
 "settings.account.loginButton" = "Login with Nextcloud";
+"settings.account.loginButtonStandalone" = "Log in";
 "settings.account.logoutDialogMessage" = "Your Nextcloud credentials will be removed from this device. Cached articles and reading positions are kept.";
 "settings.account.logoutDialogTitle" = "Logout?";
 "settings.account.sectionHeader" = "Nextcloud Account";

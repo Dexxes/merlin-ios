@@ -74,7 +74,10 @@ struct SettingsView: View {
                         startLoginFlow()
                     } label: {
                         HStack {
-                            Label(L("settings.account.loginButton"), systemImage: "arrow.right.circle")
+                            Label(backendKind == .standalone
+                                    ? L("settings.account.loginButtonStandalone")
+                                    : L("settings.account.loginButton"),
+                                  systemImage: "arrow.right.circle")
                             Spacer()
                             if loginFlow.isLoading {
                                 ProgressView().progressViewStyle(.circular)
