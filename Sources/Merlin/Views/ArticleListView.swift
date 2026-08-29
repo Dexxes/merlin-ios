@@ -298,8 +298,8 @@ struct ArticleListView: View {
                         onDelete:         { Task { await viewModel.delete(article) } },
                         onEditTags:       { tagSheetArticle = article },
                         onTap:            { selectedArticle = article },
-                        showFavoriteAction: viewModel.selectedFilter != .favorites,
-                        showArchiveAction:  viewModel.selectedFilter != .archive
+                        showFavoriteAction: viewModel.selectedFilter != .pagesFavorites && viewModel.selectedFilter != .videosFavorites,
+                        showArchiveAction:  viewModel.selectedFilter != .pagesArchive && viewModel.selectedFilter != .videosArchive
                     )
                 }
             }
@@ -323,8 +323,8 @@ struct ArticleListView: View {
                     onToggleArchive:    { Task { await viewModel.toggleArchive(article) } },
                     onDelete:           { Task { await viewModel.delete(article) } },
                     onEditTags:         { tagSheetArticle = article },
-                    showFavoriteAction: viewModel.selectedFilter != .favorites,
-                    showArchiveAction:  viewModel.selectedFilter != .archive
+                    showFavoriteAction: viewModel.selectedFilter != .pagesFavorites && viewModel.selectedFilter != .videosFavorites,
+                    showArchiveAction:  viewModel.selectedFilter != .pagesArchive && viewModel.selectedFilter != .videosArchive
                 )
             }
             .buttonStyle(.plain)
@@ -381,10 +381,12 @@ struct ArticleListView: View {
             return String(format: L("articleList.emptyState.taggedMessage"), name)
         }
         switch viewModel.selectedFilter {
-        case .all:       return L("articleList.emptyState.allMessage")
-        case .favorites: return L("articleList.emptyState.favoritesMessage")
-        case .archive:   return L("articleList.emptyState.archiveMessage")
-        case .videos:    return L("articleList.emptyState.videosMessage")
+        case .pagesUnread:     return L("articleList.emptyState.allMessage")
+        case .pagesFavorites:  return L("articleList.emptyState.favoritesMessage")
+        case .pagesArchive:    return L("articleList.emptyState.archiveMessage")
+        case .videosUnread:    return L("articleList.emptyState.unseenMessage")
+        case .videosFavorites: return L("articleList.emptyState.favoritesMessage")
+        case .videosArchive:   return L("articleList.emptyState.archiveMessage")
         }
     }
 

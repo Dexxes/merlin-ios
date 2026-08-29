@@ -49,10 +49,18 @@ actor ArticleCacheService {
         let matching = cache.values
             .map(\.article)
             .filter { matches(article: $0, filter: filter, tagId: tagId, showArchivedForTag: showArchivedForTag) }
-        if filter == .favorites {
+        if filter == .pagesFavorites || filter == .videosFavorites {
             return matching.sorted { ($0.favoritedAt ?? "") > ($1.favoritedAt ?? "") }
         }
         return matching.sorted { $0.createdAt > $1.createdAt }
+    }
+
+    /// All cached articles without any filter (independent of archive/favorite
+    /// status or Pages/Videos category) - for fallback lookups that go beyond
+    /// the six `ArticleFilter` views, e.g. warming the image cache at launch.
+    func loadAllCached() -> [Article] {
+        loadFromDiskIfNeeded()
+        return cache.values.map(\.article)
     }
 
     /// Merges a batch of articles into the cache and writes to disk. Refreshes
@@ -121,12 +129,15 @@ actor ArticleCacheService {
             // `showArchivedForTag`, ob archivierte Artikel mitgezählt werden.
             return showArchivedForTag || !article.isArchived
         }
+        let isVideo = article.category == "Video"
         switch filter {
-        case .all:       return                                              !article.isArchived
+        case .pagesUnread:     return !article.isArchived && !isVideo
         // Bewusst OHNE isArchived-Bedingung: Favoriten unabhängig vom Archiv-Status.
-        case .favorites: return  article.isFavorite
-        case .archive:   return  article.isArchived
-        case .videos:    return  article.category == "Video"             && !article.isArchived
+        case .pagesFavorites:  return  article.isFavorite  && !isVideo
+        case .pagesArchive:    return  article.isArchived  && !isVideo
+        case .videosUnread:    return !article.isArchived  &&  isVideo
+        case .videosFavorites: return  article.isFavorite  &&  isVideo
+        case .videosArchive:   return  article.isArchived  &&  isVideo
         }
     }
 

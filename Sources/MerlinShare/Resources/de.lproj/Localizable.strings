@@ -28,9 +28,12 @@
 "articleList.emptyState.taggedMessage" = "Keine Artikel mit Tag \"%@\".";
 "articleList.emptyState.title" = "Noch nichts hier";
 "articleList.emptyState.videosMessage" = "Noch keine Videos gespeichert. Füge einen YouTube- oder Video-Link hinzu, um ihn hier zu sehen.";
+"articleList.emptyState.unseenMessage" = "Noch keine ungesehenen Videos. Füge einen YouTube- oder Video-Link hinzu, um ihn hier zu sehen.";
 "articleList.filter.archive" = "Archiv";
 "articleList.filter.favorites" = "Favoriten";
+"articleList.filter.pages" = "Seiten";
 "articleList.filter.unread" = "Ungelesen";
+"articleList.filter.unseen" = "Ungesehen";
 "articleList.filter.videos" = "Videos";
 "articleList.miniPlayer.fallbackTitle" = "Vorlesen";
 "articleList.searchPlaceholder" = "Artikel suchen";
@@ -267,7 +270,10 @@
 "merlinServer.library.viewArchive" = "Archiv";
 "merlinServer.library.viewFavorites" = "Favoriten";
 "merlinServer.library.viewLabel" = "Ansicht";
+"merlinServer.library.viewPages" = "Seiten";
+"merlinServer.library.viewVideos" = "Videos";
 "merlinServer.library.viewUnread" = "Ungelesen";
+"merlinServer.library.viewUnseen" = "Ungesehen";
 "merlinServer.library.yesterday" = "gestern";
 "merlinServer.login.accountDisabled" = "Dieses Konto ist deaktiviert.";
 "merlinServer.login.createAccount" = "Konto erstellen";

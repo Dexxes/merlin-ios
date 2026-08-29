@@ -28,9 +28,12 @@
 "articleList.emptyState.taggedMessage" = "No articles tagged \"%@\".";
 "articleList.emptyState.title" = "Nothing here yet";
 "articleList.emptyState.videosMessage" = "No videos saved yet. Add a YouTube or video link to see it here.";
+"articleList.emptyState.unseenMessage" = "No unwatched videos yet. Add a YouTube or video link to see it here.";
 "articleList.filter.archive" = "Archive";
 "articleList.filter.favorites" = "Favorites";
+"articleList.filter.pages" = "Pages";
 "articleList.filter.unread" = "Unread";
+"articleList.filter.unseen" = "Unwatched";
 "articleList.filter.videos" = "Videos";
 "articleList.miniPlayer.fallbackTitle" = "Reading aloud";
 "articleList.searchPlaceholder" = "Search articles";
@@ -267,7 +270,10 @@
 "merlinServer.library.viewArchive" = "Archive";
 "merlinServer.library.viewFavorites" = "Favorites";
 "merlinServer.library.viewLabel" = "View";
+"merlinServer.library.viewPages" = "Pages";
+"merlinServer.library.viewVideos" = "Videos";
 "merlinServer.library.viewUnread" = "Unread";
+"merlinServer.library.viewUnseen" = "Unwatched";
 "merlinServer.library.yesterday" = "yesterday";
 "merlinServer.login.accountDisabled" = "This account is disabled.";
 "merlinServer.login.createAccount" = "Create account";

@@ -166,8 +166,25 @@ struct ListFlyoutModifier: ViewModifier {
                 // Platz für Statusleiste / Dynamic Island
                 Color.clear.frame(height: safeAreaTop)
 
-                // ── Filter ─────────────────────────────────────────────────────
-                ForEach(ArticleFilter.allCases) { filter in
+                // ── Filter: Pages and Videos, each with their own
+                //    Unread(/Unseen)/Favorites/Archive sub-view ──────────────────
+                menuSectionCaption(L("articleList.filter.pages"))
+                ForEach(ArticleFilter.allCases.filter { !$0.isVideo }) { filter in
+                    menuRow(
+                        icon: filter.systemImage,
+                        label: filterLabel(filter),
+                        tint: viewModel.selectedFilter == filter && viewModel.selectedTagId == nil
+                            ? .accentColor : nil
+                    ) {
+                        viewModel.selectedTagId = nil
+                        viewModel.selectedFilter = filter
+                        Task { await viewModel.load() }
+                        close(then: onNavigate)
+                    }
+                }
+
+                menuSectionCaption(L("articleList.filter.videos"))
+                ForEach(ArticleFilter.allCases.filter { $0.isVideo }) { filter in
                     menuRow(
                         icon: filter.systemImage,
                         label: filterLabel(filter),
@@ -327,6 +344,15 @@ struct ListFlyoutModifier: ViewModifier {
         Divider().padding(.leading, 20)
     }
 
+    private func menuSectionCaption(_ text: String) -> some View {
+        Text(text.uppercased())
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 20)
+            .padding(.top, 10)
+            .padding(.bottom, 2)
+    }
+
     private func close(then completion: (() -> Void)? = nil) {
         withAnimation(.spring(response: 0.32, dampingFraction: 0.88)) {
             showSideMenu = false
@@ -339,22 +365,14 @@ struct ListFlyoutModifier: ViewModifier {
     }
 
     private func filterLabel(_ filter: ArticleFilter) -> String {
+        let group = filter.isVideo ? viewModel.counts.videos : viewModel.counts.pages
+        let count: Int
         switch filter {
-        case .all:
-            return String(format: L("navigationMenu.filterWithCount"),
-                           L("articleList.filter.unread"), viewModel.counts.total)
-        case .favorites:
-            return String(format: L("navigationMenu.filterWithCount"),
-                           L("articleList.filter.favorites"), viewModel.counts.favorites)
-        case .archive:
-            return String(format: L("navigationMenu.filterWithCount"),
-                           L("articleList.filter.archive"), viewModel.counts.archived)
-        case .videos:
-            return viewModel.counts.videos > 0
-                ? String(format: L("navigationMenu.filterWithCount"),
-                          L("articleList.filter.videos"), viewModel.counts.videos)
-                : L("articleList.filter.videos")
+        case .pagesUnread, .videosUnread:       count = group.unread
+        case .pagesFavorites, .videosFavorites: count = group.favorites
+        case .pagesArchive, .videosArchive:     count = group.archived
         }
+        return String(format: L("navigationMenu.filterWithCount"), filter.label, count)
     }
 }
 
