@@ -160,7 +160,7 @@ final class PreferencesStore: @unchecked Sendable {
     var defaultFilter: ArticleFilter {
         get {
             guard let raw = defaults.string(forKey: Key.defaultFilter),
-                  let filter = ArticleFilter(rawValue: raw) else { return .all }
+                  let filter = ArticleFilter(rawValue: raw) else { return .pagesUnread }
             return filter
         }
         set { defaults.set(newValue.rawValue, forKey: Key.defaultFilter) }

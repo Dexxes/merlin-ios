@@ -56,29 +56,30 @@ enum MerlinAPIError: LocalizedError {
 
 // MARK: – Counts response
 
-struct ArticleCounts: Codable {
+// Pages/Videos sind die obersten Kategorien, Unread/Favorites/Archived
+// darunter je Kategorie gezählt - siehe getCounts() in
+// merlin-standalone-server/src/Db/ArticleRepository.php.
+struct CategoryCounts: Codable {
     var total: Int
     var unread: Int
     var favorites: Int
     var archived: Int
-    var videos: Int
 
-    // Backward-compatible: servers that don't yet return `videos` default to 0.
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        total     = try c.decode(Int.self, forKey: .total)
-        unread    = try c.decode(Int.self, forKey: .unread)
-        favorites = try c.decode(Int.self, forKey: .favorites)
-        archived  = try c.decode(Int.self, forKey: .archived)
-        videos    = (try? c.decode(Int.self, forKey: .videos)) ?? 0
-    }
-
-    init(total: Int, unread: Int, favorites: Int, archived: Int, videos: Int = 0) {
+    init(total: Int = 0, unread: Int = 0, favorites: Int = 0, archived: Int = 0) {
         self.total     = total
         self.unread    = unread
         self.favorites = favorites
         self.archived  = archived
-        self.videos    = videos
+    }
+}
+
+struct ArticleCounts: Codable {
+    var pages: CategoryCounts
+    var videos: CategoryCounts
+
+    init(pages: CategoryCounts = CategoryCounts(), videos: CategoryCounts = CategoryCounts()) {
+        self.pages  = pages
+        self.videos = videos
     }
 }
 
@@ -211,6 +212,7 @@ actor MerlinAPI {
                      isArchived: Bool? = nil,
                      tagId: Int? = nil,
                      category: String? = nil,
+                     contentType: String? = nil,
                      limit: Int = 50,
                      offset: Int = 0) async throws -> [Article] {
         var query = "?limit=\(limit)&offset=\(offset)"
@@ -220,6 +222,7 @@ actor MerlinAPI {
         if let v = category, let encoded = v.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
             query += "&category=\(encoded)"
         }
+        if let v = contentType { query += "&contentType=\(v)" }
 
         var req = try makeRequest("/articles\(query)")
         req.httpMethod = "GET"
