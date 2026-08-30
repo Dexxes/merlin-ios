@@ -1091,6 +1091,10 @@ struct ArticleReaderView: View {
     /// Pending unmount scheduled by `hideHighlightToolbar`; cancelled if a
     /// new selection arrives before it fires.
     @State private var toolbarHideWorkItem: DispatchWorkItem? = nil
+    /// Debounces `persistScrollProgress()` while scrolling (like the web
+    /// client's 500ms `setTimeout`), so progress is saved continuously instead
+    /// of only on reader close / backgrounding.
+    @State private var scrollSaveWorkItem: DispatchWorkItem? = nil
     /// scrollOffset captured at the moment the toolbar last appeared. Any
     /// further scroll — even a single point — folds the toolbar back in
     /// immediately (see the onScrollGeometryChange action below).
@@ -1301,6 +1305,7 @@ struct ArticleReaderView: View {
                 if scrollable > 0 {
                     scrollProgress = max(0, min(1, newOffset / scrollable))
                     nearBottom = isNearBottom
+                    scheduleScrollProgressSave()
                 } else {
                     nearBottom = true
                 }
@@ -2435,16 +2440,23 @@ struct ArticleReaderView: View {
         }
     }
 
-    /// Schreibt alle Appearance-Settings (Theme, Font, FontSize, LineHeight) im Hintergrund auf den Server.
-    /// Echte Serverfehler werden still ignoriert – der lokale Zustand bleibt immer die Quelle der
-    /// Wahrheit. Netzwerkfehler (z. B. offline) merkt sich `SettingsSyncQueue` jedoch und holt den
-    /// Push automatisch nach, sobald die Verbindung zurückkehrt – sonst würden offline geänderte
-    /// Einstellungen nie auf anderen Geräten ankommen.
+    /// Debounced `persistScrollProgress()`-Aufruf während des Scrollens (analog
+    /// zum 500ms-`setTimeout` im Web-Client `_handleScroll`), statt nur beim
+    /// Schließen/Backgrounden zu speichern.
+    private func scheduleScrollProgressSave() {
+        scrollSaveWorkItem?.cancel()
+        let workItem = DispatchWorkItem { persistScrollProgress() }
+        scrollSaveWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: workItem)
+    }
+
     /// Speichert die aktuelle Leseposition lokal und pusht sie zum Server.
-    /// Aufgerufen sowohl aus `.onDisappear` (regulärer Reader-Schluss) als auch
-    /// aus `.onChange(of: scenePhase)` (App wird backgrounded, ohne dass die
-    /// View aus der Hierarchie entfernt wird) – siehe deren Kommentare.
+    /// Aufgerufen aus dem debounced Scroll-Handler, aus `.onDisappear`
+    /// (regulärer Reader-Schluss) und aus `.onChange(of: scenePhase)` (App wird
+    /// backgrounded, ohne dass die View aus der Hierarchie entfernt wird).
     private func persistScrollProgress() {
+        scrollSaveWorkItem?.cancel()
+        scrollSaveWorkItem = nil
         // Respektiert die `saveProgress`-Einstellung (bisher hatte sie keine
         // Wirkung – sie wurde nur in den Settings gelesen, nie im Reader geprüft).
         guard PreferencesStore.shared.saveProgress else {
@@ -2473,6 +2485,11 @@ struct ArticleReaderView: View {
         Task { await ProgressSyncQueue.shared.retryIfNeeded() }
     }
 
+    /// Schreibt alle Appearance-Settings (Theme, Font, FontSize, LineHeight) im Hintergrund auf den Server.
+    /// Echte Serverfehler werden still ignoriert – der lokale Zustand bleibt immer die Quelle der
+    /// Wahrheit. Netzwerkfehler (z. B. offline) merkt sich `SettingsSyncQueue` jedoch und holt den
+    /// Push automatisch nach, sobald die Verbindung zurückkehrt – sonst würden offline geänderte
+    /// Einstellungen nie auf anderen Geräten ankommen.
     private func pushAppearanceToServer() {
         Task {
             do {
