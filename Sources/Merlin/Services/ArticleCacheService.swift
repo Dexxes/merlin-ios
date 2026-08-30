@@ -52,6 +52,9 @@ actor ArticleCacheService {
         if filter == .pagesFavorites || filter == .videosFavorites {
             return matching.sorted { ($0.favoritedAt ?? "") > ($1.favoritedAt ?? "") }
         }
+        if filter == .pagesContinue || filter == .videosContinue {
+            return matching.sorted { ($0.scrollUpdatedAt ?? 0) > ($1.scrollUpdatedAt ?? 0) }
+        }
         return matching.sorted { $0.createdAt > $1.createdAt }
     }
 
@@ -130,11 +133,14 @@ actor ArticleCacheService {
             return showArchivedForTag || !article.isArchived
         }
         let isVideo = article.category == "Video"
+        let isInProgress = (article.scrollProgress ?? 0) > 0 && (article.scrollProgress ?? 0) < 1
         switch filter {
+        case .pagesContinue:   return !article.isArchived && !isVideo &&  isInProgress
         case .pagesUnread:     return !article.isArchived && !isVideo
         // Bewusst OHNE isArchived-Bedingung: Favoriten unabhängig vom Archiv-Status.
         case .pagesFavorites:  return  article.isFavorite  && !isVideo
         case .pagesArchive:    return  article.isArchived  && !isVideo
+        case .videosContinue:  return !article.isArchived  &&  isVideo &&  isInProgress
         case .videosUnread:    return !article.isArchived  &&  isVideo
         case .videosFavorites: return  article.isFavorite  &&  isVideo
         case .videosArchive:   return  article.isArchived  &&  isVideo
