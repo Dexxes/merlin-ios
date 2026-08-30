@@ -1040,6 +1040,7 @@ private struct ScrollPositionRestorer: UIViewRepresentable {
 struct ArticleReaderView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.scenePhase) private var scenePhase
 
     /// Low damping on purpose — the highlight toolbar should bounce once on
     /// its way out (visually distinct from the plain slide-in), unlike the
@@ -1090,6 +1091,10 @@ struct ArticleReaderView: View {
     /// Pending unmount scheduled by `hideHighlightToolbar`; cancelled if a
     /// new selection arrives before it fires.
     @State private var toolbarHideWorkItem: DispatchWorkItem? = nil
+    /// Debounces `persistScrollProgress()` while scrolling (like the web
+    /// client's 500ms `setTimeout`), so progress is saved continuously instead
+    /// of only on reader close / backgrounding.
+    @State private var scrollSaveWorkItem: DispatchWorkItem? = nil
     /// scrollOffset captured at the moment the toolbar last appeared. Any
     /// further scroll — even a single point — folds the toolbar back in
     /// immediately (see the onScrollGeometryChange action below).
@@ -1300,6 +1305,7 @@ struct ArticleReaderView: View {
                 if scrollable > 0 {
                     scrollProgress = max(0, min(1, newOffset / scrollable))
                     nearBottom = isNearBottom
+                    scheduleScrollProgressSave()
                 } else {
                     nearBottom = true
                 }
@@ -1487,32 +1493,18 @@ struct ArticleReaderView: View {
             localIsArchived = article.isArchived
         }
         .onDisappear {
-            // Respektiert die `saveProgress`-Einstellung (bisher hatte sie keine
-            // Wirkung – sie wurde nur in den Settings gelesen, nie im Reader geprüft).
-            guard PreferencesStore.shared.saveProgress else {
-                NotificationCenter.default.post(name: .articleProgressDidUpdate, object: article.id)
-                return
-            }
-            // Quick-Close-Guard: Ist eine Wiederherstellung fällig, aber noch nicht
-            // angewendet (Reader sofort wieder geschlossen), steht `scrollProgress`
-            // noch auf ~0 – ein Save würde die echte Position lokal UND per
-            // Last-Write-Wins auf allen Geräten überschreiben. Dann lieber gar
-            // nicht speichern: die bestehende Position bleibt gültig.
-            guard initialFraction <= 0.001 || restoreApplied else {
-                NotificationCenter.default.post(name: .articleProgressDidUpdate, object: article.id)
-                return
-            }
-            let now = Int(Date().timeIntervalSince1970 * 1000)
-            let progress = Double(min(max(scrollProgress, 0), 1))
-            PreferencesStore.shared.saveScrollProgress(scrollProgress, for: article.id)
-            PreferencesStore.shared.saveScrollTimestamp(now, for: article.id)
-            NotificationCenter.default.post(name: .articleProgressDidUpdate, object: article.id)
-            // Server-Push über die ProgressSyncQueue: persistiert die Position
-            // zuerst (überlebt das Schließen des Readers) und versucht sofort zu
-            // pushen. Schlägt das offline fehl, bleibt sie vorgemerkt und wird per
-            // NWPathMonitor bei Reconnect erneut gesendet (analog SettingsSyncQueue).
-            ProgressSyncQueue.shared.enqueue(articleId: article.id, progress: progress, updatedAt: now)
-            Task { await ProgressSyncQueue.shared.retryIfNeeded() }
+            persistScrollProgress()
+        }
+        .onChange(of: scenePhase) { old, new in
+            // Backgrounding (Home-Button, App-Wechsel, Sperrbildschirm, eingehender
+            // Anruf) entfernt die View NICHT aus der Hierarchie – `.onDisappear`
+            // feuert also nicht. Ohne diesen Hook geht jeder Fortschritt verloren,
+            // den der Nutzer macht, bevor er den Reader regulär schließt (z. B. wenn
+            // iOS die App im Hintergrund beendet). Das war vermutlich die Hauptursache
+            // für "iOS synced Fortschritt zu selten" im Vergleich zum Web-Client, der
+            // alle 500ms während des Scrollens pusht statt nur beim Schließen.
+            guard old == .active, new != .active else { return }
+            persistScrollProgress()
         }
         .confirmationDialog(
             tappedLinkURL?.absoluteString ?? "",
@@ -2446,6 +2438,51 @@ struct ArticleReaderView: View {
                     bgColor: readerBgColor, separatorColor: readerSeparatorColor)
             }
         }
+    }
+
+    /// Debounced `persistScrollProgress()`-Aufruf während des Scrollens (analog
+    /// zum 500ms-`setTimeout` im Web-Client `_handleScroll`), statt nur beim
+    /// Schließen/Backgrounden zu speichern.
+    private func scheduleScrollProgressSave() {
+        scrollSaveWorkItem?.cancel()
+        let workItem = DispatchWorkItem { persistScrollProgress() }
+        scrollSaveWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: workItem)
+    }
+
+    /// Speichert die aktuelle Leseposition lokal und pusht sie zum Server.
+    /// Aufgerufen aus dem debounced Scroll-Handler, aus `.onDisappear`
+    /// (regulärer Reader-Schluss) und aus `.onChange(of: scenePhase)` (App wird
+    /// backgrounded, ohne dass die View aus der Hierarchie entfernt wird).
+    private func persistScrollProgress() {
+        scrollSaveWorkItem?.cancel()
+        scrollSaveWorkItem = nil
+        // Respektiert die `saveProgress`-Einstellung (bisher hatte sie keine
+        // Wirkung – sie wurde nur in den Settings gelesen, nie im Reader geprüft).
+        guard PreferencesStore.shared.saveProgress else {
+            NotificationCenter.default.post(name: .articleProgressDidUpdate, object: article.id)
+            return
+        }
+        // Quick-Close-Guard: Ist eine Wiederherstellung fällig, aber noch nicht
+        // angewendet (Reader sofort wieder geschlossen/backgrounded), steht
+        // `scrollProgress` noch auf ~0 – ein Save würde die echte Position lokal
+        // UND per Last-Write-Wins auf allen Geräten überschreiben. Dann lieber
+        // gar nicht speichern: die bestehende Position bleibt gültig.
+        guard initialFraction <= 0.001 || restoreApplied else {
+            NotificationCenter.default.post(name: .articleProgressDidUpdate, object: article.id)
+            return
+        }
+        let now = Int(Date().timeIntervalSince1970 * 1000)
+        let progress = Double(min(max(scrollProgress, 0), 1))
+        PreferencesStore.shared.saveScrollProgress(scrollProgress, for: article.id)
+        PreferencesStore.shared.saveScrollTimestamp(now, for: article.id)
+        NotificationCenter.default.post(name: .articleProgressDidUpdate, object: article.id)
+        // Server-Push über die ProgressSyncQueue: persistiert die Position
+        // zuerst (überlebt das Schließen/Backgrounden) und versucht sofort zu
+        // pushen. Schlägt das offline fehl, bleibt sie vorgemerkt und wird per
+        // NWPathMonitor bei Reconnect erneut gesendet (analog SettingsSyncQueue).
+        ProgressSyncQueue.shared.enqueue(articleId: article.id, progress: progress, updatedAt: now)
+        Task { await ProgressSyncQueue.shared.retryIfNeeded() }
     }
 
     /// Schreibt alle Appearance-Settings (Theme, Font, FontSize, LineHeight) im Hintergrund auf den Server.
