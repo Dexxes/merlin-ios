@@ -142,6 +142,15 @@ final class PreferencesStore: @unchecked Sendable {
         static let cacheRetentionDays     = "merlin_cache_retention_days"
     }
 
+    // MARK: – Server capabilities (nicht persistiert, pro App-Start neu geladen)
+
+    /// Ob der Server aktuell eine funktionierende Vorlesefunktion (TTS)
+    /// anbietet (siehe `MerlinAPI.getCapabilities()`, kurz nach dem Login
+    /// bzw. bei jedem App-Start abgefragt). Default `true`, damit der
+    /// Vorlesen-Button nicht schon vor dem ersten Netzwerk-Response
+    /// verschwindet - ein negativer Server-Wert blendet ihn dann umgehend aus.
+    var ttsAvailable: Bool = true
+
     // MARK: – App preferences
 
     /// Tag-IDs, deren Artikel in der Artikelliste ausgeblendet werden.

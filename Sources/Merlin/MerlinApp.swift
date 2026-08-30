@@ -147,6 +147,15 @@ struct MerlinApp: App {
                     sharedViewModel.selectedFilter = PreferencesStore.shared.defaultFilter
                 }
 
+                // Server-Capabilities abfragen, damit optionale UI (aktuell:
+                // der Vorlesen-Button) ausgeblendet bleibt, wenn der Server
+                // keinen erreichbaren TTS-Daemon hat, statt es erst beim
+                // ersten Tippen per Fehlermeldung zu entdecken.
+                if CredentialsStore.shared.isConfigured,
+                   let capabilities = try? await MerlinAPI.shared.getCapabilities() {
+                    PreferencesStore.shared.ttsAvailable = capabilities.tts.available
+                }
+
                 // Show splash at least briefly, then wait for first load to finish.
                 try? await Task.sleep(nanoseconds: 200_000_000)
                 while sharedViewModel.isLoading && sharedViewModel.articles.isEmpty {

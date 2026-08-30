@@ -570,6 +570,27 @@ actor MerlinAPI {
         return try await perform(req)
     }
 
+    // MARK: – Capabilities
+
+    /// Antwort von `GET /capabilities` (identischer Pfad und identisches
+    /// Antwortformat auf Nextcloud und merlin-server, siehe
+    /// CapabilitiesController::index()).
+    struct Capabilities: Decodable {
+        struct Tts: Decodable {
+            let available: Bool
+        }
+        let tts: Tts
+    }
+
+    /// Fragt server-seitige Feature-Verfügbarkeit ab (z. B. ob der
+    /// Piper-TTS-Daemon konfiguriert und erreichbar ist), damit Clients
+    /// optionale UI wie den Vorlesen-Button nur zeigen, wenn sie
+    /// tatsächlich funktioniert.
+    func getCapabilities() async throws -> Capabilities {
+        let req = try makeRequest("/capabilities")
+        return try await perform(req)
+    }
+
     // MARK: – Connection test
 
     func testConnection() async throws {

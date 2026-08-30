@@ -2008,23 +2008,29 @@ struct ArticleReaderView: View {
                 }
 
                 // TTS läuft über denselben Proxy-Endpunkt auf Nextcloud und
-                // merlin-server (siehe MerlinAPI.ttsStreamURL()).
-                menuRow(
-                    icon: piperTTS.hasContent ? "speaker.wave.2.fill" : "speaker.wave.2",
-                    label: piperTTS.hasContent ? L("articleReader.sideMenu.stopReadAloud") : L("articleReader.sideMenu.startReadAloud"),
-                    tint: piperTTS.hasContent ? .accentColor : readerFgColor
-                ) {
-                    if piperTTS.hasContent {
-                        piperTTS.stop()
-                    } else {
-                        let sampleText = current.excerpt ?? current.title
-                        let lang = PiperAudioService.detectLanguage(text: sampleText)
-                        let estimated = current.readingTime > 0
-                            ? Double(current.readingTime) * 60.0 * 0.7
-                            : nil
-                        piperTTS.start(articleId: current.id, lang: lang, estimatedSeconds: estimated)
+                // merlin-server (siehe MerlinAPI.ttsStreamURL()). Der Button
+                // wird ausgeblendet, wenn der Server laut /api/capabilities
+                // keinen erreichbaren TTS-Daemon hat - außer eine Wiedergabe
+                // läuft bereits (z.B. Flag kurzzeitig veraltet), dann bleibt
+                // wenigstens der Stopp-Eintrag sichtbar.
+                if PreferencesStore.shared.ttsAvailable || piperTTS.hasContent {
+                    menuRow(
+                        icon: piperTTS.hasContent ? "speaker.wave.2.fill" : "speaker.wave.2",
+                        label: piperTTS.hasContent ? L("articleReader.sideMenu.stopReadAloud") : L("articleReader.sideMenu.startReadAloud"),
+                        tint: piperTTS.hasContent ? .accentColor : readerFgColor
+                    ) {
+                        if piperTTS.hasContent {
+                            piperTTS.stop()
+                        } else {
+                            let sampleText = current.excerpt ?? current.title
+                            let lang = PiperAudioService.detectLanguage(text: sampleText)
+                            let estimated = current.readingTime > 0
+                                ? Double(current.readingTime) * 60.0 * 0.7
+                                : nil
+                            piperTTS.start(articleId: current.id, lang: lang, estimatedSeconds: estimated)
+                        }
+                        showSideMenu = false
                     }
-                    showSideMenu = false
                 }
 
                 menuRow(icon: "textformat.size", label: L("articleReader.sideMenu.appearance")) {
