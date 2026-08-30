@@ -365,12 +365,17 @@ struct ListFlyoutModifier: ViewModifier {
     }
 
     private func filterLabel(_ filter: ArticleFilter) -> String {
+        // Weiterlesen/Weiterschauen wird rein client-seitig aus `scrollProgress`
+        // gefiltert (siehe ArticlesViewModel.fetchForFilter) – dafür gibt es
+        // keine Server-Zählung, daher kein Badge.
+        guard !filter.isContinue else { return filter.label }
         let group = filter.isVideo ? viewModel.counts.videos : viewModel.counts.pages
         let count: Int
         switch filter {
         case .pagesUnread, .videosUnread:       count = group.unread
         case .pagesFavorites, .videosFavorites: count = group.favorites
         case .pagesArchive, .videosArchive:     count = group.archived
+        case .pagesContinue, .videosContinue:   count = 0 // unreachable, siehe guard oben
         }
         return String(format: L("navigationMenu.filterWithCount"), filter.label, count)
     }

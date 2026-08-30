@@ -184,7 +184,9 @@ struct SettingsView: View {
                 // MARK: - App preferences
                 Section {
                     Picker(L("settings.preferences.defaultViewLabel"), selection: $defaultFilter) {
-                        ForEach(ArticleFilter.allCases) { filter in
+                        // Weiterlesen/Weiterschauen sind dynamische, oft leere
+                        // Listen – als Standard-Startansicht ausgeschlossen.
+                        ForEach(ArticleFilter.allCases.filter { !$0.isContinue }) { filter in
                             Label(filter.label, systemImage: filter.systemImage)
                                 .tag(filter)
                         }

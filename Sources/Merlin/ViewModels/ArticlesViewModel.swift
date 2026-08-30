@@ -28,9 +28,11 @@ struct UndoableAction {
 /// merlin-standalone-server/src/Db/ArticleRepository.php für das
 /// serverseitige Äquivalent dieser Aufteilung.
 enum ArticleFilter: String, CaseIterable, Identifiable {
+    case pagesContinue   = "PagesContinue"
     case pagesUnread     = "PagesUnread"
     case pagesFavorites  = "PagesFavorites"
     case pagesArchive    = "PagesArchive"
+    case videosContinue  = "VideosContinue"
     case videosUnread    = "VideosUnread"
     case videosFavorites = "VideosFavorites"
     case videosArchive   = "VideosArchive"
@@ -40,16 +42,27 @@ enum ArticleFilter: String, CaseIterable, Identifiable {
     /// Ob dieser Filter zur Videos- oder zur Seiten-Gruppe gehört (UI-Gruppierung).
     var isVideo: Bool {
         switch self {
-        case .videosUnread, .videosFavorites, .videosArchive: return true
-        case .pagesUnread, .pagesFavorites, .pagesArchive:     return false
+        case .videosContinue, .videosUnread, .videosFavorites, .videosArchive: return true
+        case .pagesContinue, .pagesUnread, .pagesFavorites, .pagesArchive:     return false
+        }
+    }
+
+    /// Ob dieser Filter angefangene, aber nicht fertig gelesene/geschaute
+    /// Inhalte listet (Weiterlesen/Weiterschauen) – siehe `fetchForFilter`.
+    var isContinue: Bool {
+        switch self {
+        case .pagesContinue, .videosContinue: return true
+        default:                              return false
         }
     }
 
     var label: String {
         switch self {
+        case .pagesContinue:   return L("articleList.filter.continueReading")
         case .pagesUnread:     return L("articleList.filter.unread")
         case .pagesFavorites:  return L("articleList.filter.favorites")
         case .pagesArchive:    return L("articleList.filter.archive")
+        case .videosContinue:  return L("articleList.filter.continueWatching")
         case .videosUnread:    return L("articleList.filter.unseen")
         case .videosFavorites: return L("articleList.filter.favorites")
         case .videosArchive:   return L("articleList.filter.archive")
@@ -58,9 +71,11 @@ enum ArticleFilter: String, CaseIterable, Identifiable {
 
     var systemImage: String {
         switch self {
+        case .pagesContinue:   return "book.pages"
         case .pagesUnread:     return "tray.full"
         case .pagesFavorites:  return "star"
         case .pagesArchive:    return "archivebox"
+        case .videosContinue:  return "play.circle"
         case .videosUnread:    return "play.rectangle"
         case .videosFavorites: return "star"
         case .videosArchive:   return "archivebox"
@@ -72,9 +87,11 @@ enum ArticleFilter: String, CaseIterable, Identifiable {
     /// merlin-nextcloud) und zu `ArticleFilter.serverValue` (Kotlin).
     var serverValue: String {
         switch self {
+        case .pagesContinue:   return "pages-continue"
         case .pagesUnread:     return "pages-unread"
         case .pagesFavorites:  return "pages-favorites"
         case .pagesArchive:    return "pages-archived"
+        case .videosContinue:  return "videos-continue"
         case .videosUnread:    return "videos-unread"
         case .videosFavorites: return "videos-favorites"
         case .videosArchive:   return "videos-archived"
@@ -84,9 +101,11 @@ enum ArticleFilter: String, CaseIterable, Identifiable {
     /// Aus Server-Wert (z.B. "pages-unread", "videos-favorites") in iOS-Filter konvertieren.
     static func fromServerValue(_ value: String) -> ArticleFilter {
         switch value {
+        case "pages-continue":   return .pagesContinue
         case "pages-unread":     return .pagesUnread
         case "pages-favorites":  return .pagesFavorites
         case "pages-archived":   return .pagesArchive
+        case "videos-continue":  return .videosContinue
         case "videos-unread":    return .videosUnread
         case "videos-favorites": return .videosFavorites
         case "videos-archived":  return .videosArchive
@@ -267,6 +286,17 @@ final class ArticlesViewModel {
         }
         let contentType = filter.isVideo ? "video" : "page"
         switch filter {
+        case .pagesContinue, .videosContinue:
+            // Angefangene, aber weder fertig gelesene/geschaute noch archivierte
+            // Inhalte – nutzt den bereits geräteübergreifend synchronisierten
+            // `scrollProgress` (siehe ProgressSyncQueue), keine eigene Server-Anfrage.
+            let fetched = try await MerlinAPI.shared.getArticles(isArchived: false, contentType: contentType)
+            return fetched
+                .filter { article in
+                    guard let progress = article.scrollProgress else { return false }
+                    return progress > 0 && progress < 1
+                }
+                .sorted { ($0.scrollUpdatedAt ?? 0) > ($1.scrollUpdatedAt ?? 0) }
         case .pagesUnread, .videosUnread:
             return try await MerlinAPI.shared.getArticles(isArchived: false, contentType: contentType)
         case .pagesFavorites, .videosFavorites:
@@ -489,10 +519,13 @@ final class ArticlesViewModel {
     /// restoring).
     private func shouldHide(_ article: Article, in filter: ArticleFilter) -> Bool {
         let isVideo = article.category == "Video"
+        let isInProgress = (article.scrollProgress ?? 0) > 0 && (article.scrollProgress ?? 0) < 1
         switch filter {
+        case .pagesContinue:   return article.isArchived || isVideo || !isInProgress
         case .pagesUnread:     return article.isArchived || isVideo
         case .pagesFavorites:  return !article.isFavorite || isVideo
         case .pagesArchive:    return !article.isArchived || isVideo
+        case .videosContinue:  return article.isArchived || !isVideo || !isInProgress
         case .videosUnread:    return article.isArchived || !isVideo
         case .videosFavorites: return !article.isFavorite || !isVideo
         case .videosArchive:   return !article.isArchived || !isVideo
@@ -514,6 +547,8 @@ final class ArticlesViewModel {
         let idx: Int
         if selectedFilter == .pagesArchive || selectedFilter == .videosArchive {
             idx = articles.firstIndex { ($0.archivedAt ?? "") < (article.archivedAt ?? "") } ?? articles.endIndex
+        } else if selectedFilter == .pagesContinue || selectedFilter == .videosContinue {
+            idx = articles.firstIndex { ($0.scrollUpdatedAt ?? 0) < (article.scrollUpdatedAt ?? 0) } ?? articles.endIndex
         } else {
             idx = articles.firstIndex { $0.createdAt < article.createdAt } ?? articles.endIndex
         }

@@ -23,6 +23,8 @@
 "articleList.archiveToast.undoButton" = "Undo";
 "articleList.emptyState.allMessage" = "No articles saved yet. Tap + to add one.";
 "articleList.emptyState.archiveMessage" = "Your archive is empty.";
+"articleList.emptyState.continueReadingMessage" = "Nothing to continue reading. Articles you've started appear here.";
+"articleList.emptyState.continueWatchingMessage" = "Nothing to continue watching. Videos you've started appear here.";
 "articleList.emptyState.favoritesMessage" = "No favorites yet. Star articles to find them here.";
 "articleList.emptyState.refreshButton" = "Refresh";
 "articleList.emptyState.taggedMessage" = "No articles tagged \"%@\".";
@@ -30,6 +32,8 @@
 "articleList.emptyState.videosMessage" = "No videos saved yet. Add a YouTube or video link to see it here.";
 "articleList.emptyState.unseenMessage" = "No unwatched videos yet. Add a YouTube or video link to see it here.";
 "articleList.filter.archive" = "Archive";
+"articleList.filter.continueReading" = "Continue reading";
+"articleList.filter.continueWatching" = "Continue watching";
 "articleList.filter.favorites" = "Favorites";
 "articleList.filter.pages" = "Pages";
 "articleList.filter.unread" = "Unread";

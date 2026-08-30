@@ -381,9 +381,11 @@ struct ArticleListView: View {
             return String(format: L("articleList.emptyState.taggedMessage"), name)
         }
         switch viewModel.selectedFilter {
+        case .pagesContinue:   return L("articleList.emptyState.continueReadingMessage")
         case .pagesUnread:     return L("articleList.emptyState.allMessage")
         case .pagesFavorites:  return L("articleList.emptyState.favoritesMessage")
         case .pagesArchive:    return L("articleList.emptyState.archiveMessage")
+        case .videosContinue:  return L("articleList.emptyState.continueWatchingMessage")
         case .videosUnread:    return L("articleList.emptyState.unseenMessage")
         case .videosFavorites: return L("articleList.emptyState.favoritesMessage")
         case .videosArchive:   return L("articleList.emptyState.archiveMessage")

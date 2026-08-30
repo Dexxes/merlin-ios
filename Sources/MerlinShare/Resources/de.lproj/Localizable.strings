@@ -23,6 +23,8 @@
 "articleList.archiveToast.undoButton" = "Rückgängig";
 "articleList.emptyState.allMessage" = "Keine Artikel gespeichert. Tippe auf +, um einen hinzuzufügen.";
 "articleList.emptyState.archiveMessage" = "Dein Archiv ist leer.";
+"articleList.emptyState.continueReadingMessage" = "Nichts zum Weiterlesen. Angefangene Artikel erscheinen hier.";
+"articleList.emptyState.continueWatchingMessage" = "Nichts zum Weiterschauen. Angefangene Videos erscheinen hier.";
 "articleList.emptyState.favoritesMessage" = "Noch keine Favoriten. Markiere Artikel mit einem Stern, um sie hier zu finden.";
 "articleList.emptyState.refreshButton" = "Aktualisieren";
 "articleList.emptyState.taggedMessage" = "Keine Artikel mit Tag \"%@\".";
@@ -30,6 +32,8 @@
 "articleList.emptyState.videosMessage" = "Noch keine Videos gespeichert. Füge einen YouTube- oder Video-Link hinzu, um ihn hier zu sehen.";
 "articleList.emptyState.unseenMessage" = "Noch keine ungesehenen Videos. Füge einen YouTube- oder Video-Link hinzu, um ihn hier zu sehen.";
 "articleList.filter.archive" = "Archiv";
+"articleList.filter.continueReading" = "Weiterlesen";
+"articleList.filter.continueWatching" = "Weiterschauen";
 "articleList.filter.favorites" = "Favoriten";
 "articleList.filter.pages" = "Seiten";
 "articleList.filter.unread" = "Ungelesen";
