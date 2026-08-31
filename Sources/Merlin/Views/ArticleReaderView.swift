@@ -1091,9 +1091,10 @@ struct ArticleReaderView: View {
     /// Pending unmount scheduled by `hideHighlightToolbar`; cancelled if a
     /// new selection arrives before it fires.
     @State private var toolbarHideWorkItem: DispatchWorkItem? = nil
-    /// Debounces `persistScrollProgress()` while scrolling (like the web
-    /// client's 500ms `setTimeout`), so progress is saved continuously instead
-    /// of only on reader close / backgrounding.
+    /// Throttles `persistScrollProgress()` while scrolling to at most once per
+    /// 500ms, so progress is saved continuously instead of only on reader
+    /// close / backgrounding. See `scheduleScrollProgressSave()` for why this
+    /// is a throttle (nil-check) rather than a cancel-and-reschedule debounce.
     @State private var scrollSaveWorkItem: DispatchWorkItem? = nil
     /// scrollOffset captured at the moment the toolbar last appeared. Any
     /// further scroll — even a single point — folds the toolbar back in
@@ -2440,11 +2441,22 @@ struct ArticleReaderView: View {
         }
     }
 
-    /// Debounced `persistScrollProgress()`-Aufruf während des Scrollens (analog
-    /// zum 500ms-`setTimeout` im Web-Client `_handleScroll`), statt nur beim
-    /// Schließen/Backgrounden zu speichern.
+    /// Throttled `persistScrollProgress()`-Aufruf während des Scrollens (Ziel wie
+    /// beim 500ms-`setTimeout` im Web-Client `_handleScroll`: laufend statt nur
+    /// beim Schließen/Backgrounden speichern) – bewusst KEIN reines Debounce, das
+    /// bei jedem Aufruf abbricht und neu plant. `.onScrollGeometryChange` feuert
+    /// während einer Drag-Geste mit bis zu Display-Refreshrate; ein Cancel+Neu-
+    /// Allocate des `DispatchWorkItem` (das die komplette, State-reiche View
+    /// struct einfängt) auf JEDEM Frame erzeugte spürbaren Main-Thread-Overhead
+    /// und dadurch Scroll-Hitches – auf Geräten ohne Home-Button reichte das, um
+    /// die System-Geste "nach oben wischen = Home" die Touch-Race gegen die
+    /// eigene Scroll-Gestenerkennung gewinnen zu lassen (App verschwindet zum
+    /// Homescreen, bleibt aber im Hintergrund am Leben). Der Guard hier macht
+    /// aus dem Reset-auf-jedem-Event ein Throttle: nur der erste Aufruf pro
+    /// 500ms-Fenster legt ein `DispatchWorkItem` an, alle weiteren sind ein
+    /// billiger nil-Check.
     private func scheduleScrollProgressSave() {
-        scrollSaveWorkItem?.cancel()
+        guard scrollSaveWorkItem == nil else { return }
         let workItem = DispatchWorkItem { persistScrollProgress() }
         scrollSaveWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: workItem)
