@@ -691,6 +691,14 @@ struct ArticleWebView: UIViewRepresentable {
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.dataDetectorTypes = [.link, .phoneNumber]
+        // Ohne diese beiden Flags spielt WKWebView <video autoplay loop muted>
+        // (der GIF-Ersatz mancher Blogs, z. B. Ghost/Hugo) nicht inline ab:
+        // allowsInlineMediaPlayback defaultet auf false (Playback ginge sonst
+        // in Fullscreen), mediaTypesRequiringUserActionForPlayback auf .all
+        // (Autoplay ohne Nutzergeste wäre blockiert) – das Element bleibt ohne
+        // beide Flags leer/unsichtbar, obwohl das Markup korrekt im DOM steht.
+        config.allowsInlineMediaPlayback = true
+        config.mediaTypesRequiringUserActionForPlayback = []
         config.userContentController.add(
             WeakMessageHandler(context.coordinator), name: "highlights")
         config.userContentController.add(
