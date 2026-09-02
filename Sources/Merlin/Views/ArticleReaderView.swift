@@ -2953,6 +2953,7 @@ struct ArticleReaderView: View {
             p { margin: 0 0 1em; }
             a { color: \(fg) !important; text-decoration: underline; text-decoration-color: \(fgMuted); }
             img { max-width: 100%; height: auto; border-radius: 8px; margin: 8px 0; }
+            video { display: block; max-width: 100%; height: auto; border-radius: 8px; margin: 8px 0; }
             blockquote {
               margin: 1.5em 0; padding: 0;
               text-align: center;
@@ -2994,12 +2995,12 @@ struct ArticleReaderView: View {
             pre code { background: none; padding: 0; }
             figure { margin: 1em 0 0; }
             figure:first-child { margin-top: 0; }
-            figure img { display: block; margin-bottom: 0; }
+            figure img, figure video { display: block; margin-bottom: 0; }
             figcaption { font-size: 0.75em; line-height: 1.4; color: \(accentColorHex); text-align: left; margin-top: 2px; margin-bottom: 1em; }
             /* p { margin: 0 0 1em } setzt margin-top explizit auf 0 — ohne diese
                Regel klebt der erste Textblock direkt am Bild darüber (img selbst
                hat zwar margin-bottom, figure aber bewusst nicht, siehe oben). */
-            img + p, figure + p { margin-top: 1em; }
+            img + p, video + p, figure + p { margin-top: 1em; }
             hr { border: none; border-top: 1px solid \(effectiveDark ? "#2c2c2e" : "#e5e5ea"); margin: 2em 0; }
             ul, ol { padding-left: 1.5em; }
             li { margin-bottom: 0.3em; }
