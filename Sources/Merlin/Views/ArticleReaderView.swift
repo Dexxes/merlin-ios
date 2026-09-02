@@ -346,19 +346,48 @@ private let merlinYoutubeTapJS: String = #"""
 // forever (no 'error' either — the browser simply never starts the load).
 // A play() call fires the load explicitly rather than relying on the
 // browser to self-trigger the autoplay attribute for a file://-loaded,
-// script-templated page. play() rejecting is expected/harmless when the
-// policy genuinely blocks it (e.g. Low Power Mode) — caught and ignored,
-// since these are silent looping background clips with no user-facing
-// control to retry.
+// script-templated page.
+//
+// play() can still legitimately reject with NotAllowedError — confirmed
+// on-device via the debug overlay — when the SYSTEM blocks autoplay (Low
+// Power Mode, or Settings > Accessibility > Motion > "Auto-Play Video
+// Previews" off). That's a user/OS-level choice our app-level config can't
+// and shouldn't override. Rather than leave the element permanently blank
+// (indistinguishable from broken), fall back to a tap-to-play overlay —
+// same visual language as the YouTube placeholder card in
+// rewriteYouTubeEmbeds() (56px circle, rgba(0,0,0,.65), white play
+// triangle). A play() call made directly inside a click handler carries the
+// user gesture the autoplay attempt lacked, so it succeeds even under
+// those same restrictive settings.
 private let merlinVideoAutoplayJS: String = #"""
 (function(){
+  function showTapToPlay(video){
+    if(video.dataset.merlinTapOverlay)return;
+    video.dataset.merlinTapOverlay='1';
+    var wrap=document.createElement('div');
+    wrap.style.cssText='position:relative;';
+    var overlay=document.createElement('div');
+    overlay.style.cssText='position:absolute;inset:0;display:flex;align-items:center;justify-content:center;cursor:pointer;';
+    overlay.innerHTML='<div style="width:56px;height:56px;border-radius:50%;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;"><svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg></div>';
+    if(!video.parentNode)return;
+    video.parentNode.insertBefore(wrap,video);
+    wrap.appendChild(video);
+    wrap.appendChild(overlay);
+    overlay.addEventListener('click',function(e){
+      e.stopPropagation();
+      e.preventDefault();
+      var p=video.play();
+      if(p&&p.then)p.then(function(){overlay.remove();}).catch(function(){});
+    });
+    video.addEventListener('playing',function(){overlay.remove();},{once:true});
+  }
   function kick(video){
     if(video.dataset.merlinAutoplayKicked)return;
     video.dataset.merlinAutoplayKicked='1';
     if(!video.hasAttribute('autoplay'))return;
     video.load();
     var p=video.play();
-    if(p&&p.catch)p.catch(function(){});
+    if(p&&p.catch)p.catch(function(){showTapToPlay(video);});
   }
   document.querySelectorAll('video').forEach(kick);
   new MutationObserver(function(ms){
