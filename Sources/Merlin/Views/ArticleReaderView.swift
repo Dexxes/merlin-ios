@@ -337,6 +337,111 @@ private let merlinYoutubeTapJS: String = #"""
 })();
 """#
 
+// MARK: – Video poster frame + tap-to-play
+//
+// Native <video autoplay loop muted> turned out to depend on an OS-level
+// autoplay policy (Low Power Mode, Settings > Accessibility > Motion >
+// "Auto-Play Video Previews") that our app-level WKWebViewConfiguration
+// can't and shouldn't override — confirmed on-device via the debug overlay
+// (play() rejecting with NotAllowedError despite
+// allowsInlineMediaPlayback/mediaTypesRequiringUserActionForPlayback being
+// set correctly). Chasing that policy with try-then-fall-back logic made
+// the outcome unpredictable per device/setting.
+//
+// Simpler and consistent everywhere: never rely on autoplay. Strip the
+// attribute, grab the first frame as a static poster (play() immediately
+// followed by pause() once a frame is actually decoded — WebKit has no
+// "auto-poster" for a <video> without an explicit poster="" URL, and Ghost's
+// markup doesn't supply one), and show it under the same tap-to-play overlay
+// used for the YouTube placeholder card in rewriteYouTubeEmbeds() (56px
+// circle, rgba(0,0,0,.65), white play triangle). A play() call made
+// directly inside the overlay's own click handler carries the user gesture
+// the original autoplay attempt lacked, so it starts reliably regardless of
+// the OS policy above. Playback then loops per the source markup's own
+// `loop` attribute (sanitizeHtml() already lets it through), same as a GIF.
+private let merlinVideoPosterJS: String = #"""
+(function(){
+  function setup(video){
+    if(video.dataset.merlinVideoSetup)return;
+    video.dataset.merlinVideoSetup='1';
+    video.removeAttribute('autoplay');
+    video.controls=false;
+    video.muted=true;
+    // Ohne playsinline entscheidet WebKit auf manchen iOS-Versionen trotz
+    // allowsInlineMediaPlayback=true (Config) noch pro Element und
+    // präsentiert selbst einen rein programmatischen play()-Aufruf (siehe
+    // grabFirstFrame unten) im nativen Vollbildplayer statt inline - Ghosts
+    // Markup liefert das Attribut nicht mit, hier also selbst nachtragen.
+    video.setAttribute('playsinline','');
+    video.setAttribute('webkit-playsinline','');
+
+    var wrap=document.createElement('div');
+    wrap.style.cssText='position:relative;';
+    if(!video.parentNode)return;
+    video.parentNode.insertBefore(wrap,video);
+    wrap.appendChild(video);
+
+    var overlay=document.createElement('div');
+    overlay.style.cssText='position:absolute;inset:0;display:flex;align-items:center;justify-content:center;cursor:pointer;';
+    overlay.innerHTML='<div style="width:56px;height:56px;border-radius:50%;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;"><svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg></div>';
+    wrap.appendChild(overlay);
+
+    function grabFirstFrame(){
+      var p=video.play();
+      function pauseAfterPaint(){
+        // Ein pause() direkt im then()-Callback pausiert oft, bevor der
+        // Compositor überhaupt einen Frame gezeichnet hat (Race zwischen
+        // Promise-Resolve und dem nächsten Repaint) - Ergebnis: leere Box
+        // statt Posterframe. Zwei rAF-Ticks abwarten, bevor pausiert wird,
+        // gibt dem Browser Zeit, mindestens einen Frame zu präsentieren.
+        // currentTime bewusst NICHT zurück auf 0 setzen: ein programmatischer
+        // Seek kann selbst wieder kurz blankziehen, bis er abgeschlossen ist.
+        requestAnimationFrame(function(){
+          requestAnimationFrame(function(){ video.pause(); });
+        });
+      }
+      if(p&&p.then){
+        p.then(pauseAfterPaint).catch(function(){});
+      } else {
+        pauseAfterPaint();
+      }
+    }
+    if(video.readyState>=2)grabFirstFrame();
+    else video.addEventListener('loadeddata',grabFirstFrame,{once:true});
+    video.load();
+
+    overlay.addEventListener('click',function(e){
+      e.stopPropagation();
+      e.preventDefault();
+      video.controls=true;
+      overlay.remove();
+      var p=video.play();
+      if(p&&p.catch)p.catch(function(){});
+      // Native controls bleiben sonst dauerhaft eingeblendet (nur der
+      // Browser-eigene Inaktivitäts-Timeout blendet sie irgendwann aus) -
+      // ein Tap irgendwo außerhalb dieses Videos (z. B. um weiterzulesen)
+      // soll sie sofort wieder verstecken, ohne die Wiedergabe/den Loop zu
+      // unterbrechen. Capture-Phase + kein stopPropagation hier, damit
+      // normale Taps im restlichen Artikel (Links, Textauswahl, …)
+      // unangetastet durchlaufen.
+      document.addEventListener('click',function(ev){
+        if(video.controls&&!wrap.contains(ev.target))video.controls=false;
+      },true);
+    });
+  }
+  document.querySelectorAll('video').forEach(setup);
+  new MutationObserver(function(ms){
+    ms.forEach(function(m){
+      m.addedNodes.forEach(function(n){
+        if(n.nodeType!==1)return;
+        if(n.tagName==='VIDEO')setup(n);
+        else if(n.querySelectorAll)n.querySelectorAll('video').forEach(setup);
+      });
+    });
+  }).observe(document.body,{childList:true,subtree:true});
+})();
+"""#
+
 // MARK: – Image debug overlay JS (injected only in developer mode)
 
 private let merlinDebugJS: String = #"""
@@ -419,13 +524,84 @@ private let merlinDebugJS: String = #"""
     wrap.appendChild(p);
   }
 
+  // <video>-Pendant zu addPanel() oben: img feuert 'load'/'error' und trägt
+  // naturalWidth/-Height, video dagegen 'loadedmetadata'/'error' und
+  // videoWidth/-Height, plus ein eigenes .error.code (MEDIA_ERR_*) statt
+  // eines reinen Bool-Fehlerstatus - deshalb eine separate Funktion statt
+  // addPanel() zu verzweigen.
+  function addVideoPanel(video){
+    if(video.dataset.merlinDbg)return;
+    video.dataset.merlinDbg='1';
+    var wrap=document.createElement('div');
+    wrap.className='mdbg-wrap';
+    var p=document.createElement('div');
+    p.className='mdbg net';
+    var attr=video.getAttribute('src')||'';
+    var h='<span class="mdbg-badge bn">VIDEO</span>'
+      +row('attr:',attr,'net')
+      +row('src:',video.currentSrc||video.src)
+      +row('inline:',String(video.hasAttribute('playsinline')||'via config'))
+      +row('autoplay:',String(video.autoplay)+' / muted:'+String(video.muted));
+    p.innerHTML=h;
+    function onMeta(){
+      var d=video.videoWidth+'×'+video.videoHeight+'px, readyState='+video.readyState;
+      p.insertAdjacentHTML('beforeend',row('meta:',d,'ok'));
+    }
+    function onPlaying(){
+      p.insertAdjacentHTML('beforeend',row('playing:','yes','ok'));
+    }
+    function onErr(){
+      p.className='mdbg err';
+      var b=p.querySelector('.mdbg-badge');
+      b.className='mdbg-badge be'; b.textContent='ERROR';
+      var err=video.error;
+      var codeNames={1:'ABORTED',2:'NETWORK',3:'DECODE',4:'SRC_NOT_SUPPORTED'};
+      var reason=err?(codeNames[err.code]||('code '+err.code))+(err.message?': '+err.message:''):'unknown';
+      p.insertAdjacentHTML('beforeend',row('err:',reason,'err'));
+    }
+    video.addEventListener('loadedmetadata',onMeta,{once:true});
+    video.addEventListener('playing',onPlaying,{once:true});
+    video.addEventListener('error',onErr,{once:true});
+    // Stalled autoplay (kein 'error', aber auch nie 'playing') nach 3s sichtbar
+    // machen - genau der Fall, der ohne Debug-Panel wie "zeigt einfach nichts"
+    // aussieht. play() liefert bei einem Policy-Block (z. B. Low Power Mode)
+    // KEIN 'error'-DOM-Event, nur eine abgelehnte Promise - daher hier
+    // explizit selbst versuchen und die Ablehnung auswerten statt nur den
+    // Stillstand zu vermelden.
+    setTimeout(function(){
+      if(video.paused && !video.ended){
+        p.insertAdjacentHTML('beforeend',row('status:','still paused after 3s (readyState='+video.readyState+'), retrying play()...','net'));
+        var retry=video.play();
+        if(retry&&retry.then){
+          retry.then(function(){
+            p.insertAdjacentHTML('beforeend',row('retry:','play() succeeded','ok'));
+          }).catch(function(e){
+            var name=(e&&e.name)?e.name:'unknown';
+            var msg=(e&&e.message)?e.message:String(e);
+            p.insertAdjacentHTML('beforeend',row('retry:','play() rejected: '+name+' - '+msg,'err'));
+          });
+        }
+      }
+    },3000);
+    if(video.parentNode){
+      video.parentNode.insertBefore(wrap,video);
+      wrap.appendChild(video);
+      wrap.appendChild(p);
+    }
+  }
+
   document.querySelectorAll('img').forEach(addPanel);
+  document.querySelectorAll('video').forEach(addVideoPanel);
   new MutationObserver(function(ms){
     ms.forEach(function(m){
       m.addedNodes.forEach(function(n){
         if(n.nodeType!==1)return;
         if(n.tagName==='IMG')addPanel(n);
-        else if(n.querySelectorAll)n.querySelectorAll('img').forEach(addPanel);
+        else if(n.tagName==='VIDEO')addVideoPanel(n);
+        else if(n.querySelectorAll){
+          n.querySelectorAll('img').forEach(addPanel);
+          n.querySelectorAll('video').forEach(addVideoPanel);
+        }
       });
     });
   }).observe(document.body,{childList:true,subtree:true});
@@ -691,6 +867,14 @@ struct ArticleWebView: UIViewRepresentable {
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.dataDetectorTypes = [.link, .phoneNumber]
+        // Ohne diese beiden Flags spielt WKWebView <video autoplay loop muted>
+        // (der GIF-Ersatz mancher Blogs, z. B. Ghost/Hugo) nicht inline ab:
+        // allowsInlineMediaPlayback defaultet auf false (Playback ginge sonst
+        // in Fullscreen), mediaTypesRequiringUserActionForPlayback auf .all
+        // (Autoplay ohne Nutzergeste wäre blockiert) – das Element bleibt ohne
+        // beide Flags leer/unsichtbar, obwohl das Markup korrekt im DOM steht.
+        config.allowsInlineMediaPlayback = true
+        config.mediaTypesRequiringUserActionForPlayback = []
         config.userContentController.add(
             WeakMessageHandler(context.coordinator), name: "highlights")
         config.userContentController.add(
@@ -2945,6 +3129,7 @@ struct ArticleReaderView: View {
             p { margin: 0 0 1em; }
             a { color: \(fg) !important; text-decoration: underline; text-decoration-color: \(fgMuted); }
             img { max-width: 100%; height: auto; border-radius: 8px; margin: 8px 0; }
+            video { display: block; max-width: 100%; height: auto; border-radius: 8px; margin: 8px 0; }
             blockquote {
               margin: 1.5em 0; padding: 0;
               text-align: center;
@@ -2986,12 +3171,12 @@ struct ArticleReaderView: View {
             pre code { background: none; padding: 0; }
             figure { margin: 1em 0 0; }
             figure:first-child { margin-top: 0; }
-            figure img { display: block; margin-bottom: 0; }
+            figure img, figure video { display: block; margin-bottom: 0; }
             figcaption { font-size: 0.75em; line-height: 1.4; color: \(accentColorHex); text-align: left; margin-top: 2px; margin-bottom: 1em; }
             /* p { margin: 0 0 1em } setzt margin-top explizit auf 0 — ohne diese
                Regel klebt der erste Textblock direkt am Bild darüber (img selbst
                hat zwar margin-bottom, figure aber bewusst nicht, siehe oben). */
-            img + p, figure + p { margin-top: 1em; }
+            img + p, video + p, figure + p { margin-top: 1em; }
             hr { border: none; border-top: 1px solid \(effectiveDark ? "#2c2c2e" : "#e5e5ea"); margin: 2em 0; }
             ul, ol { padding-left: 1.5em; }
             li { margin-bottom: 0.3em; }
@@ -3031,6 +3216,7 @@ struct ArticleReaderView: View {
           \(developerMode ? "<script>\(merlinDebugJS)</script>" : "")
           <script>\(merlinImageTapJS)</script>
           <script>\(merlinYoutubeTapJS)</script>
+          <script>\(merlinVideoPosterJS)</script>
           <script>
           (function(){
             var PH_BG = '\(imgPlaceholderBg)';
