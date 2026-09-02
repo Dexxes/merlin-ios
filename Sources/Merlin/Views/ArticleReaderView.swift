@@ -337,65 +337,75 @@ private let merlinYoutubeTapJS: String = #"""
 })();
 """#
 
-// MARK: – Video autoplay kickstart
+// MARK: – Video poster frame + tap-to-play
 //
-// WKWebViewConfiguration.allowsInlineMediaPlayback/
-// mediaTypesRequiringUserActionForPlayback = [] lift the *policy* that would
-// block playback, but on-device testing showed <video autoplay> elements
-// present in the initial `loadFileURL` document sitting at readyState 0
-// forever (no 'error' either — the browser simply never starts the load).
-// A play() call fires the load explicitly rather than relying on the
-// browser to self-trigger the autoplay attribute for a file://-loaded,
-// script-templated page.
+// Native <video autoplay loop muted> turned out to depend on an OS-level
+// autoplay policy (Low Power Mode, Settings > Accessibility > Motion >
+// "Auto-Play Video Previews") that our app-level WKWebViewConfiguration
+// can't and shouldn't override — confirmed on-device via the debug overlay
+// (play() rejecting with NotAllowedError despite
+// allowsInlineMediaPlayback/mediaTypesRequiringUserActionForPlayback being
+// set correctly). Chasing that policy with try-then-fall-back logic made
+// the outcome unpredictable per device/setting.
 //
-// play() can still legitimately reject with NotAllowedError — confirmed
-// on-device via the debug overlay — when the SYSTEM blocks autoplay (Low
-// Power Mode, or Settings > Accessibility > Motion > "Auto-Play Video
-// Previews" off). That's a user/OS-level choice our app-level config can't
-// and shouldn't override. Rather than leave the element permanently blank
-// (indistinguishable from broken), fall back to a tap-to-play overlay —
-// same visual language as the YouTube placeholder card in
-// rewriteYouTubeEmbeds() (56px circle, rgba(0,0,0,.65), white play
-// triangle). A play() call made directly inside a click handler carries the
-// user gesture the autoplay attempt lacked, so it succeeds even under
-// those same restrictive settings.
-private let merlinVideoAutoplayJS: String = #"""
+// Simpler and consistent everywhere: never rely on autoplay. Strip the
+// attribute, grab the first frame as a static poster (play() immediately
+// followed by pause() once a frame is actually decoded — WebKit has no
+// "auto-poster" for a <video> without an explicit poster="" URL, and Ghost's
+// markup doesn't supply one), and show it under the same tap-to-play overlay
+// used for the YouTube placeholder card in rewriteYouTubeEmbeds() (56px
+// circle, rgba(0,0,0,.65), white play triangle). A play() call made
+// directly inside the overlay's own click handler carries the user gesture
+// the original autoplay attempt lacked, so it starts reliably regardless of
+// the OS policy above. Playback then loops per the source markup's own
+// `loop` attribute (sanitizeHtml() already lets it through), same as a GIF.
+private let merlinVideoPosterJS: String = #"""
 (function(){
-  function showTapToPlay(video){
-    if(video.dataset.merlinTapOverlay)return;
-    video.dataset.merlinTapOverlay='1';
+  function setup(video){
+    if(video.dataset.merlinVideoSetup)return;
+    video.dataset.merlinVideoSetup='1';
+    video.removeAttribute('autoplay');
+    video.controls=false;
+
     var wrap=document.createElement('div');
     wrap.style.cssText='position:relative;';
-    var overlay=document.createElement('div');
-    overlay.style.cssText='position:absolute;inset:0;display:flex;align-items:center;justify-content:center;cursor:pointer;';
-    overlay.innerHTML='<div style="width:56px;height:56px;border-radius:50%;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;"><svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg></div>';
     if(!video.parentNode)return;
     video.parentNode.insertBefore(wrap,video);
     wrap.appendChild(video);
+
+    var overlay=document.createElement('div');
+    overlay.style.cssText='position:absolute;inset:0;display:flex;align-items:center;justify-content:center;cursor:pointer;';
+    overlay.innerHTML='<div style="width:56px;height:56px;border-radius:50%;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;"><svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg></div>';
     wrap.appendChild(overlay);
+
+    function grabFirstFrame(){
+      var p=video.play();
+      if(p&&p.then){
+        p.then(function(){video.pause();video.currentTime=0;}).catch(function(){});
+      } else {
+        requestAnimationFrame(function(){video.pause();video.currentTime=0;});
+      }
+    }
+    if(video.readyState>=2)grabFirstFrame();
+    else video.addEventListener('loadeddata',grabFirstFrame,{once:true});
+    video.load();
+
     overlay.addEventListener('click',function(e){
       e.stopPropagation();
       e.preventDefault();
+      video.controls=true;
+      overlay.remove();
       var p=video.play();
-      if(p&&p.then)p.then(function(){overlay.remove();}).catch(function(){});
+      if(p&&p.catch)p.catch(function(){});
     });
-    video.addEventListener('playing',function(){overlay.remove();},{once:true});
   }
-  function kick(video){
-    if(video.dataset.merlinAutoplayKicked)return;
-    video.dataset.merlinAutoplayKicked='1';
-    if(!video.hasAttribute('autoplay'))return;
-    video.load();
-    var p=video.play();
-    if(p&&p.catch)p.catch(function(){showTapToPlay(video);});
-  }
-  document.querySelectorAll('video').forEach(kick);
+  document.querySelectorAll('video').forEach(setup);
   new MutationObserver(function(ms){
     ms.forEach(function(m){
       m.addedNodes.forEach(function(n){
         if(n.nodeType!==1)return;
-        if(n.tagName==='VIDEO')kick(n);
-        else if(n.querySelectorAll)n.querySelectorAll('video').forEach(kick);
+        if(n.tagName==='VIDEO')setup(n);
+        else if(n.querySelectorAll)n.querySelectorAll('video').forEach(setup);
       });
     });
   }).observe(document.body,{childList:true,subtree:true});
@@ -3176,7 +3186,7 @@ struct ArticleReaderView: View {
           \(developerMode ? "<script>\(merlinDebugJS)</script>" : "")
           <script>\(merlinImageTapJS)</script>
           <script>\(merlinYoutubeTapJS)</script>
-          <script>\(merlinVideoAutoplayJS)</script>
+          <script>\(merlinVideoPosterJS)</script>
           <script>
           (function(){
             var PH_BG = '\(imgPlaceholderBg)';
