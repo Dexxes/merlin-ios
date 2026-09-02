@@ -2946,9 +2946,37 @@ struct ArticleReaderView: View {
             a { color: \(fg) !important; text-decoration: underline; text-decoration-color: \(fgMuted); }
             img { max-width: 100%; height: auto; border-radius: 8px; margin: 8px 0; }
             blockquote {
-              margin: 1em 0; padding: 0.5em 0 0.5em 1em;
-              border-left: 3px solid \(accentColorHex); color: \(fgMuted);
+              margin: 1.5em 0; padding: 0;
+              text-align: center;
+              font-family: \(ReaderFont.serif.cssValue);
+              font-size: 1.3em;
+              font-style: italic;
+              line-height: 1.45;
+              color: \(accentColorHex);
             }
+            blockquote p { margin: 0 0 0.4em; }
+            blockquote cite, blockquote footer {
+              display: block;
+              width: 100%;
+              font-family: \(ReaderFont.system.cssValue);
+              font-size: 0.6em;
+              font-style: normal;
+              text-align: center !important;
+              margin-top: 0.3em;
+              color: \(accentColorHex);
+            }
+            /* Some sources place the attribution in a paragraph right after the
+               blockquote (e.g. <blockquote>…</blockquote><p><cite>Name</cite></p>)
+               instead of nesting it inside the blockquote itself. */
+            blockquote + p {
+              display: block;
+              width: 100%;
+              text-align: center !important;
+              font-family: \(ReaderFont.system.cssValue);
+              font-size: 0.85em;
+              color: \(accentColorHex);
+            }
+            blockquote + p cite, blockquote + p cite * { font-style: normal; }
             pre, code {
               background: \(effectiveDark ? "#2c2c2e" : "#f2f2f7");
               border-radius: 6px; font-family: 'SF Mono', Menlo, monospace; font-size: 0.9em;
