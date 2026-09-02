@@ -2898,7 +2898,7 @@ struct ArticleReaderView: View {
         let bg             = isSepia ? "#f4ecd8" : (effectiveDark ? "#000000" : "#ffffff")
         let fg             = isSepia ? "#3b2f1e" : (effectiveDark ? "#e5e5ea" : "#1c1c1e")
         let fgMuted        = isSepia ? "#7a6350" : (effectiveDark ? "#98989d" : "#6e6e73")
-        let accent         = "#0082c9"
+        let accent         = accentColorHex
         let imgPlaceholderBg = isSepia ? "#e8d9be" : (effectiveDark ? "#2c2c2e" : "#f2f2f7")
 
         return """
@@ -3000,7 +3000,7 @@ struct ArticleReaderView: View {
             th { background: \(effectiveDark ? "#2c2c2e" : "#f2f2f7"); font-weight: 600; }
             .merlin-infobox {
               background: \(isSepia ? "#e8d9be" : (effectiveDark ? "#1e2d3d" : "#f0f7ff"));
-              border-left: 4px solid \(isSepia ? "#8b6914" : accent);
+              border-left: 4px solid \(accent);
               border-radius: 0 8px 8px 0;
               padding: 14px 16px;
               margin: 1.5em 0;
@@ -3010,7 +3010,7 @@ struct ArticleReaderView: View {
             }
             .merlin-infobox > *:first-child { margin-top: 0; }
             .merlin-infobox > *:last-child  { margin-bottom: 0; }
-            .merlin-infobox a { color: \(isSepia ? "#8b6914" : accent) !important; text-decoration-color: \(isSepia ? "#8b691480" : "#0082c980"); }
+            .merlin-infobox a { color: \(accent) !important; text-decoration-color: \(accent)80; }
           </style>
         </head>
         <body>
