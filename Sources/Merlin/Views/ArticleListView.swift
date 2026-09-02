@@ -13,6 +13,10 @@ struct ArticleListView: View {
     @State private var showSettings:    Bool = false
     @State private var showTagFilter:   Bool = false
     @State private var activeSwipeId: Int? = nil
+    // Custom pull-to-refresh tracking for the card grid — see articleGrid below.
+    @State private var cardPullDistance: CGFloat = 0
+    @State private var cardRefreshTriggered = false
+    private let cardRefreshThreshold: CGFloat = 60
     @AppStorage("merlinIsCardView") private var isCardView: Bool = true
     @AppStorage("merlin_tour_done") private var tourDone: Bool = false
     @AppStorage("merlin_developer_mode") private var developerMode: Bool = false
@@ -31,7 +35,16 @@ struct ArticleListView: View {
             }
             .navigationTitle(viewModel.selectedFilter.label)
             .navigationBarTitleDisplayMode(.inline)
-            .searchable(text: Bindable(viewModel).searchQuery, prompt: Text(L("articleList.searchPlaceholder")))
+            // placement: .always verhindert, dass die Suchleiste beim Scrollen
+            // ein-/ausklappt (Standardverhalten bei .automatic). Dieses dynamische
+            // Ein-/Ausblenden kollidiert mit der Positionsberechnung von
+            // .refreshable, wodurch der Ladeindikator beim Pull-to-Refresh
+            // zunächst über der Suchleiste erscheint und dann darunter springt.
+            .searchable(
+                text: Bindable(viewModel).searchQuery,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: Text(L("articleList.searchPlaceholder"))
+            )
             .toolbar {
                 // Logo + filter name as custom navigation title
                 ToolbarItem(placement: .principal) {
@@ -286,27 +299,90 @@ struct ArticleListView: View {
         }
     }
 
+    /// True once a pull-triggered load is running AND the List's own bounce has
+    /// settled back to zero — the moment it's safe to reserve safeAreaInset space
+    /// for the loading indicator without fighting the still-collapsing pull gap.
+    private var showReservedRefreshSpinner: Bool {
+        viewModel.isLoading && cardPullDistance < 1
+    }
+
     private var articleGrid: some View {
-        ScrollView {
-            LazyVGrid(columns: [GridItem(.flexible())], spacing: 12) {
-                ForEach(viewModel.filteredArticles) { article in
-                    ArticleCardView(
-                        article: article,
-                        activeSwipeId: $activeSwipeId,
-                        onToggleFavorite: { Task { await viewModel.toggleFavorite(article) } },
-                        onToggleArchive:  { Task { await viewModel.toggleArchive(article) } },
-                        onDelete:         { Task { await viewModel.delete(article) } },
-                        onEditTags:       { tagSheetArticle = article },
-                        onTap:            { selectedArticle = article },
-                        showFavoriteAction: viewModel.selectedFilter != .pagesFavorites && viewModel.selectedFilter != .videosFavorites,
-                        showArchiveAction:  viewModel.selectedFilter != .pagesArchive && viewModel.selectedFilter != .videosArchive
-                    )
-                }
-            }
+        // Echte List-Zeilen statt eines einzelnen LazyVGrid als Row-Inhalt:
+        // GridItem(.flexible()) ist ohnehin nur eine Spalte, das LazyVGrid
+        // stapelt die Karten also nur vertikal wie eine Liste. Als einzelne
+        // List-Zeile verwirrte das aber die Positionsberechnung von
+        // .refreshable in Kombination mit .searchable (Ladeindikator sprang
+        // über die Suchleiste). Mit echten, mehreren List-Zeilen pro Artikel
+        // – wie in articleList – verhält sich der Refresh-Control korrekt.
+        List(viewModel.filteredArticles) { article in
+            ArticleCardView(
+                article: article,
+                activeSwipeId: $activeSwipeId,
+                onToggleFavorite: { Task { await viewModel.toggleFavorite(article) } },
+                onToggleArchive:  { Task { await viewModel.toggleArchive(article) } },
+                onDelete:         { Task { await viewModel.delete(article) } },
+                onEditTags:       { tagSheetArticle = article },
+                onTap:            { selectedArticle = article },
+                showFavoriteAction: viewModel.selectedFilter != .pagesFavorites && viewModel.selectedFilter != .videosFavorites,
+                showArchiveAction:  viewModel.selectedFilter != .pagesArchive && viewModel.selectedFilter != .videosArchive
+            )
             .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.vertical, 6)
+            .listRowInsets(EdgeInsets())
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
         }
-        .refreshable { await viewModel.load() }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        // Custom pull-to-refresh instead of .refreshable: the native UIRefreshControl
+        // it produces still renders misplaced next to .searchable's search bar (the
+        // iOS 26 SwiftUI bug noted on ArticleCardView's RowSwipeGesture), and there's
+        // no supported way to reposition or hide just that one control. Tracking the
+        // pull ourselves sidesteps it — there's no native control left to go wrong,
+        // and our own indicator can fade in from the very first pixel of the pull
+        // instead of only appearing once the load is already under way.
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            max(0, -(geometry.contentOffset.y + geometry.contentInsets.top))
+        } action: { _, newValue in
+            cardPullDistance = newValue
+        }
+        .onChange(of: cardPullDistance) { _, newValue in
+            if newValue >= cardRefreshThreshold, !cardRefreshTriggered, !viewModel.isLoading {
+                cardRefreshTriggered = true
+                Task { await viewModel.load() }
+            } else if newValue < 1 {
+                // Back near rest (released without reaching the threshold, or the
+                // triggered load already sprang the list back) — re-arm for the
+                // next pull.
+                cardRefreshTriggered = false
+            }
+        }
+        .overlay(alignment: .top) {
+            // Tracks the live pull, then — unlike before — stays visible through
+            // the release/settle bounce instead of handing off to the safeAreaInset
+            // below the instant isLoading flips true: switching indicators while
+            // the bounce gap was still open is exactly what caused the list to
+            // visibly jump. This one only disappears once the bounce has fully
+            // collapsed back to rest.
+            if cardPullDistance >= 1 {
+                ProgressView()
+                    .padding(.top, 10)
+                    .opacity(viewModel.isLoading ? 1 : min(1, cardPullDistance / cardRefreshThreshold))
+            }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            // Takes over only once the bounce has settled back to zero AND the
+            // load is still running — at that point there's no competing gap left
+            // to jump against, so reserving space here is the first (and only)
+            // thing changing the layout.
+            if showReservedRefreshSpinner {
+                ProgressView()
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(Color(.systemGroupedBackground))
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: showReservedRefreshSpinner)
         .background(Color(.systemGroupedBackground))
     }
 

@@ -12,6 +12,60 @@ private struct ShareSheet: UIViewControllerRepresentable {
     func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
 }
 
+// MARK: – Row swipe gesture (UIKit-backed)
+
+/// Bridges the card's swipe-to-reveal-actions drag to a real `UIPanGestureRecognizer`
+/// instead of SwiftUI's `.simultaneousGesture(DragGesture(...))`. On iOS 26,
+/// `.simultaneousGesture` stopped reliably letting the parent List's own pan gesture
+/// track alongside it (Apple Feedback FB18199844), which broke the List's
+/// pull-to-refresh indicator positioning on every row that used it here — the list
+/// view, which has no per-row gesture and relies on native `.swipeActions` instead,
+/// was never affected. `UIGestureRecognizerRepresentable` with an explicit
+/// `UIGestureRecognizerDelegate` is the workaround Apple has pointed developers to.
+private struct RowSwipeGesture: UIGestureRecognizerRepresentable {
+    let onChanged: (_ translation: CGSize, _ startLocation: CGPoint) -> Void
+    let onEnded:   (_ translation: CGSize, _ velocity: CGSize) -> Void
+
+    func makeUIGestureRecognizer(context: Context) -> UIPanGestureRecognizer {
+        let recognizer = UIPanGestureRecognizer()
+        recognizer.delegate = context.coordinator
+        return recognizer
+    }
+
+    func updateUIGestureRecognizer(_ recognizer: UIPanGestureRecognizer, context: Context) {}
+
+    func handleUIGestureRecognizerAction(_ recognizer: UIPanGestureRecognizer, context: Context) {
+        guard let view = recognizer.view else { return }
+        let location       = recognizer.location(in: view)
+        let translation    = recognizer.translation(in: view)
+        // UIPanGestureRecognizer only reports cumulative translation, not where the
+        // touch began — derive it (current location minus translation) since
+        // handleDragChanged needs it for the edge-swipe/flyout exclusion below.
+        let startLocation  = CGPoint(x: location.x - translation.x, y: location.y - translation.y)
+
+        switch recognizer.state {
+        case .began, .changed:
+            onChanged(CGSize(width: translation.x, height: translation.y), startLocation)
+        case .ended, .cancelled:
+            let velocity = recognizer.velocity(in: view)
+            onEnded(CGSize(width: translation.x, height: translation.y), CGSize(width: velocity.x, height: velocity.y))
+        default:
+            break
+        }
+    }
+
+    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator { Coordinator() }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+        ) -> Bool {
+            true
+        }
+    }
+}
+
 // MARK: – Card view (grid layout)
 
 struct ArticleCardView: View {
@@ -29,8 +83,8 @@ struct ArticleCardView: View {
     @AppStorage("merlin_accent_progress_color") private var accentColorHex: String = "#FF3B30"
     @AppStorage("merlin_developer_mode")        private var developerMode:   Bool   = false
 
-    // Swipe state — .swipeActions works only inside List;
-    // for LazyVGrid we track the gesture manually.
+    // Swipe state — custom pill/full-swipe UX that native .swipeActions can't
+    // replicate, so it's tracked manually (see RowSwipeGesture above).
     @State private var swipeOffset: CGFloat = 0  // live display value (rubber-banded past the snap positions)
     @State private var dragBase:    CGFloat = 0  // snapped position at drag start
     @State private var dragActive:  Bool    = false
@@ -166,10 +220,16 @@ struct ArticleCardView: View {
             }
             // Drag gesture on ZStack level — above the tap overlay so it always
             // receives touches first; tap overlay only fires for actual taps.
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 12, coordinateSpace: .local)
-                    .onChanged { v in handleDragChanged(v) }
-                    .onEnded   { v in handleDragEnded(v) }
+            // See RowSwipeGesture above for why this isn't .simultaneousGesture(DragGesture(...)).
+            .gesture(
+                RowSwipeGesture(
+                    onChanged: { translation, startLocation in
+                        handleDragChanged(translation: translation, startLocation: startLocation)
+                    },
+                    onEnded: { translation, velocity in
+                        handleDragEnded(translation: translation, velocity: velocity)
+                    }
+                )
             )
             .sheet(isPresented: $showShareSheet) {
                 if let url = URL(string: article.url) {
@@ -268,13 +328,13 @@ struct ArticleCardView: View {
         return raw
     }
 
-    private func handleDragChanged(_ v: DragGesture.Value) {
+    private func handleDragChanged(translation: CGSize, startLocation: CGPoint) {
         if gestureConsumed { return }
 
         if !dragActive {
             // ── Directional lock: decide ONCE at activation, then track without
             // re-checking the angle — mid-swipe finger drift must not freeze the card.
-            let horizontal = abs(v.translation.width) > abs(v.translation.height)
+            let horizontal = abs(translation.width) > abs(translation.height)
             if !horizontal {
                 // Vertical scroll: leave any open swipe buttons as they are —
                 // they should only close when another card gets swiped, not
@@ -284,7 +344,7 @@ struct ArticleCardView: View {
                 return
             }
             // Right-swipe starting at the left edge belongs to the list flyout.
-            if v.translation.width > 0, v.startLocation.x < 25 {
+            if translation.width > 0, startLocation.x < 25 {
                 gestureConsumed = true
                 return
             }
@@ -292,12 +352,12 @@ struct ArticleCardView: View {
             dragBase   = swipeOffset
             // Subtract the activation distance so the card tracks from the first
             // pixel instead of jumping by minimumDistance.
-            activationDx      = v.translation.width
+            activationDx      = translation.width
             pastOpenThreshold = false
             inCommitZone      = false
         }
 
-        let raw = dragBase + (v.translation.width - activationDx)
+        let raw = dragBase + (translation.width - activationDx)
         if activeSwipeId != article.id { activeSwipeId = article.id }
         swipeOffset = rubberBanded(raw)
 
@@ -317,7 +377,7 @@ struct ArticleCardView: View {
         }
     }
 
-    private func handleDragEnded(_ v: DragGesture.Value) {
+    private func handleDragEnded(translation: CGSize, velocity: CGSize) {
         defer {
             dragActive        = false
             gestureConsumed   = false
@@ -328,7 +388,7 @@ struct ArticleCardView: View {
         }
         guard dragActive else { return }
 
-        let raw = dragBase + (v.translation.width - activationDx)
+        let raw = dragBase + (translation.width - activationDx)
 
         // ── Full-swipe commit: archive (Mail pattern)
         if canCommitArchive && raw < -commitDist {
@@ -339,7 +399,12 @@ struct ArticleCardView: View {
 
         // ── Velocity-aware snap: a quick flick opens/closes even when the
         // travelled distance alone would stay below the threshold.
-        let projected = dragBase + (v.predictedEndTranslation.width - activationDx)
+        // UIPanGestureRecognizer only reports velocity, not SwiftUI's
+        // predictedEndTranslation directly — approximate it by projecting a
+        // short (~0.2s) continuation of the current velocity, which is enough
+        // to distinguish "fast flick" from "slow deliberate drag" here.
+        let predictedEndTranslationWidth = translation.width + velocity.width * 0.2
+        let projected = dragBase + (predictedEndTranslationWidth - activationDx)
         // A slow, deliberate drag that already crossed the threshold can still
         // decelerate (or micro-bounce back) right as the finger lifts, which
         // pulls predictedEndTranslation back under the threshold even though
