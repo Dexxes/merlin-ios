@@ -296,30 +296,27 @@ struct ArticleListView: View {
     }
 
     private var articleGrid: some View {
-        // Grid-Inhalt in eine List gehüllt (statt ScrollView): SwiftUIs
-        // .refreshable auf ScrollView positioniert den Ladeindikator in
-        // Kombination mit .searchable falsch (er erscheint zunächst auf Höhe
-        // der Suchleiste und springt dann darüber) – ein bekannter Rendering-
-        // Bug. List nutzt dieselbe native UIKit-Refresh-Integration wie
-        // articleList und ist davon nicht betroffen.
-        List {
-            LazyVGrid(columns: [GridItem(.flexible())], spacing: 12) {
-                ForEach(viewModel.filteredArticles) { article in
-                    ArticleCardView(
-                        article: article,
-                        activeSwipeId: $activeSwipeId,
-                        onToggleFavorite: { Task { await viewModel.toggleFavorite(article) } },
-                        onToggleArchive:  { Task { await viewModel.toggleArchive(article) } },
-                        onDelete:         { Task { await viewModel.delete(article) } },
-                        onEditTags:       { tagSheetArticle = article },
-                        onTap:            { selectedArticle = article },
-                        showFavoriteAction: viewModel.selectedFilter != .pagesFavorites && viewModel.selectedFilter != .videosFavorites,
-                        showArchiveAction:  viewModel.selectedFilter != .pagesArchive && viewModel.selectedFilter != .videosArchive
-                    )
-                }
-            }
+        // Echte List-Zeilen statt eines einzelnen LazyVGrid als Row-Inhalt:
+        // GridItem(.flexible()) ist ohnehin nur eine Spalte, das LazyVGrid
+        // stapelt die Karten also nur vertikal wie eine Liste. Als einzelne
+        // List-Zeile verwirrte das aber die Positionsberechnung von
+        // .refreshable in Kombination mit .searchable (Ladeindikator sprang
+        // über die Suchleiste). Mit echten, mehreren List-Zeilen pro Artikel
+        // – wie in articleList – verhält sich der Refresh-Control korrekt.
+        List(viewModel.filteredArticles) { article in
+            ArticleCardView(
+                article: article,
+                activeSwipeId: $activeSwipeId,
+                onToggleFavorite: { Task { await viewModel.toggleFavorite(article) } },
+                onToggleArchive:  { Task { await viewModel.toggleArchive(article) } },
+                onDelete:         { Task { await viewModel.delete(article) } },
+                onEditTags:       { tagSheetArticle = article },
+                onTap:            { selectedArticle = article },
+                showFavoriteAction: viewModel.selectedFilter != .pagesFavorites && viewModel.selectedFilter != .videosFavorites,
+                showArchiveAction:  viewModel.selectedFilter != .pagesArchive && viewModel.selectedFilter != .videosArchive
+            )
             .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.vertical, 6)
             .listRowInsets(EdgeInsets())
             .listRowSeparator(.hidden)
             .listRowBackground(Color.clear)
