@@ -13,6 +13,10 @@ struct ArticleListView: View {
     @State private var showSettings:    Bool = false
     @State private var showTagFilter:   Bool = false
     @State private var activeSwipeId: Int? = nil
+    // Custom pull-to-refresh tracking for the card grid — see articleGrid below.
+    @State private var cardPullDistance: CGFloat = 0
+    @State private var cardRefreshTriggered = false
+    private let cardRefreshThreshold: CGFloat = 60
     @AppStorage("merlinIsCardView") private var isCardView: Bool = true
     @AppStorage("merlin_tour_done") private var tourDone: Bool = false
     @AppStorage("merlin_developer_mode") private var developerMode: Bool = false
@@ -323,20 +327,48 @@ struct ArticleListView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .refreshable { await viewModel.load() }
-        // Even with the List conversion above, the native refresh spinner still
-        // renders misplaced (see ArticleCardView's RowSwipeGesture comment for the
-        // underlying iOS 26 gesture bug this is downstream of). Rather than chase
-        // that further, pin our own indicator in a fixed, always-correct spot right
-        // below the search bar — .refreshable still drives the pull gesture and
-        // triggers load() as before, this only adds a reliable visual on top.
+        // Custom pull-to-refresh instead of .refreshable: the native UIRefreshControl
+        // it produces still renders misplaced next to .searchable's search bar (the
+        // iOS 26 SwiftUI bug noted on ArticleCardView's RowSwipeGesture), and there's
+        // no supported way to reposition or hide just that one control. Tracking the
+        // pull ourselves sidesteps it — there's no native control left to go wrong,
+        // and our own indicator can fade in from the very first pixel of the pull
+        // instead of only appearing once the load is already under way.
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            max(0, -(geometry.contentOffset.y + geometry.contentInsets.top))
+        } action: { _, newValue in
+            cardPullDistance = newValue
+        }
+        .onChange(of: cardPullDistance) { _, newValue in
+            if newValue >= cardRefreshThreshold, !cardRefreshTriggered {
+                cardRefreshTriggered = true
+                Task { await viewModel.load() }
+            } else if newValue < 4 {
+                // Back near rest (released without reaching the threshold, or the
+                // triggered load already sprang the list back) — re-arm for the
+                // next pull.
+                cardRefreshTriggered = false
+            }
+        }
+        .overlay(alignment: .top) {
+            // Fades in as the user pulls, sitting in the gap the List's own bounce
+            // already reveals above the first row — no space reservation needed
+            // here, unlike the isLoading state below.
+            if cardPullDistance > 0, !viewModel.isLoading {
+                ProgressView()
+                    .padding(.top, 10)
+                    .opacity(min(1, cardPullDistance / cardRefreshThreshold))
+            }
+        }
         .safeAreaInset(edge: .top, spacing: 0) {
+            // Once the finger lifts the List springs back to rest immediately
+            // (no .refreshable holding it open), so reserve real space here for
+            // however long the load actually takes.
             if viewModel.isLoading {
                 ProgressView()
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
+                    .padding(.vertical, 10)
                     .background(Color(.systemGroupedBackground))
-                    .transition(.opacity)
             }
         }
         .animation(.easeInOut(duration: 0.2), value: viewModel.isLoading)
