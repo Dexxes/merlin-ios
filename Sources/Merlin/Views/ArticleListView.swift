@@ -299,6 +299,13 @@ struct ArticleListView: View {
         }
     }
 
+    /// True once a pull-triggered load is running AND the List's own bounce has
+    /// settled back to zero — the moment it's safe to reserve safeAreaInset space
+    /// for the loading indicator without fighting the still-collapsing pull gap.
+    private var showReservedRefreshSpinner: Bool {
+        viewModel.isLoading && cardPullDistance < 1
+    }
+
     private var articleGrid: some View {
         // Echte List-Zeilen statt eines einzelnen LazyVGrid als Row-Inhalt:
         // GridItem(.flexible()) ist ohnehin nur eine Spalte, das LazyVGrid
@@ -340,10 +347,10 @@ struct ArticleListView: View {
             cardPullDistance = newValue
         }
         .onChange(of: cardPullDistance) { _, newValue in
-            if newValue >= cardRefreshThreshold, !cardRefreshTriggered {
+            if newValue >= cardRefreshThreshold, !cardRefreshTriggered, !viewModel.isLoading {
                 cardRefreshTriggered = true
                 Task { await viewModel.load() }
-            } else if newValue < 4 {
+            } else if newValue < 1 {
                 // Back near rest (released without reaching the threshold, or the
                 // triggered load already sprang the list back) — re-arm for the
                 // next pull.
@@ -351,27 +358,31 @@ struct ArticleListView: View {
             }
         }
         .overlay(alignment: .top) {
-            // Fades in as the user pulls, sitting in the gap the List's own bounce
-            // already reveals above the first row — no space reservation needed
-            // here, unlike the isLoading state below.
-            if cardPullDistance > 0, !viewModel.isLoading {
+            // Tracks the live pull, then — unlike before — stays visible through
+            // the release/settle bounce instead of handing off to the safeAreaInset
+            // below the instant isLoading flips true: switching indicators while
+            // the bounce gap was still open is exactly what caused the list to
+            // visibly jump. This one only disappears once the bounce has fully
+            // collapsed back to rest.
+            if cardPullDistance >= 1 {
                 ProgressView()
                     .padding(.top, 10)
-                    .opacity(min(1, cardPullDistance / cardRefreshThreshold))
+                    .opacity(viewModel.isLoading ? 1 : min(1, cardPullDistance / cardRefreshThreshold))
             }
         }
         .safeAreaInset(edge: .top, spacing: 0) {
-            // Once the finger lifts the List springs back to rest immediately
-            // (no .refreshable holding it open), so reserve real space here for
-            // however long the load actually takes.
-            if viewModel.isLoading {
+            // Takes over only once the bounce has settled back to zero AND the
+            // load is still running — at that point there's no competing gap left
+            // to jump against, so reserving space here is the first (and only)
+            // thing changing the layout.
+            if showReservedRefreshSpinner {
                 ProgressView()
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 10)
                     .background(Color(.systemGroupedBackground))
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: viewModel.isLoading)
+        .animation(.easeInOut(duration: 0.2), value: showReservedRefreshSpinner)
         .background(Color(.systemGroupedBackground))
     }
 
