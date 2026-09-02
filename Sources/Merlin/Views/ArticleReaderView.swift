@@ -366,6 +366,14 @@ private let merlinVideoPosterJS: String = #"""
     video.dataset.merlinVideoSetup='1';
     video.removeAttribute('autoplay');
     video.controls=false;
+    video.muted=true;
+    // Ohne playsinline entscheidet WebKit auf manchen iOS-Versionen trotz
+    // allowsInlineMediaPlayback=true (Config) noch pro Element und
+    // präsentiert selbst einen rein programmatischen play()-Aufruf (siehe
+    // grabFirstFrame unten) im nativen Vollbildplayer statt inline - Ghosts
+    // Markup liefert das Attribut nicht mit, hier also selbst nachtragen.
+    video.setAttribute('playsinline','');
+    video.setAttribute('webkit-playsinline','');
 
     var wrap=document.createElement('div');
     wrap.style.cssText='position:relative;';
@@ -380,10 +388,22 @@ private let merlinVideoPosterJS: String = #"""
 
     function grabFirstFrame(){
       var p=video.play();
+      function pauseAfterPaint(){
+        // Ein pause() direkt im then()-Callback pausiert oft, bevor der
+        // Compositor überhaupt einen Frame gezeichnet hat (Race zwischen
+        // Promise-Resolve und dem nächsten Repaint) - Ergebnis: leere Box
+        // statt Posterframe. Zwei rAF-Ticks abwarten, bevor pausiert wird,
+        // gibt dem Browser Zeit, mindestens einen Frame zu präsentieren.
+        // currentTime bewusst NICHT zurück auf 0 setzen: ein programmatischer
+        // Seek kann selbst wieder kurz blankziehen, bis er abgeschlossen ist.
+        requestAnimationFrame(function(){
+          requestAnimationFrame(function(){ video.pause(); });
+        });
+      }
       if(p&&p.then){
-        p.then(function(){video.pause();video.currentTime=0;}).catch(function(){});
+        p.then(pauseAfterPaint).catch(function(){});
       } else {
-        requestAnimationFrame(function(){video.pause();video.currentTime=0;});
+        pauseAfterPaint();
       }
     }
     if(video.readyState>=2)grabFirstFrame();
