@@ -2950,18 +2950,20 @@ struct ArticleReaderView: View {
               text-align: center;
               font-family: \(ReaderFont.serif.cssValue);
               font-size: 1.3em;
+              font-style: italic;
               line-height: 1.45;
-              color: \(fg);
+              color: \(accentColorHex);
             }
             blockquote p { margin: 0 0 0.4em; }
             blockquote cite, blockquote footer {
               display: block;
+              width: 100%;
               font-family: \(ReaderFont.system.cssValue);
               font-size: 0.6em;
               font-style: normal;
-              text-align: center;
+              text-align: center !important;
               margin-top: 0.3em;
-              color: \(fgMuted);
+              color: \(accentColorHex);
             }
             pre, code {
               background: \(effectiveDark ? "#2c2c2e" : "#f2f2f7");
