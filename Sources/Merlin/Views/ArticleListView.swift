@@ -31,7 +31,16 @@ struct ArticleListView: View {
             }
             .navigationTitle(viewModel.selectedFilter.label)
             .navigationBarTitleDisplayMode(.inline)
-            .searchable(text: Bindable(viewModel).searchQuery, prompt: Text(L("articleList.searchPlaceholder")))
+            // placement: .always verhindert, dass die Suchleiste beim Scrollen
+            // ein-/ausklappt (Standardverhalten bei .automatic). Dieses dynamische
+            // Ein-/Ausblenden kollidiert mit der Positionsberechnung von
+            // .refreshable, wodurch der Ladeindikator beim Pull-to-Refresh
+            // zunächst über der Suchleiste erscheint und dann darunter springt.
+            .searchable(
+                text: Bindable(viewModel).searchQuery,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: Text(L("articleList.searchPlaceholder"))
+            )
             .toolbar {
                 // Logo + filter name as custom navigation title
                 ToolbarItem(placement: .principal) {
