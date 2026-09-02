@@ -337,6 +337,42 @@ private let merlinYoutubeTapJS: String = #"""
 })();
 """#
 
+// MARK: – Video autoplay kickstart
+//
+// WKWebViewConfiguration.allowsInlineMediaPlayback/
+// mediaTypesRequiringUserActionForPlayback = [] lift the *policy* that would
+// block playback, but on-device testing showed <video autoplay> elements
+// present in the initial `loadFileURL` document sitting at readyState 0
+// forever (no 'error' either — the browser simply never starts the load).
+// A play() call fires the load explicitly rather than relying on the
+// browser to self-trigger the autoplay attribute for a file://-loaded,
+// script-templated page. play() rejecting is expected/harmless when the
+// policy genuinely blocks it (e.g. Low Power Mode) — caught and ignored,
+// since these are silent looping background clips with no user-facing
+// control to retry.
+private let merlinVideoAutoplayJS: String = #"""
+(function(){
+  function kick(video){
+    if(video.dataset.merlinAutoplayKicked)return;
+    video.dataset.merlinAutoplayKicked='1';
+    if(!video.hasAttribute('autoplay'))return;
+    video.load();
+    var p=video.play();
+    if(p&&p.catch)p.catch(function(){});
+  }
+  document.querySelectorAll('video').forEach(kick);
+  new MutationObserver(function(ms){
+    ms.forEach(function(m){
+      m.addedNodes.forEach(function(n){
+        if(n.nodeType!==1)return;
+        if(n.tagName==='VIDEO')kick(n);
+        else if(n.querySelectorAll)n.querySelectorAll('video').forEach(kick);
+      });
+    });
+  }).observe(document.body,{childList:true,subtree:true});
+})();
+"""#
+
 // MARK: – Image debug overlay JS (injected only in developer mode)
 
 private let merlinDebugJS: String = #"""
@@ -458,10 +494,24 @@ private let merlinDebugJS: String = #"""
     video.addEventListener('playing',onPlaying,{once:true});
     video.addEventListener('error',onErr,{once:true});
     // Stalled autoplay (kein 'error', aber auch nie 'playing') nach 3s sichtbar
-    // machen - genau der Fall, der ohne Debug-Panel wie "zeigt einfach nichts" aussieht.
+    // machen - genau der Fall, der ohne Debug-Panel wie "zeigt einfach nichts"
+    // aussieht. play() liefert bei einem Policy-Block (z. B. Low Power Mode)
+    // KEIN 'error'-DOM-Event, nur eine abgelehnte Promise - daher hier
+    // explizit selbst versuchen und die Ablehnung auswerten statt nur den
+    // Stillstand zu vermelden.
     setTimeout(function(){
       if(video.paused && !video.ended){
-        p.insertAdjacentHTML('beforeend',row('status:','still paused after 3s (readyState='+video.readyState+')','net'));
+        p.insertAdjacentHTML('beforeend',row('status:','still paused after 3s (readyState='+video.readyState+'), retrying play()...','net'));
+        var retry=video.play();
+        if(retry&&retry.then){
+          retry.then(function(){
+            p.insertAdjacentHTML('beforeend',row('retry:','play() succeeded','ok'));
+          }).catch(function(e){
+            var name=(e&&e.name)?e.name:'unknown';
+            var msg=(e&&e.message)?e.message:String(e);
+            p.insertAdjacentHTML('beforeend',row('retry:','play() rejected: '+name+' - '+msg,'err'));
+          });
+        }
       }
     },3000);
     if(video.parentNode){
@@ -3097,6 +3147,7 @@ struct ArticleReaderView: View {
           \(developerMode ? "<script>\(merlinDebugJS)</script>" : "")
           <script>\(merlinImageTapJS)</script>
           <script>\(merlinYoutubeTapJS)</script>
+          <script>\(merlinVideoAutoplayJS)</script>
           <script>
           (function(){
             var PH_BG = '\(imgPlaceholderBg)';
