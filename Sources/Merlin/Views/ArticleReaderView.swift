@@ -419,13 +419,70 @@ private let merlinDebugJS: String = #"""
     wrap.appendChild(p);
   }
 
+  // <video>-Pendant zu addPanel() oben: img feuert 'load'/'error' und trägt
+  // naturalWidth/-Height, video dagegen 'loadedmetadata'/'error' und
+  // videoWidth/-Height, plus ein eigenes .error.code (MEDIA_ERR_*) statt
+  // eines reinen Bool-Fehlerstatus - deshalb eine separate Funktion statt
+  // addPanel() zu verzweigen.
+  function addVideoPanel(video){
+    if(video.dataset.merlinDbg)return;
+    video.dataset.merlinDbg='1';
+    var wrap=document.createElement('div');
+    wrap.className='mdbg-wrap';
+    var p=document.createElement('div');
+    p.className='mdbg net';
+    var attr=video.getAttribute('src')||'';
+    var h='<span class="mdbg-badge bn">VIDEO</span>'
+      +row('attr:',attr,'net')
+      +row('src:',video.currentSrc||video.src)
+      +row('inline:',String(video.hasAttribute('playsinline')||'via config'))
+      +row('autoplay:',String(video.autoplay)+' / muted:'+String(video.muted));
+    p.innerHTML=h;
+    function onMeta(){
+      var d=video.videoWidth+'×'+video.videoHeight+'px, readyState='+video.readyState;
+      p.insertAdjacentHTML('beforeend',row('meta:',d,'ok'));
+    }
+    function onPlaying(){
+      p.insertAdjacentHTML('beforeend',row('playing:','yes','ok'));
+    }
+    function onErr(){
+      p.className='mdbg err';
+      var b=p.querySelector('.mdbg-badge');
+      b.className='mdbg-badge be'; b.textContent='ERROR';
+      var err=video.error;
+      var codeNames={1:'ABORTED',2:'NETWORK',3:'DECODE',4:'SRC_NOT_SUPPORTED'};
+      var reason=err?(codeNames[err.code]||('code '+err.code))+(err.message?': '+err.message:''):'unknown';
+      p.insertAdjacentHTML('beforeend',row('err:',reason,'err'));
+    }
+    video.addEventListener('loadedmetadata',onMeta,{once:true});
+    video.addEventListener('playing',onPlaying,{once:true});
+    video.addEventListener('error',onErr,{once:true});
+    // Stalled autoplay (kein 'error', aber auch nie 'playing') nach 3s sichtbar
+    // machen - genau der Fall, der ohne Debug-Panel wie "zeigt einfach nichts" aussieht.
+    setTimeout(function(){
+      if(video.paused && !video.ended){
+        p.insertAdjacentHTML('beforeend',row('status:','still paused after 3s (readyState='+video.readyState+')','net'));
+      }
+    },3000);
+    if(video.parentNode){
+      video.parentNode.insertBefore(wrap,video);
+      wrap.appendChild(video);
+      wrap.appendChild(p);
+    }
+  }
+
   document.querySelectorAll('img').forEach(addPanel);
+  document.querySelectorAll('video').forEach(addVideoPanel);
   new MutationObserver(function(ms){
     ms.forEach(function(m){
       m.addedNodes.forEach(function(n){
         if(n.nodeType!==1)return;
         if(n.tagName==='IMG')addPanel(n);
-        else if(n.querySelectorAll)n.querySelectorAll('img').forEach(addPanel);
+        else if(n.tagName==='VIDEO')addVideoPanel(n);
+        else if(n.querySelectorAll){
+          n.querySelectorAll('img').forEach(addPanel);
+          n.querySelectorAll('video').forEach(addVideoPanel);
+        }
       });
     });
   }).observe(document.body,{childList:true,subtree:true});
