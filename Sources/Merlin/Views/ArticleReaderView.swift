@@ -2965,6 +2965,18 @@ struct ArticleReaderView: View {
               margin-top: 0.3em;
               color: \(accentColorHex);
             }
+            /* Some sources place the attribution in a paragraph right after the
+               blockquote (e.g. <blockquote>…</blockquote><p><cite>Name</cite></p>)
+               instead of nesting it inside the blockquote itself. */
+            blockquote + p {
+              display: block;
+              width: 100%;
+              text-align: center !important;
+              font-family: \(ReaderFont.system.cssValue);
+              font-size: 0.85em;
+              color: \(accentColorHex);
+            }
+            blockquote + p cite, blockquote + p cite * { font-style: normal; }
             pre, code {
               background: \(effectiveDark ? "#2c2c2e" : "#f2f2f7");
               border-radius: 6px; font-family: 'SF Mono', Menlo, monospace; font-size: 0.9em;
