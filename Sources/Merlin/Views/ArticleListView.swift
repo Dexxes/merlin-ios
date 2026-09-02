@@ -324,6 +324,22 @@ struct ArticleListView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .refreshable { await viewModel.load() }
+        // Even with the List conversion above, the native refresh spinner still
+        // renders misplaced (see ArticleCardView's RowSwipeGesture comment for the
+        // underlying iOS 26 gesture bug this is downstream of). Rather than chase
+        // that further, pin our own indicator in a fixed, always-correct spot right
+        // below the search bar — .refreshable still drives the pull gesture and
+        // triggers load() as before, this only adds a reliable visual on top.
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if viewModel.isLoading {
+                ProgressView()
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .background(Color(.systemGroupedBackground))
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: viewModel.isLoading)
         .background(Color(.systemGroupedBackground))
     }
 
