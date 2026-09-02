@@ -287,7 +287,13 @@ struct ArticleListView: View {
     }
 
     private var articleGrid: some View {
-        ScrollView {
+        // Grid-Inhalt in eine List gehüllt (statt ScrollView): SwiftUIs
+        // .refreshable auf ScrollView positioniert den Ladeindikator in
+        // Kombination mit .searchable falsch (er erscheint zunächst auf Höhe
+        // der Suchleiste und springt dann darüber) – ein bekannter Rendering-
+        // Bug. List nutzt dieselbe native UIKit-Refresh-Integration wie
+        // articleList und ist davon nicht betroffen.
+        List {
             LazyVGrid(columns: [GridItem(.flexible())], spacing: 12) {
                 ForEach(viewModel.filteredArticles) { article in
                     ArticleCardView(
@@ -305,7 +311,12 @@ struct ArticleListView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
+            .listRowInsets(EdgeInsets())
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
         }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
         .refreshable { await viewModel.load() }
         .background(Color(.systemGroupedBackground))
     }
