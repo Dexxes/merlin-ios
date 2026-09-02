@@ -417,6 +417,16 @@ private let merlinVideoPosterJS: String = #"""
       overlay.remove();
       var p=video.play();
       if(p&&p.catch)p.catch(function(){});
+      // Native controls bleiben sonst dauerhaft eingeblendet (nur der
+      // Browser-eigene Inaktivitäts-Timeout blendet sie irgendwann aus) -
+      // ein Tap irgendwo außerhalb dieses Videos (z. B. um weiterzulesen)
+      // soll sie sofort wieder verstecken, ohne die Wiedergabe/den Loop zu
+      // unterbrechen. Capture-Phase + kein stopPropagation hier, damit
+      // normale Taps im restlichen Artikel (Links, Textauswahl, …)
+      // unangetastet durchlaufen.
+      document.addEventListener('click',function(ev){
+        if(video.controls&&!wrap.contains(ev.target))video.controls=false;
+      },true);
     });
   }
   document.querySelectorAll('video').forEach(setup);
