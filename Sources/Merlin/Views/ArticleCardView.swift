@@ -220,8 +220,14 @@ struct ArticleCardView: View {
             }
             // Drag gesture on ZStack level — above the tap overlay so it always
             // receives touches first; tap overlay only fires for actual taps.
-            // See RowSwipeGesture above for why this isn't .simultaneousGesture(DragGesture(...)).
-            .gesture(
+            // Must be .simultaneousGesture, not .gesture: inside the card grid's
+            // List (see ArticleListView.articleGrid), plain .gesture() competes
+            // exclusively with the List's own scroll pan and loses, which silently
+            // killed the swipe entirely. .simultaneousGesture lets both track at
+            // once — this applies to UIGestureRecognizerRepresentable the same as
+            // native SwiftUI gestures, so it doesn't reopen the FB18199844 pull-to-
+            // refresh bug RowSwipeGesture above exists to work around.
+            .simultaneousGesture(
                 RowSwipeGesture(
                     onChanged: { translation, startLocation in
                         handleDragChanged(translation: translation, startLocation: startLocation)
