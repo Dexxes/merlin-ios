@@ -3011,6 +3011,59 @@ struct ArticleReaderView: View {
             .merlin-infobox > *:first-child { margin-top: 0; }
             .merlin-infobox > *:last-child  { margin-bottom: 0; }
             .merlin-infobox a { color: \(accent) !important; text-decoration-color: \(accent)80; }
+            /* Instagram-/X-/Bluesky-Embeds (siehe ContentExtractorService.swift,
+               isAllowedWidgetScriptSrc()) rendern sich nach dem Laden ihres
+               Widget-Skripts selbst neu - der generische blockquote-Style oben
+               (zentriert, kursiv, Serif, Akzentfarbe - als Pull-Quote gedacht)
+               würde nur bis zum Laden sichtbar sein und dann falsch wirken,
+               deshalb hier zurückgesetzt. */
+            blockquote.instagram-media, blockquote.twitter-tweet, blockquote.bluesky-embed {
+              margin: 1em 0; padding: 0; text-align: left;
+              font-family: -apple-system, sans-serif; font-size: 1em;
+              font-style: normal; line-height: normal; color: \(fg);
+            }
+            blockquote.instagram-media p, blockquote.twitter-tweet p, blockquote.bluesky-embed p {
+              margin: 0 0 0.4em; text-align: left !important;
+            }
+            /* Mastodon-Post-Karte (siehe MastodonPostResolverService/
+               buildMastodonThreadHtml()): kein Drittanbieter-Widget wie
+               Instagram/X/Bluesky (föderiert, kein zentraler Embed-Host),
+               sondern eigenes, statisches Markup - braucht deshalb echtes
+               Styling statt nur eines Platzhalter-Resets. */
+            .merlin-mastodon-post {
+              display: block;
+              border: 1px solid \(effectiveDark ? "#3a3a3c" : "#d1d1d6");
+              border-radius: 8px; padding: 14px 16px; margin: 1.5em 0; color: \(fg);
+            }
+            .merlin-mastodon-post + .merlin-mastodon-post { margin-top: 8px; }
+            .merlin-mastodon-post__header {
+              display: flex; align-items: center; gap: 10px;
+              text-decoration: none; color: \(fg); margin-bottom: 10px;
+            }
+            .merlin-mastodon-post__avatar {
+              width: 40px; height: 40px; border-radius: 50%;
+              object-fit: cover; flex-shrink: 0; margin: 0;
+            }
+            .merlin-mastodon-post__author {
+              display: flex; flex-direction: column; line-height: 1.3; min-width: 0;
+            }
+            .merlin-mastodon-post__name {
+              font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            }
+            .merlin-mastodon-post__handle {
+              color: \(fgMuted); font-size: 0.9em; overflow: hidden;
+              text-overflow: ellipsis; white-space: nowrap;
+            }
+            .merlin-mastodon-post__content p { margin: 0.5em 0; }
+            .merlin-mastodon-post__content p:first-child { margin-top: 0; }
+            .merlin-mastodon-post__content p:last-child { margin-bottom: 0; }
+            .merlin-mastodon-post__media {
+              display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+              gap: 6px; margin-top: 10px;
+            }
+            .merlin-mastodon-post__media-item {
+              width: 100%; height: 140px; object-fit: cover; border-radius: 6px; margin: 0;
+            }
           </style>
         </head>
         <body>
