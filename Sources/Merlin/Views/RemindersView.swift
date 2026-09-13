@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RemindersView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppNavigator.self) private var navigator
     @State private var reminders: [Reminder] = []
 
     var body: some View {
@@ -16,7 +17,12 @@ struct RemindersView: View {
                 } else {
                     List {
                         ForEach(reminders) { reminder in
-                            reminderRow(reminder)
+                            Button {
+                                openArticle(reminder)
+                            } label: {
+                                reminderRow(reminder)
+                            }
+                            .buttonStyle(.plain)
                         }
                         .onDelete(perform: deleteReminders)
                     }
@@ -83,5 +89,12 @@ struct RemindersView: View {
                 await ReminderService.shared.cancel(for: r.articleId)
             }
         }
+    }
+
+    /// Opens the reminder's article in the reader — reuses the same deep-link
+    /// path ArticleListView already handles for a tapped reminder notification.
+    private func openArticle(_ reminder: Reminder) {
+        navigator.articleIdToOpen = reminder.articleId
+        dismiss()
     }
 }
