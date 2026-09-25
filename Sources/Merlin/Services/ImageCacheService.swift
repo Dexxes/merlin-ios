@@ -270,11 +270,32 @@ actor ImageCacheService {
                 .replacingOccurrences(of: "&gt;",   with: ">")
                 .replacingOccurrences(of: "&quot;", with: "\"")
                 .replacingOccurrences(of: "&#39;",  with: "'")
-            if let url = URL(string: raw) {
+            if let url = Self.normalizedImageURL(from: raw) {
                 urls.append(url)
             }
         }
         return urls
+    }
+
+    /// Some CDNs (e.g. Substack's image proxy) emit `<img src="...">` values
+    /// that are a transform-parameter prefix followed by the percent-encoded
+    /// real URL, e.g. `fl_progressive:steep/https%3A%2F%2Fsubstack-post-media...png`,
+    /// rather than a plain absolute URL. `URL(string:)` still "succeeds" on
+    /// these because Foundation's parser accepts `fl_progressive` as a scheme,
+    /// which then makes every download/cache-lookup silently fail. Unwrap that
+    /// prefix so both the prefetcher and the reader-HTML rewriter agree on the
+    /// same real `https://` URL to download and to look up in the cache.
+    nonisolated static func normalizedImageURL(from raw: String) -> URL? {
+        if let direct = URL(string: raw), direct.scheme == "http" || direct.scheme == "https" {
+            return direct
+        }
+        if let r = raw.range(of: "https%3A%2F%2F", options: .caseInsensitive) {
+            let encoded = String(raw[r.lowerBound...])
+            if let decoded = encoded.removingPercentEncoding, let real = URL(string: decoded) {
+                return real
+            }
+        }
+        return nil
     }
 
     /// Extracts every image URL from an article: hero, favicon, and all

@@ -2697,7 +2697,7 @@ struct ArticleReaderView: View {
                 .replacingOccurrences(of: "&gt;",   with: ">")
                 .replacingOccurrences(of: "&quot;", with: "\"")
                 .replacingOccurrences(of: "&#39;",  with: "'")
-            guard let url      = URL(string: urlStr),
+            guard let url      = ImageCacheService.normalizedImageURL(from: urlStr),
                   let localURL = ImageCacheService.shared.localURL(for: url) else { continue }
             // quoteRange (closing ") comes after urlRange — process last-first so earlier indices stay valid
             let safeOrig = urlStr.replacingOccurrences(of: "\"", with: "&quot;")
