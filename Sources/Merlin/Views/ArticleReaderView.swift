@@ -349,9 +349,9 @@ private let merlinDebugJS: String = #"""
     '.mdbg.net{border-top-color:#ff9f0a}'+
     '.mdbg.err{border-top-color:#ff453a}'+
     '.mdbg-row{display:flex;gap:6px;margin-bottom:3px}'+
-    '.mdbg-k{color:#8e8e93;white-space:nowrap;flex-shrink:0;font-weight:700}'+
-    '.mdbg-v{color:#f2f2f7;word-break:break-all}'+
-    '.mdbg-v.ok{color:#32d74b}.mdbg-v.net{color:#ffb340}.mdbg-v.err{color:#ff6961}'+
+    '.mdbg-k{color:#c7c7cc!important;white-space:nowrap;flex-shrink:0;font-weight:700}'+
+    '.mdbg-v{color:#ffffff!important;word-break:break-all}'+
+    '.mdbg-v.ok{color:#32d74b!important}.mdbg-v.net{color:#ffb340!important}.mdbg-v.err{color:#ff6961!important}'+
     '.mdbg-badge{display:inline-block;padding:2px 7px;border-radius:3px;'+
       'font-weight:700;font-size:10px;letter-spacing:.5px;margin-bottom:6px}'+
     '.bl{background:#32d74b;color:#000}.bn{background:#ffb340;color:#000}.be{background:#ff6961;color:#000}';
