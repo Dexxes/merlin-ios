@@ -2831,6 +2831,14 @@ struct ArticleReaderView: View {
     /// pointing at `remote` to the now-cached local filename. Uses
     /// `JSONEncoder` (not manual escaping) for the string literals, matching
     /// the pattern already used for `merlinUpdateTempId` below.
+    ///
+    /// Also handles the case where the `<img>` already failed to load and was
+    /// replaced by the error placeholder (see `makePlaceholder` in
+    /// `buildReaderHTML`): that placeholder carries the original remote URL in
+    /// `data-merlin-original-src` precisely so this later, successful catch-up
+    /// download can still find and undo it by re-inserting a real `<img>` —
+    /// otherwise the `querySelectorAll('img')` swap below would find nothing,
+    /// since the `<img>` element itself no longer exists in the DOM.
     private nonisolated static func swapImageSrcJS(remote: URL, localFilename: String) -> String? {
         guard let remoteData = try? JSONEncoder().encode(remote.absoluteString),
               let remoteJSON = String(data: remoteData, encoding: .utf8),
@@ -2840,6 +2848,14 @@ struct ArticleReaderView: View {
         return """
         document.querySelectorAll('img').forEach(function(img){
           if (img.getAttribute('src') === \(remoteJSON)) { img.setAttribute('src', \(localJSON)); }
+        });
+        document.querySelectorAll('.merlin-img-placeholder').forEach(function(ph){
+          if (ph.dataset.merlinOriginalSrc === \(remoteJSON)) {
+            var img = document.createElement('img');
+            img.setAttribute('src', \(localJSON));
+            img.setAttribute('alt', '');
+            if (ph.parentNode) ph.parentNode.replaceChild(img, ph);
+          }
         });
         """
     }
@@ -3099,6 +3115,12 @@ struct ArticleReaderView: View {
               var isPortrait = attrW > 0 && attrH > 0 && attrH > attrW;
               var maxH = Math.round(isPortrait ? contentW * 16 / 9 : contentW * 9 / 16);
               var ph = document.createElement('div');
+              ph.className = 'merlin-img-placeholder';
+              // Original-URL merken: fetchMissingContentImages() lädt dasselbe Bild
+              // im Hintergrund mit korrektem Referer nach (siehe swapImageSrcJS) -
+              // ohne diese Markierung würde der Swap ins Leere laufen, weil das
+              // <img>-Element hier bereits aus dem DOM entfernt wurde.
+              ph.dataset.merlinOriginalSrc = img.getAttribute('src') || '';
               ph.style.cssText = [
                 'display:flex',
                 'flex-direction:column',
