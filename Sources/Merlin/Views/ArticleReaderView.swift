@@ -344,17 +344,22 @@ private let merlinDebugJS: String = #"""
   var S=document.createElement('style');
   S.textContent=
     '.mdbg-wrap{margin:8px 0}'+
-    '.mdbg{font:10px/1.5 "SF Mono",Menlo,monospace;padding:7px 10px;border-radius:0 0 8px 8px;'+
-      'background:rgba(0,0,0,.92)!important;color:#e5e5ea!important;word-break:break-all;border-top:2px solid #30d158}'+
+    '.mdbg{font:11px/1.7 "SF Mono",Menlo,monospace;padding:8px 10px;border-radius:0 0 8px 8px;'+
+      'background:#0a0a0c!important;color:#f2f2f7!important;word-break:break-all;border-top:2px solid #30d158}'+
     '.mdbg.net{border-top-color:#ff9f0a}'+
     '.mdbg.err{border-top-color:#ff453a}'+
-    '.mdbg-row{display:flex;gap:6px;margin-bottom:2px}'+
-    '.mdbg-k{color:rgba(255,255,255,.4);white-space:nowrap;flex-shrink:0}'+
-    '.mdbg-v{color:#e5e5ea;word-break:break-all}'+
-    '.mdbg-v.ok{color:#30d158}.mdbg-v.net{color:#ff9f0a}.mdbg-v.err{color:#ff453a}'+
-    '.mdbg-badge{display:inline-block;padding:1px 6px;border-radius:3px;'+
-      'font-weight:700;font-size:9px;letter-spacing:.5px;margin-bottom:5px}'+
-    '.bl{background:#30d158;color:#000}.bn{background:#ff9f0a;color:#000}.be{background:#ff453a;color:#fff}';
+    '.mdbg-row{display:flex;gap:6px;margin-bottom:3px}'+
+    '.mdbg-k{color:#c7c7cc!important;white-space:nowrap;flex-shrink:0;font-weight:700}'+
+    '.mdbg-v{color:#ffffff!important;word-break:break-all}'+
+    '.mdbg-v.ok{color:#32d74b!important}.mdbg-v.net{color:#ffb340!important}.mdbg-v.err{color:#ff6961!important}'+
+    // iOS data detectors auto-wrap URLs in the log values in <a> tags; the
+    // reader's global `a{color:...!important}` rule (higher source order,
+    // same specificity as a bare element selector) would otherwise repaint
+    // them near-black, so force-inherit the panel's own colors here.
+    '.mdbg a{color:inherit!important;text-decoration:none!important}'+
+    '.mdbg-badge{display:inline-block;padding:2px 7px;border-radius:3px;'+
+      'font-weight:700;font-size:10px;letter-spacing:.5px;margin-bottom:6px}'+
+    '.bl{background:#32d74b;color:#000}.bn{background:#ffb340;color:#000}.be{background:#ff6961;color:#000}';
   document.head.appendChild(S);
 
   function row(k,v,c){
