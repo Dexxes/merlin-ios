@@ -29,8 +29,8 @@
 "articleList.emptyState.refreshButton" = "Aktualisieren";
 "articleList.emptyState.taggedMessage" = "Keine Artikel mit Tag \"%@\".";
 "articleList.emptyState.title" = "Noch nichts hier";
-"articleList.emptyState.videosMessage" = "Noch keine Videos gespeichert. Füge einen YouTube- oder Video-Link hinzu, um ihn hier zu sehen.";
 "articleList.emptyState.unseenMessage" = "Noch keine ungesehenen Videos. Füge einen YouTube- oder Video-Link hinzu, um ihn hier zu sehen.";
+"articleList.emptyState.videosMessage" = "Noch keine Videos gespeichert. Füge einen YouTube- oder Video-Link hinzu, um ihn hier zu sehen.";
 "articleList.filter.archive" = "Archiv";
 "articleList.filter.continueReading" = "Weiterlesen";
 "articleList.filter.continueWatching" = "Weiterschauen";
@@ -66,6 +66,9 @@
 "articleReader.paywallBanner.connectButton" = "Verbinden";
 "articleReader.paywallBanner.message" = "Dieser Artikel könnte auf %@ hinter einer Paywall liegen. Verbinde dein Abo, um ihn freizuschalten.";
 "articleReader.paywallBanner.retryButton" = "Erneut versuchen";
+"articleReader.paywallSubscribeBanner.archiveButton" = "Archivieren";
+"articleReader.paywallSubscribeBanner.message" = "Dies ist ein Bezahlartikel. Merlin kann ihn nicht automatisch freischalten.";
+"articleReader.paywallSubscribeBanner.subscribeButton" = "Abo abschliessen";
 "articleReader.shareLink.createButton" = "Freigabelink erstellen";
 "articleReader.shareLink.expiresOn" = "Läuft ab am";
 "articleReader.shareLink.explainer" = "Erstelle einen öffentlichen Link, um diesen Artikel mit anderen zu teilen – auch ohne Merlin-Konto.";
@@ -275,9 +278,9 @@
 "merlinServer.library.viewFavorites" = "Favoriten";
 "merlinServer.library.viewLabel" = "Ansicht";
 "merlinServer.library.viewPages" = "Seiten";
-"merlinServer.library.viewVideos" = "Videos";
 "merlinServer.library.viewUnread" = "Ungelesen";
 "merlinServer.library.viewUnseen" = "Ungesehen";
+"merlinServer.library.viewVideos" = "Videos";
 "merlinServer.library.yesterday" = "gestern";
 "merlinServer.login.accountDisabled" = "Dieses Konto ist deaktiviert.";
 "merlinServer.login.createAccount" = "Konto erstellen";
@@ -405,10 +408,10 @@
 "settings.account.waitingForBrowser" = "Warte auf Anmeldung im Browser…";
 "settings.cache.clearButton" = "Cache leeren";
 "settings.cache.clearDialogConfirm" = "Leeren";
-"settings.cache.clearDialogMessage" = "Alle zwischengespeicherten Artikel, Bilder, Lesepositionen, der Web-Cache des Readers und deine Nextcloud-Zugangsdaten werden gelöscht. MerlinShare-Daten werden ebenfalls gelöscht. Du wirst abgemeldet.";
+"settings.cache.clearDialogMessage" = "Alle zwischengespeicherten Artikel, Bilder, Lesepositionen, der Web-Cache des Readers und deine Zugangsdaten werden gelöscht. MerlinShare-Daten werden ebenfalls gelöscht. Du wirst abgemeldet.";
 "settings.cache.clearDialogTitle" = "Cache leeren?";
 "settings.cache.clearedSuccess" = "Cache erfolgreich geleert.";
-"settings.cache.footer" = "Entfernt alle zwischengespeicherten Artikel, Bilder, Lesepositionen, den Web-Cache des Readers, deine Nextcloud-Zugangsdaten und alle MerlinShare-Daten.";
+"settings.cache.footer" = "Entfernt alle zwischengespeicherten Artikel, Bilder, Lesepositionen, den Web-Cache des Readers, deine Zugangsdaten und alle MerlinShare-Daten.";
 "settings.cache.retentionDaysFormat" = "%lld Tage aufbewahren";
 "settings.cache.retentionLabel" = "Aufbewahrungsdauer";
 "settings.cache.retentionOff" = "Unbegrenzt aufbewahren";
@@ -424,11 +427,6 @@
 "settings.preferences.resumeOnOpenLabel" = "Beim Öffnen fortsetzen";
 "settings.preferences.saveProgressLabel" = "Leseposition speichern";
 "settings.preferences.sectionHeader" = "Einstellungen";
-"settings.storage.footer" = "Zeigt, wie viel Speicherplatz deine Artikel und Highlights auf dem Server sowie im lokalen Zwischenspeicher belegen.";
-"settings.storage.loadError" = "Konnte nicht geladen werden";
-"settings.storage.localLabel" = "Lokaler Zwischenspeicher";
-"settings.storage.sectionHeader" = "Speicher";
-"settings.storage.serverLabel" = "Server";
 "settings.testConnection.button" = "Verbindung testen";
 "share.extracting.subtitle" = "Geteilten Inhalt wird gelesen…";
 "share.rateLimited.subtitle" = "Rate-Limit erreicht";

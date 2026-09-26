@@ -35,12 +35,21 @@ struct Article: Identifiable, Codable, Equatable {
     var requiresLoginDomain: String?
     /// Login-Seite der Paywall-Domain (z. B. für einen Info-Link), nur gesetzt wenn requiresLoginDomain gesetzt ist.
     var requiresLoginPage: String?
+    /// true, wenn der Extractor per Content-Filter-<paywall><marker> einen Bezahlartikel erkannt hat, für dessen
+    /// Domain KEINE Login-Unterstützung existiert (siehe requiresLoginDomain oben - beide sind nie gleichzeitig
+    /// gesetzt). Merlin kann den Artikel dann nicht automatisch freischalten; der Reader zeigt stattdessen einen
+    /// Hinweis mit den Optionen "Abo abschliessen" (paywallSubscribeUrl) und "Archivieren".
+    var isPaywalled: Bool
+    /// Ziel-URL zum Abschliessen eines Abos für diese Domain, aus der Content-Filter-Config. Kann fehlen, auch
+    /// wenn isPaywalled true ist (Domain ohne hinterlegte Abo-URL).
+    var paywallSubscribeUrl: String?
 
     enum CodingKeys: String, CodingKey {
         case id, url, title, content, excerpt, author, siteName, imageUrl
         case isFavorite, isArchived, readingTime, publishedAt, createdAt, updatedAt, archivedAt
         case tags, isProcessing, category, scrollProgress, scrollUpdatedAt
         case requiresLoginDomain, requiresLoginPage
+        case isPaywalled, paywallSubscribeUrl
     }
 
     init(from decoder: Decoder) throws {
@@ -66,6 +75,9 @@ struct Article: Identifiable, Codable, Equatable {
         scrollUpdatedAt = try c.decodeIfPresent(Int.self, forKey: .scrollUpdatedAt)
         requiresLoginDomain = try c.decodeIfPresent(String.self, forKey: .requiresLoginDomain)
         requiresLoginPage = try c.decodeIfPresent(String.self, forKey: .requiresLoginPage)
+        // decodeIfPresent statt decode: ältere Server-Antworten ohne dieses Feld bleiben dekodierbar.
+        isPaywalled = (try? c.decodeIfPresent(Bool.self, forKey: .isPaywalled)) ?? false
+        paywallSubscribeUrl = try c.decodeIfPresent(String.self, forKey: .paywallSubscribeUrl)
 
         // isFavorite kommt vom Server entweder als `false` (nicht favorisiert)
         // oder als ISO8601-String (Favorisierungszeitpunkt) – kein Bool-Only-Feld.
@@ -101,6 +113,8 @@ struct Article: Identifiable, Codable, Equatable {
         try c.encodeIfPresent(scrollUpdatedAt, forKey: .scrollUpdatedAt)
         try c.encodeIfPresent(requiresLoginDomain, forKey: .requiresLoginDomain)
         try c.encodeIfPresent(requiresLoginPage, forKey: .requiresLoginPage)
+        try c.encode(isPaywalled, forKey: .isPaywalled)
+        try c.encodeIfPresent(paywallSubscribeUrl, forKey: .paywallSubscribeUrl)
 
         // Spiegelbildlich zum Decoder: EIN Wire-Feld, false oder Datum. Wird
         // auch für den lokalen Disk-Cache verwendet, damit Decode/Encode
@@ -152,6 +166,7 @@ struct Article: Identifiable, Codable, Equatable {
         lhs.isProcessing == rhs.isProcessing &&
         lhs.updatedAt    == rhs.updatedAt    &&
         lhs.requiresLoginDomain == rhs.requiresLoginDomain &&
+        lhs.isPaywalled == rhs.isPaywalled &&
         lhs.tags.map(\.id).sorted() == rhs.tags.map(\.id).sorted()
     }
 }

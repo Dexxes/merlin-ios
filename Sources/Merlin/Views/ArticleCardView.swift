@@ -499,7 +499,7 @@ struct ArticleCardView: View {
                     if article.isProcessing {
                         ProgressView().scaleEffect(0.6).frame(width: 12, height: 12)
                     }
-                    if article.requiresLoginDomain != nil {
+                    if article.requiresLoginDomain != nil || article.isPaywalled {
                         Image(systemName: "lock.fill")
                             .font(.caption2)
                             .foregroundStyle(.orange)
