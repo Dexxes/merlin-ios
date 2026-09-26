@@ -1136,6 +1136,9 @@ struct ArticleReaderView: View {
     @State private var paywallBannerDismissed = false
     @State private var showSiteCredentialsSheet = false
     @State private var isRetryingAfterPaywall = false
+    /// Lokal (nicht persistiert) — Nutzer hat den generischen Bezahlartikel-Hinweis (`isPaywalled`,
+    /// Domain OHNE Login-Unterstützung, siehe PaywallSubscribeBanner) für diese Ansicht weggewischt.
+    @State private var paywallSubscribeBannerDismissed = false
     /// Verbindet bottomBar + Piper-Panel zu einer einzigen Liquid-Glass-Form
     /// (ab iOS 26 – siehe `ReaderBarGlassBackground`).
     @Namespace private var bottomGlassNamespace
@@ -1634,6 +1637,21 @@ struct ArticleReaderView: View {
                 .animation(.spring(response: 0.35, dampingFraction: 0.8), value: current.requiresLoginDomain)
                 .padding(.top, 8)
                 .padding(.horizontal, 12)
+            } else if current.isPaywalled, !paywallSubscribeBannerDismissed {
+                PaywallSubscribeBanner(
+                    subscribeUrl: current.paywallSubscribeUrl,
+                    onSubscribe: {
+                        if let subscribeUrl = current.paywallSubscribeUrl, let url = URL(string: subscribeUrl) {
+                            UIApplication.shared.open(url)
+                        }
+                    },
+                    onArchive: { archiveFromPaywallBanner() },
+                    onDismiss: { paywallSubscribeBannerDismissed = true }
+                )
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .animation(.spring(response: 0.35, dampingFraction: 0.8), value: current.isPaywalled)
+                .padding(.top, 8)
+                .padding(.horizontal, 12)
             }
         }
         .sheet(isPresented: $showSiteCredentialsSheet) {
@@ -1656,6 +1674,15 @@ struct ArticleReaderView: View {
             isRetryingAfterPaywall = false
             dismiss()
         }
+    }
+
+    /// Archiviert den aktuellen Artikel aus dem PaywallSubscribeBanner heraus und schliesst den
+    /// Reader danach, analog zum "Archivieren"-Eintrag im Seitenmenü (siehe dort).
+    private func archiveFromPaywallBanner() {
+        let snapshot = current
+        guard !snapshot.isArchived else { return }
+        Task { await viewModel.toggleArchive(snapshot) }
+        dismiss()
     }
 
     // MARK: – Helpers
@@ -3600,6 +3627,59 @@ private struct PaywallWarningBanner: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .disabled(isRetrying)
+            }
+        }
+        .padding(12)
+        .background(.orange.opacity(0.15), in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.orange.opacity(0.3), lineWidth: 0.5))
+        .shadow(color: .black.opacity(0.1), radius: 6, y: 3)
+    }
+}
+
+// MARK: – Paywall subscribe banner
+
+/// Nicht-blockierender Hinweis: zeigt, dass der Artikel per generischem Content-Filter-Marker
+/// als Bezahlartikel erkannt wurde (`Article.isPaywalled`), dessen Domain KEINE
+/// Login-Unterstützung hat (sonst zeigte `PaywallWarningBanner` oben stattdessen den
+/// Zugangsdaten-Hinweis). Merlin kann den Artikel nicht automatisch freischalten - der Nutzer
+/// entscheidet zwischen Abo abschliessen (falls eine URL hinterlegt ist) und Archivieren.
+private struct PaywallSubscribeBanner: View {
+    let subscribeUrl: String?
+    let onSubscribe: () -> Void
+    let onArchive: () -> Void
+    let onDismiss: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "lock.fill")
+                    .foregroundStyle(.orange)
+                Text(L("articleReader.paywallSubscribeBanner.message"))
+                    .font(.subheadline)
+                    .foregroundStyle(.primary)
+                Spacer(minLength: 0)
+                Button {
+                    onDismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+
+            HStack(spacing: 10) {
+                if subscribeUrl != nil {
+                    Button(L("articleReader.paywallSubscribeBanner.subscribeButton"), action: onSubscribe)
+                        .font(.footnote.weight(.semibold))
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                }
+
+                Button(L("articleReader.paywallSubscribeBanner.archiveButton"), action: onArchive)
+                    .font(.footnote.weight(.semibold))
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
             }
         }
         .padding(12)
