@@ -29,8 +29,8 @@
 "articleList.emptyState.refreshButton" = "Refresh";
 "articleList.emptyState.taggedMessage" = "No articles tagged \"%@\".";
 "articleList.emptyState.title" = "Nothing here yet";
-"articleList.emptyState.videosMessage" = "No videos saved yet. Add a YouTube or video link to see it here.";
 "articleList.emptyState.unseenMessage" = "No unwatched videos yet. Add a YouTube or video link to see it here.";
+"articleList.emptyState.videosMessage" = "No videos saved yet. Add a YouTube or video link to see it here.";
 "articleList.filter.archive" = "Archive";
 "articleList.filter.continueReading" = "Continue reading";
 "articleList.filter.continueWatching" = "Continue watching";
@@ -66,6 +66,9 @@
 "articleReader.paywallBanner.connectButton" = "Connect";
 "articleReader.paywallBanner.message" = "This article may be behind a paywall on %@. Connect your subscription to unlock it.";
 "articleReader.paywallBanner.retryButton" = "Retry";
+"articleReader.paywallSubscribeBanner.archiveButton" = "Archive";
+"articleReader.paywallSubscribeBanner.message" = "This is a paid article. Merlin can't unlock it automatically.";
+"articleReader.paywallSubscribeBanner.subscribeButton" = "Subscribe";
 "articleReader.shareLink.createButton" = "Create Share Link";
 "articleReader.shareLink.expiresOn" = "Expires On";
 "articleReader.shareLink.explainer" = "Create a public link to share this article with anyone, even without a Merlin account.";
@@ -275,9 +278,9 @@
 "merlinServer.library.viewFavorites" = "Favorites";
 "merlinServer.library.viewLabel" = "View";
 "merlinServer.library.viewPages" = "Pages";
-"merlinServer.library.viewVideos" = "Videos";
 "merlinServer.library.viewUnread" = "Unread";
 "merlinServer.library.viewUnseen" = "Unwatched";
+"merlinServer.library.viewVideos" = "Videos";
 "merlinServer.library.yesterday" = "yesterday";
 "merlinServer.login.accountDisabled" = "This account is disabled.";
 "merlinServer.login.createAccount" = "Create account";
@@ -424,11 +427,6 @@
 "settings.preferences.resumeOnOpenLabel" = "Resume where I left off";
 "settings.preferences.saveProgressLabel" = "Save reading position";
 "settings.preferences.sectionHeader" = "Preferences";
-"settings.storage.footer" = "Shows how much storage your articles and highlights use on the server and in the local cache.";
-"settings.storage.loadError" = "Couldn't load";
-"settings.storage.localLabel" = "Local Cache";
-"settings.storage.sectionHeader" = "Storage";
-"settings.storage.serverLabel" = "Server";
 "settings.testConnection.button" = "Test Connection";
 "share.extracting.subtitle" = "Reading shared content…";
 "share.rateLimited.subtitle" = "Rate limited";

@@ -31,7 +31,7 @@ struct ArticleRowView: View {
                             .scaleEffect(0.65)
                             .frame(width: 14, height: 14)
                     }
-                    if article.requiresLoginDomain != nil {
+                    if article.requiresLoginDomain != nil || article.isPaywalled {
                         Image(systemName: "lock.fill")
                             .font(.caption2)
                             .foregroundStyle(.orange)
