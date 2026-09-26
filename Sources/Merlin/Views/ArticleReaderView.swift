@@ -1807,6 +1807,32 @@ struct ArticleReaderView: View {
         }
     }
 
+    /// Lesbare Vordergrundfarbe auf der Akzentfläche (weiß, bei sehr hellen Akzenten dunkel).
+    private var onAccentHex: String {
+        let s = accentColorHex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        guard s.count >= 6, let v = UInt32(s.prefix(6), radix: 16) else { return "#ffffff" }
+        func lin(_ c: UInt32) -> Double {
+            let x = Double(c) / 255
+            return x <= 0.03928 ? x / 12.92 : pow((x + 0.055) / 1.055, 2.4)
+        }
+        let l = 0.2126 * lin(v >> 16 & 0xff) + 0.7152 * lin(v >> 8 & 0xff) + 0.0722 * lin(v & 0xff)
+        return l > 0.35 ? "#1c1c1e" : "#ffffff"
+    }
+
+    /// Tonstufen Akzent → Reader-Hintergrund: (Höhe, Akzentanteil). Muss zum CSS in buildReaderHTML passen.
+    private static let accentSteps: [(height: CGFloat, amount: Double)] =
+        [(14, 0.75), (12, 0.55), (10, 0.35), (8, 0.15)]
+
+    /// true, wenn der WebView-Inhalt direkt mit dem Titelbild beginnt – dann setzt das CSS
+    /// Fläche + Tonstufen fort, sonst zeichnet der native Header die Stufen.
+    private var readerLeadsWithHero: Bool {
+        guard let content = current.content, !content.isEmpty,
+              !NativeVideoHost.matches(current.url) else { return false }
+        let head = injectHeroImageIfNeeded(into: content)
+            .drop(while: \.isWhitespace).prefix(8).lowercased()
+        return head.hasPrefix("<figure") || head.hasPrefix("<img")
+    }
+
     /// Identifiziert eine Info-Card-Zelle unabhängig von ihrer (lokalisierten)
     /// Anzeige-Beschriftung – die Vergleichslogik unten darf nicht von der
     /// jeweils aktiven Sprache abhängen.
@@ -1841,211 +1867,180 @@ struct ArticleReaderView: View {
         return out
     }
 
-    /// One cell of the article-header info card: small uppercase label + value.
-    @ViewBuilder
-    private func infoCardCell(label: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(label)
-                .font(.system(size: 9, weight: .semibold, design: readerFont.swiftUIDesign))
-                .tracking(1.0)
-                .foregroundStyle(readerFgMutedColor)
-            Text(value)
-                .font(.system(size: 12, weight: .semibold, design: readerFont.swiftUIDesign))
-                .foregroundStyle(readerFgColor)
-                .lineLimit(1)
-                .truncationMode(.tail)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-    }
-
-    // MARK: – Native article header (title + meta + tags + hero)
+    // MARK: – Native article header (Plakat-Header mit Tonstufen)
 
     @ViewBuilder
     private var articleHeader: some View {
+        let accent   = Color(hexString: accentColorHex) ?? .red
+        let onAccent = Color(hexString: onAccentHex) ?? .white
+        let design   = readerFont.swiftUIDesign
+
         VStack(alignment: .leading, spacing: 0) {
-
-            // Top inset: safe area + small breathing room
-            Color.clear.frame(height: safeAreaTop + 12)
-
             VStack(alignment: .leading, spacing: 0) {
+                Color.clear.frame(height: safeAreaTop + 12)
 
-                // ── Top row: accent bar + site (uppercase) ──
-                let accent = Color(hexString: accentColorHex) ?? .red
-                let hasSite = !current.displaySiteName.isEmpty
+                VStack(alignment: .leading, spacing: 18) {
 
-                if hasSite {
-                    HStack(spacing: 10) {
-                        RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                            .fill(accent)
-                            .frame(width: 28, height: 3)
-
-                        if let url = URL(string: current.url) {
-                            Button {
-                                tappedLinkURL = url
-                            } label: {
-                                Text(current.displaySiteName.uppercased())
-                                    .font(.system(size: 11, weight: .bold, design: readerFont.swiftUIDesign))
-                                    .tracking(2.0)
-                                    .foregroundStyle(readerFgColor)
+                    // ── Topline: Site links, erster Tag rechts, 2px-Linie darunter ──
+                    let hasSite = !current.displaySiteName.isEmpty
+                    if hasSite || !current.tags.isEmpty {
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            if hasSite {
+                                let site = Text(current.displaySiteName.uppercased())
+                                if let url = URL(string: current.url) {
+                                    Button { tappedLinkURL = url } label: { site }
+                                        .buttonStyle(.plain)
+                                } else { site }
                             }
-                            .buttonStyle(.plain)
-                        } else {
-                            Text(current.displaySiteName.uppercased())
-                                .font(.system(size: 11, weight: .bold, design: readerFont.swiftUIDesign))
-                                .tracking(2.0)
-                                .foregroundStyle(readerFgColor)
+                            Spacer(minLength: 0)
+                            if let tag = current.tags.first {
+                                Text(tag.name.uppercased()).lineLimit(1)
+                            }
                         }
-
-                        Spacer(minLength: 0)
+                        .font(.system(size: 11, weight: .bold, design: design))
+                        .tracking(2.0)
+                        .foregroundStyle(onAccent)
+                        .padding(.bottom, 8)
+                        .overlay(alignment: .bottom) { onAccent.frame(height: 2) }
                     }
-                    .padding(.bottom, 18)
-                }
 
-                // ── Title ──
-                Text(current.displayTitle)
-                    .font(.system(size: CGFloat(fontSize + 5), weight: .bold, design: readerFont.swiftUIDesign))
-                    .foregroundStyle(readerFgColor)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                // ── Excerpt ──
-                if let ex = current.excerpt, !ex.isEmpty {
-                    Text(ex)
-                        .font(.system(size: CGFloat(fontSize), design: readerFont.swiftUIDesign))
-                        .foregroundStyle(readerFgMutedColor)
+                    // ── Titel ──
+                    Text(current.displayTitle)
+                        .font(.system(size: CGFloat(fontSize) * 2.1, weight: .heavy, design: design))
+                        .tracking(-1)
+                        .foregroundStyle(onAccent)
                         .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, 8)
-                }
 
-                // ── Info card: Autor · Lesezeit · Erschienen ──
-                let cells = infoCardCells
-
-                if !cells.isEmpty {
-                    HStack(spacing: 0) {
-                        ForEach(Array(cells.enumerated()), id: \.offset) { idx, cell in
-                            if cell.kind == .author {
-                                let valueFont = Font.system(size: 12, weight: .semibold,
-                                                            design: readerFont.swiftUIDesign)
-                                Button { if authorIsTruncated { showAuthorFlyout = true } } label: {
-                                    // Inline infoCardCell so we can attach truncation
-                                    // detection directly to the value Text.
-                                    VStack(alignment: .leading, spacing: 3) {
-                                        Text(cell.label)
-                                            .font(.system(size: 9, weight: .semibold,
-                                                          design: readerFont.swiftUIDesign))
-                                            .tracking(1.0)
-                                            .foregroundStyle(readerFgMutedColor)
-                                        Text(cell.value)
-                                            .font(valueFont)
-                                            .foregroundStyle(readerFgColor)
-                                            .lineLimit(1)
-                                            .truncationMode(.tail)
-                                            // Measure available (clamped) width via background
-                                            // GeometryReader, then compare to the natural
-                                            // (fixedSize) width of the same text.
-                                            .background(
-                                                GeometryReader { visibleProxy in
-                                                    Text(cell.value)
-                                                        .font(valueFont)
-                                                        .fixedSize()
-                                                        .hidden()
-                                                        .background(
-                                                            GeometryReader { fullProxy in
-                                                                Color.clear.preference(
-                                                                    key: AuthorTruncationKey.self,
-                                                                    value: fullProxy.size.width
-                                                                         > visibleProxy.size.width + 1
-                                                                )
-                                                            }
-                                                        )
-                                                }
-                                            )
-                                    }
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 10)
-                                }
-                                .buttonStyle(.plain)
-                                .onPreferenceChange(AuthorTruncationKey.self) {
-                                    authorIsTruncated = $0
-                                }
-                                .popover(isPresented: $showAuthorFlyout) {
-                                    Text(cell.value)
-                                        .font(valueFont)
-                                        .foregroundStyle(readerFgColor)
-                                        .padding(14)
-                                        .presentationCompactAdaptation(.popover)
-                                }
-                            } else if cell.kind == .published, let saved = shortDate(current.createdAt) {
-                                Button { showSavedAtFlyout = true } label: {
-                                    infoCardCell(label: cell.label, value: cell.value)
-                                }
-                                .buttonStyle(.plain)
-                                .popover(isPresented: $showSavedAtFlyout) {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(InfoCardKind.saved.displayLabel)
-                                            .font(.system(size: 10, weight: .semibold, design: readerFont.swiftUIDesign))
-                                            .tracking(1.0)
-                                            .foregroundStyle(readerFgMutedColor)
-                                        Text(saved)
-                                            .font(.system(size: 13, weight: .semibold, design: readerFont.swiftUIDesign))
-                                            .foregroundStyle(readerFgColor)
-                                    }
-                                    .padding(14)
-                                    .presentationCompactAdaptation(.popover)
-                                }
-                            } else {
-                                infoCardCell(label: cell.label, value: cell.value)
-                            }
-                            if idx < cells.count - 1 {
-                                readerSeparatorColor
-                                    .frame(width: 0.5)
-                                    .frame(maxHeight: .infinity)
-                            }
-                        }
+                    // ── Teaser ──
+                    if let ex = current.excerpt, !ex.isEmpty {
+                        Text(ex)
+                            .font(.system(size: CGFloat(fontSize), weight: .medium, design: design))
+                            .foregroundStyle(onAccent)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    .fixedSize(horizontal: false, vertical: true)
-                    .background(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(infoCardBgColor)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(readerSeparatorColor, lineWidth: 0.5)
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .padding(.top, 20)
-                }
 
-                // ── Tags — centered colored soft pills ──
-                if !current.tags.isEmpty {
-                    HStack(spacing: 6) {
-                        ForEach(current.tags) { tag in
-                            let c = tag.color.flatMap { Color(hexString: $0) } ?? Color(.systemGray)
-                            Text(tag.name)
-                                .font(.system(size: 12, weight: .semibold, design: readerFont.swiftUIDesign))
-                                .lineLimit(1)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 4)
-                                .background(c.opacity(0.12))
-                                .foregroundStyle(c)
-                                .clipShape(Capsule())
-                                .overlay(Capsule().strokeBorder(c.opacity(0.25), lineWidth: 0.5))
-                        }
+                    // ── Metazeile: 2px-Linie darüber (Gegenstück zur Topline), niemals zweizeilig ──
+                    if !infoCardCells.isEmpty {
+                        metaLineRow(onAccent: onAccent, design: design)
+                            .padding(.top, 8)
+                            .overlay(alignment: .top) { onAccent.frame(height: 2) }
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 14)
                 }
-
-
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
+                .padding(.bottom, 22)
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 16)
-            .padding(.bottom, 8)
+            .background(accent)
 
+            // ── Tonstufen nur, wenn kein Titelbild im WebView die Fläche fortsetzt ──
+            if !readerLeadsWithHero {
+                ForEach(Self.accentSteps.indices, id: \.self) { i in
+                    let step = Self.accentSteps[i]
+                    Rectangle()
+                        .fill(accent.mix(with: readerBgColor, by: 1 - step.amount, in: .perceptual))
+                        .frame(height: step.height)
+                }
+                Color.clear.frame(height: 16)
+            }
+        }
+    }
 
+    /// Metazeile als HStack einzelner Segmente: Autor kann getrunkiert werden
+    /// (Flyout zeigt vollen Namen), „Erschienen“ öffnet per Tap das
+    /// Gespeichert-am-Flyout. Feste Segmente (Lesezeit, Datum, Trennpunkte)
+    /// behalten immer ihre volle Breite — der Autor weicht zuerst, damit die
+    /// Zeile nie zweizeilig wird.
+    @ViewBuilder
+    private func metaLineRow(onAccent: Color, design: Font.Design) -> some View {
+        let cells = infoCardCells
+        let font  = Font.system(size: 11, weight: .bold, design: design)
 
+        HStack(spacing: 6) {
+            ForEach(Array(cells.enumerated()), id: \.offset) { idx, cell in
+                metaLineSegment(cell: cell, font: font, design: design, onAccent: onAccent)
+                if idx < cells.count - 1 {
+                    Text("·")
+                        .font(font)
+                        .foregroundStyle(onAccent)
+                        .fixedSize()
+                }
+            }
+        }
+        .tracking(1.0)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func metaLineSegment(cell: (kind: InfoCardKind, label: String, value: String),
+                                  font: Font, design: Font.Design, onAccent: Color) -> some View {
+        let text = (cell.kind == .author ? "\(cell.label) \(cell.value)" : cell.value).uppercased()
+
+        switch cell.kind {
+        case .author:
+            Button {
+                if authorIsTruncated { showAuthorFlyout = true }
+            } label: {
+                Text(text)
+                    .font(font)
+                    .foregroundStyle(onAccent)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .background(
+                        GeometryReader { visibleProxy in
+                            Text(text)
+                                .font(font)
+                                .fixedSize()
+                                .hidden()
+                                .background(
+                                    GeometryReader { fullProxy in
+                                        Color.clear.preference(
+                                            key: AuthorTruncationKey.self,
+                                            value: fullProxy.size.width
+                                                 > visibleProxy.size.width + 1
+                                        )
+                                    }
+                                )
+                        }
+                    )
+            }
+            .buttonStyle(.plain)
+            .onPreferenceChange(AuthorTruncationKey.self) { authorIsTruncated = $0 }
+            .popover(isPresented: $showAuthorFlyout) {
+                Text(text)
+                    .font(.system(size: 13, weight: .semibold, design: design))
+                    .foregroundStyle(readerFgColor)
+                    .padding(14)
+                    .presentationCompactAdaptation(.popover)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .layoutPriority(-1)
+
+        case .published:
+            if let saved = shortDate(current.createdAt) {
+                Button { showSavedAtFlyout = true } label: {
+                    Text(text).font(font).foregroundStyle(onAccent).lineLimit(1)
+                }
+                .buttonStyle(.plain)
+                .fixedSize()
+                .popover(isPresented: $showSavedAtFlyout) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(InfoCardKind.saved.displayLabel)
+                            .font(.system(size: 10, weight: .semibold, design: design))
+                            .tracking(1.0)
+                            .foregroundStyle(readerFgMutedColor)
+                        Text(saved)
+                            .font(.system(size: 13, weight: .semibold, design: design))
+                            .foregroundStyle(readerFgColor)
+                    }
+                    .padding(14)
+                    .presentationCompactAdaptation(.popover)
+                }
+            } else {
+                Text(text).font(font).foregroundStyle(onAccent).lineLimit(1).fixedSize()
+            }
+
+        default:
+            Text(text).font(font).foregroundStyle(onAccent).lineLimit(1).fixedSize()
         }
     }
 
@@ -3002,6 +2997,7 @@ struct ArticleReaderView: View {
         let fg             = isSepia ? "#3b2f1e" : (effectiveDark ? "#e5e5ea" : "#1c1c1e")
         let fgMuted        = isSepia ? "#7a6350" : (effectiveDark ? "#98989d" : "#6e6e73")
         let accent         = accentColorHex
+        let onAccent       = onAccentHex
         let imgPlaceholderBg = isSepia ? "#e8d9be" : (effectiveDark ? "#2c2c2e" : "#f2f2f7")
 
         return """
@@ -3091,6 +3087,41 @@ struct ArticleReaderView: View {
             figure:first-child { margin-top: 0; }
             figure img { display: block; margin-bottom: 0; }
             figcaption { font-size: 0.75em; line-height: 1.4; color: \(accentColorHex); text-align: left; margin-top: 2px; margin-bottom: 1em; }
+            /* ── Titelbild auf Akzentfläche, randlos, danach Tonstufen ── */
+            body > figure:first-child,
+            body > img:first-child {
+              display: block;
+              width: calc(100% + 40px) !important;
+              max-width: none !important;
+              margin: 0 -20px 0 !important;
+              background: \(accent);
+              border-radius: 0 !important;
+            }
+            body > figure:first-child img {
+              width: 100%; margin: 0 !important; border-radius: 0 !important;
+            }
+            body > figure:first-child figcaption {
+              margin: 0; padding: 10px 20px 14px;
+              color: \(onAccent);
+              font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+            }
+            body > figure:first-child::after {
+              content: ""; display: block; height: 44px;
+              background: linear-gradient(to bottom,
+                color-mix(in oklch, \(accent) 75%, \(bg)) 0 14px,
+                color-mix(in oklch, \(accent) 55%, \(bg)) 14px 26px,
+                color-mix(in oklch, \(accent) 35%, \(bg)) 26px 36px,
+                color-mix(in oklch, \(accent) 15%, \(bg)) 36px 44px);
+            }
+            /* nacktes <img> ohne <figure>: Stufen per box-shadow */
+            body > img:first-child {
+              margin-bottom: 44px !important;
+              box-shadow:
+                0 14px 0 color-mix(in oklch, \(accent) 75%, \(bg)),
+                0 26px 0 color-mix(in oklch, \(accent) 55%, \(bg)),
+                0 36px 0 color-mix(in oklch, \(accent) 35%, \(bg)),
+                0 44px 0 color-mix(in oklch, \(accent) 15%, \(bg));
+            }
             /* p { margin: 0 0 1em } setzt margin-top explizit auf 0 — ohne diese
                Regel klebt der erste Textblock direkt am Bild darüber (img selbst
                hat zwar margin-bottom, figure aber bewusst nicht, siehe oben). */
