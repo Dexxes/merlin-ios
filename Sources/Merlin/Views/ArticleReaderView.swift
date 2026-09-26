@@ -1266,6 +1266,36 @@ struct ArticleReaderView: View {
                                 .foregroundStyle(.secondary)
                         }
                         .frame(maxWidth: .infinity, minHeight: 300)
+                    } else if let domain = current.requiresLoginDomain {
+                        VStack(spacing: 16) {
+                            Image(systemName: "lock.trianglebadge.exclamationmark")
+                                .font(.system(size: 48))
+                                .foregroundStyle(.orange)
+                            Text(String(format: L("articleReader.paywallBanner.message"), domain))
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 32)
+                            Button(L("articleReader.paywallBanner.connectButton")) {
+                                showSiteCredentialsSheet = true
+                            }
+                            .buttonStyle(.borderedProminent)
+                            Button {
+                                retryAfterPaywall()
+                            } label: {
+                                if isRetryingAfterPaywall {
+                                    ProgressView()
+                                } else {
+                                    Text(L("articleReader.paywallBanner.retryButton"))
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(isRetryingAfterPaywall)
+                            if let url = URL(string: current.url) {
+                                Link(L("articleReader.sideMenu.openInBrowser"), destination: url)
+                                    .buttonStyle(.bordered)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 300)
                     } else {
                         VStack(spacing: 16) {
                             Image(systemName: "doc.text")
@@ -1591,7 +1621,8 @@ struct ArticleReaderView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
                     .animation(.spring(response: 0.35, dampingFraction: 0.8), value: viewModel.undoToast)
                     .padding(.top, 8)
-            } else if let domain = current.requiresLoginDomain, !paywallBannerDismissed {
+            } else if let domain = current.requiresLoginDomain, !paywallBannerDismissed,
+                      let content = current.content, !content.isEmpty {
                 PaywallWarningBanner(
                     domain: domain,
                     isRetrying: isRetryingAfterPaywall,
