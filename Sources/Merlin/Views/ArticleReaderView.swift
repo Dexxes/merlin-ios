@@ -1322,6 +1322,25 @@ struct ArticleReaderView: View {
                             }
                         }
                         .frame(maxWidth: .infinity, minHeight: 300)
+                    } else if let domain = current.unsupportedSiteDomain {
+                        // UnsupportedSiteException server-seitig: die Domain liefert
+                        // grundsätzlich keinen scrapbaren Artikeltext (reine JS-SPA/
+                        // Bild-Viewer wie PressReader) - kein Retry-Button, da ein
+                        // erneuter Versuch am selben Ergebnis nichts ändert.
+                        VStack(spacing: 16) {
+                            Image(systemName: "xmark.octagon")
+                                .font(.system(size: 48))
+                                .foregroundStyle(.orange)
+                            Text(String(format: L("articleReader.unsupportedSiteBanner.message"), domain))
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 32)
+                            if let url = URL(string: current.url) {
+                                Link(L("articleReader.sideMenu.openInBrowser"), destination: url)
+                                    .buttonStyle(.bordered)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 300)
                     } else {
                         VStack(spacing: 16) {
                             Image(systemName: "doc.text")

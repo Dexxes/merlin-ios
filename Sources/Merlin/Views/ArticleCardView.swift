@@ -504,6 +504,11 @@ struct ArticleCardView: View {
                             .font(.caption2)
                             .foregroundStyle(.orange)
                     }
+                    if article.unsupportedSiteDomain != nil {
+                        Image(systemName: "xmark.octagon")
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
+                    }
                 }
 
                 HStack(spacing: 4) {

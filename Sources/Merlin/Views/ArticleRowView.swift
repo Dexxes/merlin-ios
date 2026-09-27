@@ -36,6 +36,11 @@ struct ArticleRowView: View {
                             .font(.caption2)
                             .foregroundStyle(.orange)
                     }
+                    if article.unsupportedSiteDomain != nil {
+                        Image(systemName: "xmark.octagon")
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
