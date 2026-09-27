@@ -23,8 +23,6 @@
 "articleList.archiveToast.undoButton" = "Undo";
 "articleList.emptyState.allMessage" = "No articles saved yet. Tap + to add one.";
 "articleList.emptyState.archiveMessage" = "Your archive is empty.";
-"articleList.emptyState.continueReadingMessage" = "Nothing to continue reading. Articles you've started appear here.";
-"articleList.emptyState.continueWatchingMessage" = "Nothing to continue watching. Videos you've started appear here.";
 "articleList.emptyState.favoritesMessage" = "No favorites yet. Star articles to find them here.";
 "articleList.emptyState.refreshButton" = "Refresh";
 "articleList.emptyState.taggedMessage" = "No articles tagged \"%@\".";
@@ -32,8 +30,6 @@
 "articleList.emptyState.unseenMessage" = "No unwatched videos yet. Add a YouTube or video link to see it here.";
 "articleList.emptyState.videosMessage" = "No videos saved yet. Add a YouTube or video link to see it here.";
 "articleList.filter.archive" = "Archive";
-"articleList.filter.continueReading" = "Continue reading";
-"articleList.filter.continueWatching" = "Continue watching";
 "articleList.filter.favorites" = "Favorites";
 "articleList.filter.pages" = "Pages";
 "articleList.filter.unread" = "Unread";
@@ -66,9 +62,6 @@
 "articleReader.paywallBanner.connectButton" = "Connect";
 "articleReader.paywallBanner.message" = "This article may be behind a paywall on %@. Connect your subscription to unlock it.";
 "articleReader.paywallBanner.retryButton" = "Retry";
-"articleReader.paywallSubscribeBanner.archiveButton" = "Archive";
-"articleReader.paywallSubscribeBanner.message" = "This is a paid article. Merlin can't unlock it automatically.";
-"articleReader.paywallSubscribeBanner.subscribeButton" = "Subscribe";
 "articleReader.shareLink.createButton" = "Create Share Link";
 "articleReader.shareLink.expiresOn" = "Expires On";
 "articleReader.shareLink.explainer" = "Create a public link to share this article with anyone, even without a Merlin account.";
