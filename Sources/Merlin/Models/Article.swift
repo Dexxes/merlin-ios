@@ -43,6 +43,11 @@ struct Article: Identifiable, Codable, Equatable {
     /// Ziel-URL zum Abschliessen eines Abos für diese Domain, aus der Content-Filter-Config. Kann fehlen, auch
     /// wenn isPaywalled true ist (Domain ohne hinterlegte Abo-URL).
     var paywallSubscribeUrl: String?
+    /// Domain, die in content-filters/$unsupported.xml steht (z. B. "pressreader.com"), oder nil im Normalfall.
+    /// Gesetzt vom Server, wenn UnsupportedSiteException auftrat: die Domain liefert grundsätzlich keinen
+    /// scrapbaren Artikeltext (reine JS-SPA/Bild-Viewer) - anders als bei requiresLoginDomain gibt es hier
+    /// keinen Login, der das beheben könnte, der Reader zeigt nur einen erklärenden Hinweis statt Retry.
+    var unsupportedSiteDomain: String?
 
     enum CodingKeys: String, CodingKey {
         case id, url, title, content, excerpt, author, siteName, imageUrl
@@ -50,6 +55,7 @@ struct Article: Identifiable, Codable, Equatable {
         case tags, isProcessing, category, scrollProgress, scrollUpdatedAt
         case requiresLoginDomain, requiresLoginPage
         case isPaywalled, paywallSubscribeUrl
+        case unsupportedSiteDomain
     }
 
     init(from decoder: Decoder) throws {
@@ -78,6 +84,7 @@ struct Article: Identifiable, Codable, Equatable {
         // decodeIfPresent statt decode: ältere Server-Antworten ohne dieses Feld bleiben dekodierbar.
         isPaywalled = (try? c.decodeIfPresent(Bool.self, forKey: .isPaywalled)) ?? false
         paywallSubscribeUrl = try c.decodeIfPresent(String.self, forKey: .paywallSubscribeUrl)
+        unsupportedSiteDomain = try c.decodeIfPresent(String.self, forKey: .unsupportedSiteDomain)
 
         // isFavorite kommt vom Server entweder als `false` (nicht favorisiert)
         // oder als ISO8601-String (Favorisierungszeitpunkt) – kein Bool-Only-Feld.
@@ -115,6 +122,7 @@ struct Article: Identifiable, Codable, Equatable {
         try c.encodeIfPresent(requiresLoginPage, forKey: .requiresLoginPage)
         try c.encode(isPaywalled, forKey: .isPaywalled)
         try c.encodeIfPresent(paywallSubscribeUrl, forKey: .paywallSubscribeUrl)
+        try c.encodeIfPresent(unsupportedSiteDomain, forKey: .unsupportedSiteDomain)
 
         // Spiegelbildlich zum Decoder: EIN Wire-Feld, false oder Datum. Wird
         // auch für den lokalen Disk-Cache verwendet, damit Decode/Encode
@@ -167,6 +175,7 @@ struct Article: Identifiable, Codable, Equatable {
         lhs.updatedAt    == rhs.updatedAt    &&
         lhs.requiresLoginDomain == rhs.requiresLoginDomain &&
         lhs.isPaywalled == rhs.isPaywalled &&
+        lhs.unsupportedSiteDomain == rhs.unsupportedSiteDomain &&
         lhs.tags.map(\.id).sorted() == rhs.tags.map(\.id).sorted()
     }
 }
