@@ -7,6 +7,8 @@ import UIKit
 /// Fallback: systemgrauer Hintergrund, falls die Datei nicht gefunden wird.
 struct NoImageView: View {
     var contentMode: ContentMode = .fill
+    /// PDF-Artikel haben nie ein Titelbild: statt des Logos zeigt der Platzhalter ein PDF-Symbol.
+    var isPDF: Bool = false
 
     private static let uiImage: UIImage? = {
         guard let url = Bundle.module.url(forResource: "no-img", withExtension: "png"),
@@ -15,7 +17,18 @@ struct NoImageView: View {
     }()
 
     var body: some View {
-        if let img = Self.uiImage {
+        if isPDF {
+            ZStack {
+                Color(hexString: PreferencesStore.shared.accentProgressColorHex) ?? Color.accentColor
+                VStack(spacing: 4) {
+                    Image(systemName: "doc.richtext")
+                        .font(.system(size: 28, weight: .regular))
+                    Text(L("articleReader.pdf.badge"))
+                        .font(.system(size: 12, weight: .bold))
+                }
+                .foregroundStyle(.white)
+            }
+        } else if let img = Self.uiImage {
             // Das Logo-PNG ist transparent; die im Erscheinungsbild-Menü
             // gewählte Akzentfarbe (PreferencesStore) liegt dahinter,
             // damit es in Light- und Darkmode gleich aussieht.

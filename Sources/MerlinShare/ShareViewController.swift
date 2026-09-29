@@ -541,7 +541,9 @@ class ShareViewController: UIViewController {
         await withCheckedContinuation { continuation in
             provider.loadItem(forTypeIdentifier: UTType.url.identifier) { data, _ in
                 if let url = data as? URL {
-                    continuation.resume(returning: url.absoluteString)
+                    // Lokale Datei-URLs (z. B. eine PDF aus "Dateien") sind für den Server wertlos –
+                    // nur Links auf Webseiten/PDFs im Netz werden gespeichert.
+                    continuation.resume(returning: url.isFileURL ? nil : url.absoluteString)
                 } else if let str = data as? String, !str.isEmpty {
                     continuation.resume(returning: str)
                 } else {
