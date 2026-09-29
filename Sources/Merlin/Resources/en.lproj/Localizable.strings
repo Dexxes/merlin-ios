@@ -389,6 +389,7 @@
 "report.title" = "Report Article";
 "settings.about.commitLabel" = "Commit";
 "settings.about.sectionHeader" = "About";
+"settings.about.sourceCodeLabel" = "Source code / Git repository";
 "settings.about.versionLabel" = "Version";
 "settings.account.footer" = "Tap \"Login with Nextcloud\" to authenticate via your browser.";
 "settings.account.loggedInSuccess" = "Logged in successfully!";

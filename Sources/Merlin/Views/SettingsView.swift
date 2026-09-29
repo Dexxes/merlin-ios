@@ -311,6 +311,11 @@ struct SettingsView: View {
                             .font(.system(.body, design: .monospaced))
                             .foregroundStyle(.secondary)
                     }
+                    if let repoURL = URL(string: "https://github.com/dexxes/merlin-ios") {
+                        Link(destination: repoURL) {
+                            Label(L("settings.about.sourceCodeLabel"), systemImage: "chevron.left.forwardslash.chevron.right")
+                        }
+                    }
                 } header: {
                     Text(L("settings.about.sectionHeader"))
                 }
