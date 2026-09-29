@@ -8,6 +8,9 @@ struct SupportBox: Codable, Equatable {
     var donationsUrl: String?
     /// Akzentfarbe des Nutzers (`#RRGGBB`), wie sie der Server aus den Einstellungen kennt.
     var accentColor: String
+    /// Icon der konkreten Artikelseite (apple-touch-icon/`rel=icon`, vom Server aus dem Seiten-HTML gelesen);
+    /// nil bei älteren Servern oder wenn keins bekannt ist.
+    var iconUrl: String?
 }
 
 struct Article: Identifiable, Codable, Equatable {

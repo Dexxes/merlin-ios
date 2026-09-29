@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "Enjoying this article from …? Consider taking out a subscription or making a
   donation" links to them between two paragraphs, tinted with the accent
   colour. Hidden when a subscription login is active for that site.
+- The support box shows the icon of the article's own page next to its title
+  (`supportBox.iconUrl`, read by the server from the page's
+  `apple-touch-icon` / `<link rel="icon">`). An icon that fails to load is
+  simply left out. It is not treated as an article image: no lightbox on tap
+  and no "website prevents image download" placeholder.
 
 ## [0.1.0] - 2026-08-25
 
