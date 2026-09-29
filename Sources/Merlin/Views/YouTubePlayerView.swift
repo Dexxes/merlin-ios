@@ -7,16 +7,21 @@ struct YouTubePlayerState: Identifiable {
     let id = UUID()
     let videoId: String
     let startSeconds: Int?
+    /// Frame der angetippten Vorschaukarte im Koordinatensystem des Reader-WebViews.
+    /// Ändert sich bei Layoutänderungen (Bilder laden nach, Drehen), daher `var`.
+    var rect: CGRect
 }
 
-// MARK: – Full-screen YouTube player
+// MARK: – Inline YouTube player
 //
 // Loads YoutubeEmbedController's proxy page (server-side, see its docblock)
 // via a TOP-LEVEL WKWebView navigation — its own window, no parent frame —
 // instead of embedding the YouTube <iframe> inside the article reader's
-// file://-origin WKWebView.
+// file://-origin WKWebView. ArticleReaderView legt diese View als Overlay
+// exakt über die angetippte Vorschaukarte, das Video spielt so direkt im
+// Artikel statt in einem eigenen Screen.
 //
-// Why not just embed it inline? Two approaches were tried and both failed
+// Why not just embed it inline in the page? Two approaches were tried and both failed
 // silently:
 //   1. A YouTube <iframe> nested directly in the reader's file:// document:
 //      breaks with "Error 153" (no valid https origin/referrer for the
@@ -31,52 +36,29 @@ struct YouTubePlayerState: Identifiable {
 // normally since there's no file:// ancestor confusing things.
 struct YouTubePlayerView: View {
     let state: YouTubePlayerState
-    let onDismiss: () -> Void
-
-    @State private var controlsVisible = true
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            Color.black.ignoresSafeArea()
+        ZStack {
+            Color.black
 
             if let url = Self.embedURL(for: state) {
                 YouTubeWebView(url: url)
-                    .aspectRatio(16.0 / 9.0, contentMode: .fit)
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 60)
             } else {
                 // Kein konfigurierter Server – rewriteYouTubeEmbeds() prüft
                 // denselben Guard schon vor der Platzhalter-Erzeugung, sollte
                 // hier also praktisch nie greifen.
-                VStack(spacing: 12) {
+                VStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle")
-                        .font(.largeTitle)
+                        .font(.title2)
                         .foregroundStyle(.white.opacity(0.8))
                     Text("Server nicht konfiguriert")
+                        .font(.footnote)
                         .foregroundStyle(.white.opacity(0.8))
                 }
             }
-
-            if controlsVisible {
-                Button { onDismiss() } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.title)
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(.white, Color.white.opacity(0.25))
-                        .shadow(color: .black.opacity(0.4), radius: 4)
-                }
-                .padding(.top, 56)
-                .padding(.trailing, 20)
-                .transition(.opacity)
-            }
         }
-        .animation(.easeInOut(duration: 0.25), value: controlsVisible)
-        // Wie beim nativen ARD/ZDF/Arte-Player (siehe NativeVideoPlayerView) ist der
-        // Close-Button ein eigenes SwiftUI-Overlay, das vom Ein-/Ausblenden der
-        // YouTube-eigenen Bedienelemente im WebView nichts mitbekommt. Ein Tap auf den
-        // Player toggelt daher zusätzlich unseren Button, exakt wie YouTube die eigenen
-        // Bedienelemente togglet - kein Timer, kein Auto-Hide.
-        .simultaneousGesture(TapGesture().onEnded { controlsVisible.toggle() })
+        // Neues Video = neue WebView (siehe YouTubeWebView.updateUIView).
+        .id(state.id)
     }
 
     private static func embedURL(for state: YouTubePlayerState) -> URL? {
@@ -97,6 +79,7 @@ struct YouTubePlayerView: View {
                 URLQueryItem(name: "modestbranding", value: "1"),
                 URLQueryItem(name: "playsinline", value: "1"),
                 URLQueryItem(name: "rel", value: "0"),
+                URLQueryItem(name: "autoplay", value: "1"),
             ]
             if let start = state.startSeconds {
                 items.append(URLQueryItem(name: "start", value: String(start)))
@@ -126,6 +109,8 @@ private struct YouTubeWebView: UIViewRepresentable {
         // das Inline-Wiedergabe zulässt statt jeden Videostart in einen
         // nativen Vollbildplayer zu zwingen.
         config.allowsInlineMediaPlayback = true
+        // Autoplay: der Nutzer hat die Vorschaukarte bereits angetippt.
+        config.mediaTypesRequiringUserActionForPlayback = []
         let wv = WKWebView(frame: .zero, configuration: config)
         wv.isOpaque = false
         wv.backgroundColor = .black
