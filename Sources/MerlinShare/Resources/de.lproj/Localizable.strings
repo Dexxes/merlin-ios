@@ -69,6 +69,12 @@
 "articleReader.paywallSubscribeBanner.archiveButton" = "Archivieren";
 "articleReader.paywallSubscribeBanner.message" = "Dies ist ein Bezahlartikel. Merlin kann ihn nicht automatisch freischalten.";
 "articleReader.paywallSubscribeBanner.subscribeButton" = "Abo abschliessen";
+"articleReader.pdf.badge" = "PDF";
+"articleReader.pdf.encrypted" = "Diese PDF ist passwortgeschützt und kann hier nicht angezeigt werden.";
+"articleReader.pdf.failed" = "Die PDF konnte nicht geladen werden.";
+"articleReader.pdf.loading" = "PDF wird geladen…";
+"articleReader.pdf.openBrowser" = "Im Browser öffnen";
+"articleReader.pdf.retry" = "Erneut versuchen";
 "articleReader.shareLink.createButton" = "Freigabelink erstellen";
 "articleReader.shareLink.expiresOn" = "Läuft ab am";
 "articleReader.shareLink.explainer" = "Erstelle einen öffentlichen Link, um diesen Artikel mit anderen zu teilen – auch ohne Merlin-Konto.";
@@ -96,6 +102,12 @@
 "articleReader.sideMenu.share" = "Teilen…";
 "articleReader.sideMenu.startReadAloud" = "Vorlesen";
 "articleReader.sideMenu.stopReadAloud" = "Vorlesen stoppen";
+"articleReader.supportBox.both" = "Überlege, ein %@ abzuschließen oder zu %@.";
+"articleReader.supportBox.donateLabel" = "spenden";
+"articleReader.supportBox.donateOnly" = "Überlege, zu %@.";
+"articleReader.supportBox.subscribeLabel" = "Abo";
+"articleReader.supportBox.subscribeOnly" = "Überlege, ein %@ abzuschließen.";
+"articleReader.supportBox.title" = "Dir gefällt der Artikel von %@?";
 "articleReader.tagSheet.newTagPlaceholder" = "Neuen Tag erstellen…";
 "articleReader.tagSheet.title" = "Tags bearbeiten";
 "articleReader.ttsPanel.preparing" = "Audio wird vorbereitet …";
@@ -202,6 +214,8 @@
 "merlinServer.articleReader.pageTitle" = "Artikel – Merlin";
 "merlinServer.articleReader.passwordChangePlaceholder" = "Neues Passwort (leer = entfernen)";
 "merlinServer.articleReader.passwordNoProtectionPlaceholder" = "Passwort (leer = kein Schutz)";
+"merlinServer.articleReader.pdf.document" = "PDF-Dokument";
+"merlinServer.articleReader.pdf.open" = "PDF öffnen";
 "merlinServer.articleReader.regenerate" = "Regenerieren";
 "merlinServer.articleReader.removeFavorite" = "Aus Favoriten entfernen";
 "merlinServer.articleReader.removeHighlight" = "Markierung entfernen";

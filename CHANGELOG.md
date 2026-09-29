@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- PDF articles: a saved link to a PDF (server category `PDF`, or a URL ending in
+  `.pdf`) opens in the reader as the document itself. The server stores only
+  the URL; the app downloads the PDF from the source when the article is opened
+  (plain `URLSession`, never with the Merlin login), renders it page by page
+  inside the reader's scroll view (reading progress and position restore work
+  as for text articles) and keeps a local copy for offline reading
+  (`PDFCacheService`; pruned by the cache retention, on delete and by "Clear
+  Cache"). Lists show a PDF placeholder instead of the logo. Limitations: no
+  pinch zoom, text selection, highlights or read-aloud for PDFs;
+  password-protected PDFs show a notice with "Open in browser". Local file URLs
+  shared to the extension are ignored.
 - Support box in the reader: when the source has a subscription and/or donation
   page in its content filter (`supportBox` from `GET /articles/{id}`), a note
   "Enjoying this article from …? Consider taking out a subscription or making a

@@ -120,7 +120,7 @@ struct ArticleRowView: View {
                             NoImageView()
                         }
                     } else {
-                        NoImageView()
+                        NoImageView(isPDF: article.isPDF)
                     }
                 }
                 .frame(width: 72, height: 54)

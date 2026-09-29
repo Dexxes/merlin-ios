@@ -174,6 +174,15 @@ struct Article: Identifiable, Codable, Equatable {
         return URL(string: "https://icons.duckduckgo.com/ip3/\(host).ico")
     }
 
+    /// true für PDF-Artikel: der Server speichert nur die Quell-URL (`category == "PDF"`), die PDF wird beim
+    /// Öffnen von dort geladen (siehe `PDFArticleView`/`PDFCacheService`). Fallback auf die Endung `.pdf`
+    /// für Artikel, die ein älterer Server ohne Kategorie angelegt hat.
+    var isPDF: Bool {
+        if category == "PDF" { return true }
+        guard let path = URL(string: url)?.path else { return false }
+        return path.lowercased().hasSuffix(".pdf")
+    }
+
     /// Two articles are equal when they represent the same DB row AND none of
     /// the visible fields have changed since the last fetch.
     ///
