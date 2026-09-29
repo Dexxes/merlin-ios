@@ -521,6 +521,25 @@ actor MerlinAPI {
         return try await perform(req)
     }
 
+    // MARK: – Article media (audio/video source resolver)
+
+    /// Antwort von `GET /articles/{id}/media` (siehe `MediaController`/`MediaResolverService`).
+    /// `available == false`, wenn sich keine Quelle auflösen ließ - alle übrigen Felder fehlen dann.
+    struct MediaResponse: Decodable {
+        let available: Bool
+        let kind: String?
+        let delivery: String?
+        let variants: [VideoStreamVariant]?
+        let defaultIndex: Int?
+    }
+
+    /// Löst die Audio-/Video-Quelle eines Artikels auf (kurzlebige Mediathek-Streams und Artikel
+    /// ohne Medien-Marker im Content).
+    func getMedia(articleId: Int) async throws -> MediaResponse {
+        let req = try makeRequest("/articles/\(articleId)/media")
+        return try await perform(req)
+    }
+
     // MARK: – Settings
 
     /// Lädt alle Merlin-Einstellungen des aktuellen Nutzers vom Server.

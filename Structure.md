@@ -56,6 +56,8 @@ Zustandslose bzw. aktorbasierte Dienste, die Netzwerk, Authentifizierung, Cachin
 | `ReminderService.swift` | Verwaltet Artikel-Erinnerungen: persistiert sie als JSON (gleiches Muster wie `ArticleCacheService`) und plant/storniert lokale Benachrichtigungen über `UNUserNotificationCenter` (`UNCalendarNotificationTrigger`); fordert bei Bedarf Benachrichtigungs-Berechtigung an (`actor`) |
 | `ReportService.swift` | Sendet Artikel-Meldungen (URL + optionaler Kommentar) an das konfigurierbare `merlin-reports`-Backend; lädt die Backend-URL aus den Nextcloud-Settings (`reportBackendUrl`) und cacht sie bis `invalidateCache()` aufgerufen wird (`actor`) |
 | `PiperAudioService.swift` | **TTS-Engine**: lädt Audio vom Nextcloud-TTS-Endpunkt via `URLSession.bytes` (Streaming), schreibt 64-KB-Blöcke in eine Temp-Datei, startet AVPlayer nach 256 KB Puffer (≈ 32 s bei 64 kbps). Verwaltet Playback-State (`isPlaying`, `isPaused`, `elapsed`, `totalDuration`), Stall-Recovery-Timer und `refreshPlayerItem` für wachsende Dateien während des Downloads. Spracherkennung via `NLLanguageRecognizer` |
+| `AudioPlaybackService.swift` | **Artikel-Audio** (Datei/HLS): `AVPlayer`, Position pro Artikel + Tempo in `PreferencesStore`, Now-Playing/Remote-Commands, Unterbrechungen. Eine Instanz in `ArticleListView` |
+| `MediaMarker.swift` | Parser für den Medien-Marker (`div.merlin-media`) im Content, Auflösung der Audio-Quelle (Marker → `GET /articles/{id}/media`), Abtrennen des führenden Hero Images |
 
 ---
 

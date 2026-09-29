@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Audio articles: instead of the hero image plus a "Zum Audio" link, the reader
+  header now shows a native audio player with the hero image as cover and the
+  controls as an overlay (play/pause, scrubber with elapsed/remaining time,
+  back 15 s / forward 30 s, speed 0.75-2x, AirPlay, version picker when the
+  server offers several). The source comes from the article's media marker
+  (`div.merlin-media`) or `GET /articles/{id}/media`; the caption and tonal
+  steps move below the player. Playback continues in the background with
+  lock-screen / control-centre controls, a mini player in the article list
+  (tap to return to the article), and remembers position and speed. Starting
+  read-aloud pauses the audio and vice versa. Video articles and embeds are
+  unchanged.
 - PDF articles: a saved link to a PDF (server category `PDF`, or a URL ending in
   `.pdf`) opens in the reader as the document itself. The server stores only
   the URL; the app downloads the PDF from the source when the article is opened
