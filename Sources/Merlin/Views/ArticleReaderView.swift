@@ -3184,7 +3184,7 @@ struct ArticleReaderView: View {
             icon.alt=''; icon.referrerPolicy='no-referrer';
             // Inline-Stil schlägt die globalen img-Regeln (margin, max-width, height, border-radius);
             // align-self:stretch + height:auto macht die Spalte so hoch wie die Box.
-            icon.style.cssText='display:block;flex:none;align-self:stretch;width:6.5em;height:auto;max-width:6.5em;min-height:0;margin:0;padding:0.3em;box-sizing:border-box;object-fit:contain;border-radius:6px;';
+            icon.style.cssText='display:block;flex:none;align-self:stretch;width:4.5em;height:auto;max-width:4.5em;min-height:0;margin:0;padding:0.3em;box-sizing:border-box;object-fit:contain;border-radius:6px;';
             // Kaputtes/blockiertes Icon: weglassen, die Box bleibt vollständig.
             icon.addEventListener('error',function(){icon.remove();});
             icon.src=cfg.iconUrl;
