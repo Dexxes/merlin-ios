@@ -96,6 +96,12 @@
 "articleReader.sideMenu.share" = "Share…";
 "articleReader.sideMenu.startReadAloud" = "Read Aloud";
 "articleReader.sideMenu.stopReadAloud" = "Stop Reading Aloud";
+"articleReader.supportBox.both" = "Consider taking out a %@ or making a %@.";
+"articleReader.supportBox.donateLabel" = "donation";
+"articleReader.supportBox.donateOnly" = "Consider making a %@.";
+"articleReader.supportBox.subscribeLabel" = "subscription";
+"articleReader.supportBox.subscribeOnly" = "Consider taking out a %@.";
+"articleReader.supportBox.title" = "Enjoying this article from %@?";
 "articleReader.tagSheet.newTagPlaceholder" = "Create new tag…";
 "articleReader.tagSheet.title" = "Edit Tags";
 "articleReader.ttsPanel.preparing" = "Preparing audio…";

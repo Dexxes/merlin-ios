@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Support box in the reader: when the source has a subscription and/or donation
+  page in its content filter (`supportBox` from `GET /articles/{id}`), a note
+  "Enjoying this article from …? Consider taking out a subscription or making a
+  donation" links to them between two paragraphs, tinted with the accent
+  colour. Hidden when a subscription login is active for that site.
+
 ## [0.1.0] - 2026-08-25
 
 Initial public snapshot of the iOS client.
