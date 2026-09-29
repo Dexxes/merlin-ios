@@ -1249,7 +1249,11 @@ struct ArticleReaderView: View {
                                               posterURL: current.imageUrl.flatMap(URL.init(string:)))
                     }
 
-                    if let content = current.content, !content.isEmpty {
+                    if current.isPDF, let pdfURL = URL(string: current.url) {
+                        // PDF-Artikel: der Server speichert nur die URL; die PDF wird hier geladen und
+                        // seitenweise im äußeren ScrollView gerendert (Fortschritt/Restore bleiben so intakt).
+                        PDFArticleView(sourceURL: pdfURL, availableWidth: viewportWidth)
+                    } else if let content = current.content, !content.isEmpty {
                         ArticleWebView(
                             html: buildReaderHTML(content: content, fontSize: fontSize,
                                                   theme: theme, font: readerFont, lineHeight: lineHeight,
@@ -2142,27 +2146,30 @@ struct ArticleReaderView: View {
 
                 // TTS läuft über denselben Proxy-Endpunkt auf Nextcloud und
                 // merlin-server (siehe MerlinAPI.ttsStreamURL()).
-                menuRow(
-                    icon: piperTTS.hasContent ? "speaker.wave.2.fill" : "speaker.wave.2",
-                    label: piperTTS.hasContent ? L("articleReader.sideMenu.stopReadAloud") : L("articleReader.sideMenu.startReadAloud"),
-                    tint: piperTTS.hasContent ? .accentColor : readerFgColor
-                ) {
-                    if piperTTS.hasContent {
-                        piperTTS.stop()
-                    } else {
-                        let sampleText = current.excerpt ?? current.title
-                        let lang = PiperAudioService.detectLanguage(text: sampleText)
-                        let estimated = current.readingTime > 0
-                            ? Double(current.readingTime) * 60.0 * 0.7
-                            : nil
-                        piperTTS.start(articleId: current.id, lang: lang, estimatedSeconds: estimated)
+                // PDF-Artikel haben keinen Text (Vorlesen) und keine Schrift-/Theme-Einstellungen.
+                if !current.isPDF {
+                    menuRow(
+                        icon: piperTTS.hasContent ? "speaker.wave.2.fill" : "speaker.wave.2",
+                        label: piperTTS.hasContent ? L("articleReader.sideMenu.stopReadAloud") : L("articleReader.sideMenu.startReadAloud"),
+                        tint: piperTTS.hasContent ? .accentColor : readerFgColor
+                    ) {
+                        if piperTTS.hasContent {
+                            piperTTS.stop()
+                        } else {
+                            let sampleText = current.excerpt ?? current.title
+                            let lang = PiperAudioService.detectLanguage(text: sampleText)
+                            let estimated = current.readingTime > 0
+                                ? Double(current.readingTime) * 60.0 * 0.7
+                                : nil
+                            piperTTS.start(articleId: current.id, lang: lang, estimatedSeconds: estimated)
+                        }
+                        showSideMenu = false
                     }
-                    showSideMenu = false
-                }
 
-                menuRow(icon: "textformat.size", label: L("articleReader.sideMenu.appearance")) {
-                    showSideMenu = false
-                    showAppearance = true
+                    menuRow(icon: "textformat.size", label: L("articleReader.sideMenu.appearance")) {
+                        showSideMenu = false
+                        showAppearance = true
+                    }
                 }
 
                 menuDivider
@@ -2184,7 +2191,7 @@ struct ArticleReaderView: View {
                     let strippedURL = current.url
                         .replacingOccurrences(of: "https://", with: "")
                         .replacingOccurrences(of: "http://", with: "")
-                    if let archiveURL = URL(string: "https://archive.ph/" + strippedURL) {
+                    if !current.isPDF, let archiveURL = URL(string: "https://archive.ph/" + strippedURL) {
                         menuRow(icon: "globe", label: L("articleReader.sideMenu.openViaArchive")) {
                             showSideMenu = false
                             UIApplication.shared.open(archiveURL)

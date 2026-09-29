@@ -469,6 +469,7 @@ struct SettingsView: View {
         Task {
             await ArticleCacheService.shared.clear()
             await ImageCacheService.shared.clear()
+            await PDFCacheService.shared.clear()
             await HighlightCacheService.shared.clear()
             await loadStorageUsage()
         }

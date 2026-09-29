@@ -125,7 +125,10 @@ final class ArticlesViewModel {
 
     init() {
         // Evict stale cache entries (archived > 24 h ago) once per app launch.
-        Task { await ArticleCacheService.shared.evict() }
+        Task {
+            await ArticleCacheService.shared.evict()
+            await PDFCacheService.shared.prune(olderThanDays: PreferencesStore.shared.cacheRetentionDays)
+        }
         // Retroactively prefetch images for all currently cached unread articles
         // so offline reading works immediately, even for articles from prior sessions.
         Task.detached(priority: .background) {
@@ -567,6 +570,9 @@ final class ArticlesViewModel {
             try await MerlinAPI.shared.deleteArticle(article.id)
             await ArticleCacheService.shared.remove(id: article.id)
             await ImageCacheService.shared.evict(articleId: article.id)
+            if article.isPDF, let pdfURL = URL(string: article.url) {
+                await PDFCacheService.shared.remove(pdfURL)
+            }
             await refreshCounts()
         } catch {
             if isNetworkError(error) {

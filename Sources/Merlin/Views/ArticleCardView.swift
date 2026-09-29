@@ -602,6 +602,6 @@ struct ArticleCardView: View {
     }
 
     private var cardPlaceholder: some View {
-        NoImageView()
+        NoImageView(isPDF: article.isPDF)
     }
 }
