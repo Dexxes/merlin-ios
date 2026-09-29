@@ -3075,7 +3075,15 @@ struct ArticleReaderView: View {
 
         return "(function(cfg){" + #"""
           var old=document.querySelector('merlin-support-box'); if(old) old.remove();
-          var ps=Array.prototype.filter.call(document.body.children,function(e){return e.tagName==='P'&&e.textContent.trim()!=='';});
+          // Readability liefert den Text meist in einem äußeren <div>/<article>: Container mit den
+          // meisten direkten <p>-Kindern wählen (ggf. <body>), nicht in Zitaten/Listen/Figures/Infoboxen.
+          var ps=[];
+          var cs=[document.body].concat(Array.prototype.slice.call(document.body.querySelectorAll('div,section,article,main')));
+          cs.forEach(function(c){
+            if(c!==document.body&&c.closest('blockquote,figure,ul,ol,table,aside,.merlin-infobox,merlin-support-box'))return;
+            var list=Array.prototype.filter.call(c.children,function(e){return e.tagName==='P'&&e.textContent.trim()!=='';});
+            if(list.length>ps.length)ps=list;
+          });
           if(ps.length<4) return;
           var h=0x811c9dc5>>>0, s=cfg.seed;
           for(var i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,0x01000193);}
