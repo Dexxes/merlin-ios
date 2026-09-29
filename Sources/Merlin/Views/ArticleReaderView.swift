@@ -1226,6 +1226,24 @@ struct ArticleReaderView: View {
         viewModel.articles.first { $0.id == article.id } ?? article
     }
 
+    /// Fasst alle Einstellungen zusammen, die die Reader-HTML neu laden lassen.
+    private var appearanceKey: String {
+        "\(fontSize)|\(theme.rawValue)|\(readerFont.rawValue)|\(lineHeight)"
+    }
+
+    /// Inline-Player exakt über der angetippten Vorschaukarte. Der WebView scrollt nicht
+    /// selbst, das Overlay scrollt also mit dem Artikel mit. Als eigene Property, damit
+    /// `body` für den Type-Checker klein genug bleibt.
+    @ViewBuilder
+    private var youtubeOverlay: some View {
+        if let yps = youtubePlayerState {
+            YouTubePlayerView(state: yps)
+                .frame(width: yps.rect.width, height: yps.rect.height)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .offset(x: yps.rect.minX, y: yps.rect.minY)
+        }
+    }
+
     // MARK: – Highlight toolbar show/hide
     //
     // `selectionToolbar` is intentionally NOT set back to nil the moment the
@@ -1340,14 +1358,7 @@ struct ArticleReaderView: View {
                         .frame(height: max(300, webViewHeight))
                         // Inline-Player exakt über der angetippten Vorschaukarte. Der WebView
                         // scrollt nicht selbst, das Overlay scrollt also mit dem Artikel mit.
-                        .overlay(alignment: .topLeading) {
-                            if let yps = youtubePlayerState {
-                                YouTubePlayerView(state: yps)
-                                    .frame(width: yps.rect.width, height: yps.rect.height)
-                                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                                    .offset(x: yps.rect.minX, y: yps.rect.minY)
-                            }
-                        }
+                        .overlay(alignment: .topLeading) { youtubeOverlay }
                         .onGeometryChange(for: CGRect.self) { geo in
                             geo.frame(in: .global)
                         } action: { _, frame in
@@ -1632,10 +1643,7 @@ struct ArticleReaderView: View {
         }
         // Geänderte Darstellung lädt die Reader-HTML neu; die JS-Referenz auf die aktive
         // YouTube-Karte geht dabei verloren, das Overlay hätte keine Position mehr.
-        .onChange(of: fontSize)   { _, _ in youtubePlayerState = nil }
-        .onChange(of: theme)      { _, _ in youtubePlayerState = nil }
-        .onChange(of: readerFont) { _, _ in youtubePlayerState = nil }
-        .onChange(of: lineHeight) { _, _ in youtubePlayerState = nil }
+        .onChange(of: appearanceKey) { _, _ in youtubePlayerState = nil }
         .sheet(isPresented: $showAppearance) {
             AppearanceSheet(fontSize: $fontSize, theme: $theme, readerFont: $readerFont, lineHeight: $lineHeight,
                             onAccentColorChange: { pushAppearanceToServer() })
