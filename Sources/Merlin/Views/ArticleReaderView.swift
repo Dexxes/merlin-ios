@@ -315,25 +315,52 @@ private let merlinImageTapJS: String = #"""
 // MARK: – YouTube placeholder tap JS
 //
 // Tapping the thumbnail card rewriteYouTubeEmbeds() left in place of the
-// original <iframe> posts the video id (+ optional start time) to Swift,
-// which presents a native fullScreenCover with its own top-level WKWebView
-// navigation — see YouTubePlayerView.swift for why that's necessary
-// (nesting the YouTube iframe inside THIS file://-origin page instead was
-// tried first and silently failed: WKWebView doesn't reliably honour CSP
-// frame-ancestors for a file:// parent, and even a permissive frame-ancestors
-// left the frame blank instead of erroring).
+// original <iframe> posts the video id (+ optional start time) and the card's
+// rect to Swift, which lays a native WKWebView (top-level navigation, see
+// YouTubePlayerView.swift) exactly over the card — so the video plays inline
+// in the reader (nesting the YouTube iframe inside THIS file://-origin page
+// instead was tried first and silently failed: WKWebView doesn't reliably
+// honour CSP frame-ancestors for a file:// parent, and even a permissive
+// frame-ancestors left the frame blank instead of erroring).
+//
+// The card keeps reserving the space. While a card is active, layout changes
+// (font size, late-loading images, rotation) re-post its rect as `youtubeRect`
+// so the native overlay follows it. The WebView itself never scrolls, so the
+// rect is document-absolute, which is also its position inside the WebView.
 private let merlinYoutubeTapJS: String = #"""
 (function(){
+  var active=null;
+  function rectOf(card){
+    var r=card.getBoundingClientRect();
+    return {x:r.left+window.scrollX,y:r.top+window.scrollY,w:r.width,h:r.height};
+  }
+  function report(){
+    if(!active)return;
+    var r=rectOf(active);
+    window.webkit.messageHandlers.youtubeRect.postMessage(r);
+  }
   document.querySelectorAll('.merlin-yt-embed').forEach(function(card){
     card.addEventListener('click',function(e){
       e.stopPropagation();
       e.preventDefault();
+      active=card;
+      var r=rectOf(card);
       window.webkit.messageHandlers.youtubeTap.postMessage({
         id: card.dataset.ytId || '',
-        start: card.dataset.ytStart || ''
+        start: card.dataset.ytStart || '',
+        x:r.x,y:r.y,w:r.w,h:r.h
       });
     });
   });
+  var last='';
+  new ResizeObserver(function(){
+    if(!active)return;
+    var r=rectOf(active), key=[r.x,r.y,r.w,r.h].join(',');
+    if(key===last)return;
+    last=key;
+    report();
+  }).observe(document.body);
+  window.addEventListener('resize',report);
 })();
 """#
 
@@ -665,8 +692,11 @@ struct ArticleWebView: UIViewRepresentable {
     /// Called when the user taps an image; delivers tapped index + all src URLs.
     var onImageTapped:  ((Int, [String]) -> Void)?  = nil
     /// Called when the user taps a YouTube placeholder card; delivers the
-    /// video id and an optional start-time in seconds (both from rewriteYouTubeEmbeds).
-    var onYouTubeTapped: ((String, Int?) -> Void)?  = nil
+    /// video id, an optional start-time in seconds (both from rewriteYouTubeEmbeds)
+    /// and the card's frame in the WebView's coordinate space.
+    var onYouTubeTapped: ((String, Int?, CGRect) -> Void)?  = nil
+    /// Called when the active YouTube card moved/resized after layout changes.
+    var onYouTubeRectChanged: ((CGRect) -> Void)?   = nil
     /// Called when the text selection settles. `rect` is in the WebView's own
     /// (document-absolute, non-scrolling) coordinate space — see the comment
     /// on `scrollOffset` below for why. The SwiftUI layer adds this WebView's
@@ -711,6 +741,8 @@ struct ArticleWebView: UIViewRepresentable {
         config.userContentController.add(
             WeakMessageHandler(context.coordinator), name: "youtubeTap")
         config.userContentController.add(
+            WeakMessageHandler(context.coordinator), name: "youtubeRect")
+        config.userContentController.add(
             WeakMessageHandler(context.coordinator), name: "selectionToolbar")
         let wv = WKWebView(frame: .zero, configuration: config)
         // Scrolling is handled by the outer SwiftUI ScrollView.
@@ -734,6 +766,7 @@ struct ArticleWebView: UIViewRepresentable {
         context.coordinator.onHeightChange    = onHeightChange
         context.coordinator.onImageTapped     = onImageTapped
         context.coordinator.onYouTubeTapped   = onYouTubeTapped
+        context.coordinator.onYouTubeRectChanged = onYouTubeRectChanged
         context.coordinator.onSelectionChanged = onSelectionChanged
         context.coordinator.onSelectionCleared = onSelectionCleared
         context.coordinator.articleId         = articleId
@@ -786,7 +819,8 @@ struct ArticleWebView: UIViewRepresentable {
         var onToggleUI:     (() -> Void)?
         var onHeightChange: ((CGFloat) -> Void)?
         var onImageTapped:  ((Int, [String]) -> Void)?
-        var onYouTubeTapped: ((String, Int?) -> Void)?
+        var onYouTubeTapped: ((String, Int?, CGRect) -> Void)?
+        var onYouTubeRectChanged: ((CGRect) -> Void)?
         var onSelectionChanged: ((CGRect, Bool) -> Void)?
         var onSelectionCleared: (() -> Void)?
         var lastScrollOffset: CGFloat = 0
@@ -794,6 +828,16 @@ weak var webView:   WKWebView?
 
         init(articleId: Int) {
             self.articleId = articleId
+        }
+
+        /// Liest {x,y,w,h} (Zahlen, CSS-px = Punkte) aus einer JS-Nachricht.
+        private static func rect(from body: [String: Any]) -> CGRect? {
+            guard let x = (body["x"] as? NSNumber)?.doubleValue,
+                  let y = (body["y"] as? NSNumber)?.doubleValue,
+                  let w = (body["w"] as? NSNumber)?.doubleValue,
+                  let h = (body["h"] as? NSNumber)?.doubleValue,
+                  w > 0, h > 0 else { return nil }
+            return CGRect(x: x, y: y, width: w, height: h)
         }
 
         /// Führt `supportBoxScript` genau einmal je Seitenladung aus (das Skript ist idempotent, das Flag
@@ -830,7 +874,15 @@ weak var webView:   WKWebView?
                let body = message.body as? [String: Any],
                let id   = body["id"] as? String, !id.isEmpty {
                 let start = (body["start"] as? String).flatMap { Int($0) }
-                DispatchQueue.main.async { [weak self] in self?.onYouTubeTapped?(id, start) }
+                guard let rect = Self.rect(from: body) else { return }
+                DispatchQueue.main.async { [weak self] in self?.onYouTubeTapped?(id, start, rect) }
+                return
+            }
+
+            if message.name == "youtubeRect",
+               let body = message.body as? [String: Any],
+               let rect = Self.rect(from: body) {
+                DispatchQueue.main.async { [weak self] in self?.onYouTubeRectChanged?(rect) }
                 return
             }
 
@@ -1260,8 +1312,11 @@ struct ArticleReaderView: View {
                             onImageTapped:  { idx, srcs in
                                 lightboxState = LightboxState(initialIndex: idx, imageURLs: srcs)
                             },
-                            onYouTubeTapped: { videoId, start in
-                                youtubePlayerState = YouTubePlayerState(videoId: videoId, startSeconds: start)
+                            onYouTubeTapped: { videoId, start, rect in
+                                youtubePlayerState = YouTubePlayerState(videoId: videoId, startSeconds: start, rect: rect)
+                            },
+                            onYouTubeRectChanged: { rect in
+                                youtubePlayerState?.rect = rect
                             },
                             onSelectionChanged: { rect, hasHighlight in
                                 let screenRect = CGRect(
@@ -1283,6 +1338,16 @@ struct ArticleReaderView: View {
                             supportBoxScript: supportBox.flatMap { Self.supportBoxScript(for: $0, seed: current.id) }
                         )
                         .frame(height: max(300, webViewHeight))
+                        // Inline-Player exakt über der angetippten Vorschaukarte. Der WebView
+                        // scrollt nicht selbst, das Overlay scrollt also mit dem Artikel mit.
+                        .overlay(alignment: .topLeading) {
+                            if let yps = youtubePlayerState {
+                                YouTubePlayerView(state: yps)
+                                    .frame(width: yps.rect.width, height: yps.rect.height)
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                                    .offset(x: yps.rect.minX, y: yps.rect.minY)
+                            }
+                        }
                         .onGeometryChange(for: CGRect.self) { geo in
                             geo.frame(in: .global)
                         } action: { _, frame in
@@ -1565,6 +1630,12 @@ struct ArticleReaderView: View {
         .onChange(of: piperTTS.hasContent) { _, hasContent in
             if hasContent { isAudioPlayerMinimized = false }
         }
+        // Geänderte Darstellung lädt die Reader-HTML neu; die JS-Referenz auf die aktive
+        // YouTube-Karte geht dabei verloren, das Overlay hätte keine Position mehr.
+        .onChange(of: fontSize)   { _, _ in youtubePlayerState = nil }
+        .onChange(of: theme)      { _, _ in youtubePlayerState = nil }
+        .onChange(of: readerFont) { _, _ in youtubePlayerState = nil }
+        .onChange(of: lineHeight) { _, _ in youtubePlayerState = nil }
         .sheet(isPresented: $showAppearance) {
             AppearanceSheet(fontSize: $fontSize, theme: $theme, readerFont: $readerFont, lineHeight: $lineHeight,
                             onAccentColorChange: { pushAppearanceToServer() })
@@ -1573,10 +1644,6 @@ struct ArticleReaderView: View {
         }
         .fullScreenCover(item: $lightboxState) { ls in
             ImageLightboxView(state: ls) { lightboxState = nil }
-                .background(Color.black)
-        }
-        .fullScreenCover(item: $youtubePlayerState) { yps in
-            YouTubePlayerView(state: yps) { youtubePlayerState = nil }
                 .background(Color.black)
         }
         .onChange(of: fontSize)    { _, v in
@@ -2854,10 +2921,10 @@ struct ArticleReaderView: View {
     /// Ersetzt jedes `<iframe src="https://[www.]youtube[-nocookie].com/embed/ID…">`
     /// durch eine tippbare Vorschau-Karte (`.merlin-yt-embed`, Thumbnail +
     /// Play-Button); `merlinYoutubeTapJS` postet einen `youtubeTap`-Message an
-    /// Swift, das darauf mit einem `fullScreenCover` (`YouTubePlayerView`)
-    /// reagiert.
+    /// Swift, das darauf mit einem nativen Inline-Player (`YouTubePlayerView`)
+    /// als Overlay exakt über der Karte reagiert.
     ///
-    /// Grund für den Umweg über eine native Sheet-Präsentation statt eines
+    /// Grund für den Umweg über eine native WebView statt eines
     /// direkten iframes: Dieser Reader lädt den Artikel-Inhalt über
     /// `loadFileURL` (siehe `updateUIView` oben) – eine `file://`-Origin. Ein
     /// naiv eingebettetes YouTube-`<iframe>` bricht darin mit "Error 153"
