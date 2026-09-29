@@ -3102,19 +3102,22 @@ struct ArticleReaderView: View {
             icon.alt=''; icon.referrerPolicy='no-referrer';
             // Inline-Stil schlägt die globalen img-Regeln (margin, max-width, height, border-radius);
             // align-self:stretch + height:auto macht die Spalte so hoch wie die Box.
-            icon.style.cssText='display:block;flex:none;align-self:stretch;width:3.5em;height:auto;max-width:3.5em;min-height:0;margin:0;padding:0.3em;box-sizing:border-box;object-fit:contain;border-radius:6px;background:#fff;';
+            icon.style.cssText='display:block;flex:none;align-self:stretch;width:6.5em;height:auto;max-width:6.5em;min-height:0;margin:0;padding:0.3em;box-sizing:border-box;object-fit:contain;border-radius:6px;';
             // Kaputtes/blockiertes Icon: weglassen, die Box bleibt vollständig.
             icon.addEventListener('error',function(){icon.remove();});
             icon.src=cfg.iconUrl;
             box.appendChild(icon);
           }
           var body=document.createElement('div');
-          body.style.cssText='flex:1;min-width:0;';
+          // Text in der rechten Spalte vertikal zentriert (Flex-Spalte statt align-content, das für
+          // Block-Container erst in neueren WebKit-Versionen greift), ohne Absatzabstände.
+          body.style.cssText='flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;';
           var title=document.createElement('div');
-          title.style.cssText='font-weight:600;margin:0 0 0.25em;';
+          title.style.cssText='font-weight:600;margin:0;';
           title.textContent=cfg.title;
           body.appendChild(title);
           var text=document.createElement('div');
+          text.style.cssText='margin:0;';
           var parts=cfg.template.split('%@');
           for(var j=0;j<parts.length;j++){
             if(parts[j]) text.appendChild(document.createTextNode(parts[j]));
