@@ -688,6 +688,10 @@ struct ArticleWebView: UIViewRepresentable {
     /// menu and falls back to an oversized, top-docked, unanchored menu. We
     /// watch this to collapse the selection before that can happen.
     var scrollOffset:   CGFloat                     = 0
+    /// JS, das die Support-Infobox zwischen zwei Absätze setzt. Bewusst NICHT Teil von `html`: käme sie
+    /// über den HTML-String, würde deren spätes Eintreffen (Einzelabruf) die Seite neu laden und
+    /// Scrollposition/Highlights zurücksetzen. Wird nach dem Laden bzw. bei Änderung direkt ausgeführt.
+    var supportBoxScript: String? = nil
 
     func makeCoordinator() -> Coordinator {
         Coordinator(articleId: articleId)
@@ -745,9 +749,15 @@ struct ArticleWebView: UIViewRepresentable {
                 "window.merlinCollapseSelectionForScroll && window.merlinCollapseSelectionForScroll()")
         }
 
+        context.coordinator.supportBoxScript = supportBoxScript
+        context.coordinator.applySupportBoxIfReady(to: webView)
+
         let newHash = html.hashValue
         guard context.coordinator.loadedHTMLHash != newHash else { return }
         context.coordinator.loadedHTMLHash = newHash
+        // Neue Seite: die Box muss nach deren didFinish erneut gesetzt werden.
+        context.coordinator.pageLoaded = false
+        context.coordinator.appliedSupportBoxScript = nil
 
         // Write the HTML to a file inside the image-cache directory so that
         // loadFileURL(allowingReadAccessTo:) grants WKWebView read access to
@@ -769,6 +779,9 @@ struct ArticleWebView: UIViewRepresentable {
     class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler, WKUIDelegate {
         var articleId:      Int
         var loadedHTMLHash: Int    = 0
+        var supportBoxScript: String?
+        var appliedSupportBoxScript: String?
+        var pageLoaded = false
         var onLinkTapped:   ((URL) -> Void)?
         var onToggleUI:     (() -> Void)?
         var onHeightChange: ((CGFloat) -> Void)?
@@ -781,6 +794,14 @@ weak var webView:   WKWebView?
 
         init(articleId: Int) {
             self.articleId = articleId
+        }
+
+        /// Führt `supportBoxScript` genau einmal je Seitenladung aus (das Skript ist idempotent, das Flag
+        /// spart nur redundante evaluateJavaScript-Aufrufe bei jedem SwiftUI-Update).
+        func applySupportBoxIfReady(to webView: WKWebView) {
+            guard pageLoaded, let script = supportBoxScript, script != appliedSupportBoxScript else { return }
+            appliedSupportBoxScript = script
+            webView.evaluateJavaScript(script, completionHandler: nil)
         }
 
         // MARK: WKScriptMessageHandler – highlight + toggleUI messages from JS
@@ -939,6 +960,8 @@ guard message.name == "highlights",
         // Page load complete: restore saved highlights.
         // Height is reported exclusively by the ResizeObserver injected in buildReaderHTML.
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            pageLoaded = true
+            applySupportBoxIfReady(to: webView)
             let aid = articleId
             Task { [weak self, weak webView] in
                 guard self != nil else { return }
@@ -1139,6 +1162,8 @@ struct ArticleReaderView: View {
     /// Lokal (nicht persistiert) — Nutzer hat den generischen Bezahlartikel-Hinweis (`isPaywalled`,
     /// Domain OHNE Login-Unterstützung, siehe PaywallSubscribeBanner) für diese Ansicht weggewischt.
     @State private var paywallSubscribeBannerDismissed = false
+    /// Abo-/Spendenlink der Quelle für die Infobox im Text; kommt nur vom Einzelabruf, nicht aus der Liste.
+    @State private var supportBox: SupportBox?
     /// Verbindet bottomBar + Piper-Panel zu einer einzigen Liquid-Glass-Form
     /// (ab iOS 26 – siehe `ReaderBarGlassBackground`).
     @Namespace private var bottomGlassNamespace
@@ -1255,6 +1280,7 @@ struct ArticleReaderView: View {
                             },
                             actionHandler: highlightActions,
                             scrollOffset: scrollOffset,
+                            supportBoxScript: supportBox.flatMap { Self.supportBoxScript(for: $0, seed: current.id) }
                         )
                         .frame(height: max(300, webViewHeight))
                         .onGeometryChange(for: CGRect.self) { geo in
@@ -1641,6 +1667,11 @@ struct ArticleReaderView: View {
         // ── Bilder nachladen, die der Hintergrund-Prefetch verpasst hat ─────
         .task(id: current.id) {
             await fetchMissingContentImages()
+        }
+        // ── Support-Infobox (Abo-/Spendenlink) ──────────────────────────────
+        .task(id: current.id) {
+            supportBox = nil
+            supportBox = (try? await MerlinAPI.shared.getArticle(current.id))?.supportBox
         }
         // ── Erinnerungen ───────────────────────────────────────────────────
         .task {
@@ -2992,6 +3023,85 @@ struct ArticleReaderView: View {
                 slots -= 1
             }
         }
+    }
+
+    // MARK: – Support-Infobox
+
+    /// JS für die Support-Infobox ("Dir gefällt der Artikel von …? Überlege ein Abo abzuschließen oder zu
+    /// spenden"), gleiche Platzierungslogik wie `insertSupportBox` im Nextcloud-Web-Reader: nach einem
+    /// pseudo-zufälligen Top-Level-`<p>` (Seed = Artikel-ID, damit die Position stabil bleibt), nur ab
+    /// 4 Absätzen. Als eigenes Element `<merlin-support-box>` gesetzt: der XPath-Zähler der Highlights
+    /// (`getXPath`) zählt Geschwister je Tag-Name, ein unbekannter Tag verschiebt daher keinen Index
+    /// des Artikeltextes und Highlights lösen weiter plattformübergreifend gleich auf.
+    static func supportBoxScript(for box: SupportBox, seed: Int) -> String? {
+        func httpURL(_ s: String?) -> String? {
+            guard let s, let u = URL(string: s), let scheme = u.scheme?.lowercased(),
+                  scheme == "http" || scheme == "https" else { return nil }
+            return u.absoluteString
+        }
+        let subscribeURL = httpURL(box.subscribeUrl)
+        let donationsURL = httpURL(box.donationsUrl)
+        guard subscribeURL != nil || donationsURL != nil else { return nil }
+
+        // Reihenfolge der Links = Reihenfolge der %@ in der Vorlage (Abo vor Spende, in DE und EN gleich).
+        let links: [[String: String]]
+        let template: String
+        switch (subscribeURL, donationsURL) {
+        case let (.some(sub), .some(don)):
+            template = L("articleReader.supportBox.both")
+            links = [["href": sub, "label": L("articleReader.supportBox.subscribeLabel")],
+                     ["href": don, "label": L("articleReader.supportBox.donateLabel")]]
+        case let (.some(sub), .none):
+            template = L("articleReader.supportBox.subscribeOnly")
+            links = [["href": sub, "label": L("articleReader.supportBox.subscribeLabel")]]
+        case let (.none, .some(don)):
+            template = L("articleReader.supportBox.donateOnly")
+            links = [["href": don, "label": L("articleReader.supportBox.donateLabel")]]
+        default:
+            return nil
+        }
+
+        let accent = box.accentColor.range(of: "^#[0-9a-fA-F]{6}$", options: .regularExpression) != nil
+            ? box.accentColor : "#FF3B30"
+        let config: [String: Any] = [
+            "seed": String(seed),
+            "accent": accent,
+            "title": String(format: L("articleReader.supportBox.title"), box.siteName),
+            "template": template,
+            "links": links,
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: config),
+              let json = String(data: data, encoding: .utf8) else { return nil }
+
+        return "(function(cfg){" + #"""
+          var old=document.querySelector('merlin-support-box'); if(old) old.remove();
+          var ps=Array.prototype.filter.call(document.body.children,function(e){return e.tagName==='P'&&e.textContent.trim()!=='';});
+          if(ps.length<4) return;
+          var h=0x811c9dc5>>>0, s=cfg.seed;
+          for(var i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,0x01000193);}
+          var idx=1+((h>>>0)%(ps.length-2));
+          var box=document.createElement('merlin-support-box');
+          box.setAttribute('role','note');
+          box.style.cssText='display:block;margin:1.5em 0;padding:0.85em 1em;border-left:4px solid '+cfg.accent+';border-radius:0 8px 8px 0;background:rgba(128,128,128,0.1);background:color-mix(in srgb,'+cfg.accent+' 12%,transparent);font-size:0.93em;line-height:1.6;-webkit-user-select:none;user-select:none;';
+          var title=document.createElement('div');
+          title.style.cssText='font-weight:600;margin:0 0 0.25em;';
+          title.textContent=cfg.title;
+          box.appendChild(title);
+          var text=document.createElement('div');
+          var parts=cfg.template.split('%@');
+          for(var j=0;j<parts.length;j++){
+            if(parts[j]) text.appendChild(document.createTextNode(parts[j]));
+            var l=cfg.links[j];
+            if(j<parts.length-1 && l){
+              var a=document.createElement('a');
+              a.href=l.href; a.textContent=l.label;
+              a.style.cssText='color:inherit;font-weight:600;text-decoration:underline;text-decoration-color:'+cfg.accent+';text-decoration-thickness:2px;text-underline-offset:2px;';
+              text.appendChild(a);
+            }
+          }
+          box.appendChild(text);
+          ps[idx].after(box);
+        """# + "})(" + json + ");"
     }
 
     // MARK: – HTML builder

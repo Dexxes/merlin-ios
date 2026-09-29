@@ -1,5 +1,15 @@
 import Foundation
 
+/// Daten der Support-Infobox (Abo-/Spendenlink der Quelle) aus `GET /articles/{id}`. Fehlt (nil), wenn die
+/// Domain weder Abo- noch Spenden-URL hinterlegt hat oder der Nutzer dort einen aktiven Abo-Login hat.
+struct SupportBox: Codable, Equatable {
+    var siteName: String
+    var subscribeUrl: String?
+    var donationsUrl: String?
+    /// Akzentfarbe des Nutzers (`#RRGGBB`), wie sie der Server aus den Einstellungen kennt.
+    var accentColor: String
+}
+
 struct Article: Identifiable, Codable, Equatable {
     let id: Int
     var url: String
@@ -48,6 +58,9 @@ struct Article: Identifiable, Codable, Equatable {
     /// scrapbaren Artikeltext (reine JS-SPA/Bild-Viewer) - anders als bei requiresLoginDomain gibt es hier
     /// keinen Login, der das beheben könnte, der Reader zeigt nur einen erklärenden Hinweis statt Retry.
     var unsupportedSiteDomain: String?
+    /// Nur in der Einzelabruf-Antwort (`getArticle`) gesetzt, nicht in Listen; wird bewusst nicht in den
+    /// Offline-Cache geschrieben (der Login-Status des Nutzers kann sich ändern), siehe `encode(to:)`.
+    var supportBox: SupportBox?
 
     enum CodingKeys: String, CodingKey {
         case id, url, title, content, excerpt, author, siteName, imageUrl
@@ -56,6 +69,7 @@ struct Article: Identifiable, Codable, Equatable {
         case requiresLoginDomain, requiresLoginPage
         case isPaywalled, paywallSubscribeUrl
         case unsupportedSiteDomain
+        case supportBox
     }
 
     init(from decoder: Decoder) throws {
@@ -85,6 +99,7 @@ struct Article: Identifiable, Codable, Equatable {
         isPaywalled = (try? c.decodeIfPresent(Bool.self, forKey: .isPaywalled)) ?? false
         paywallSubscribeUrl = try c.decodeIfPresent(String.self, forKey: .paywallSubscribeUrl)
         unsupportedSiteDomain = try c.decodeIfPresent(String.self, forKey: .unsupportedSiteDomain)
+        supportBox = try? c.decodeIfPresent(SupportBox.self, forKey: .supportBox)
 
         // isFavorite kommt vom Server entweder als `false` (nicht favorisiert)
         // oder als ISO8601-String (Favorisierungszeitpunkt) – kein Bool-Only-Feld.
