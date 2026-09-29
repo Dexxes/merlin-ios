@@ -286,6 +286,7 @@ private let merlinImageTapJS: String = #"""
   function wire(img,getAll){
     if(img.dataset.merlinTap)return;
     if(img.closest('.merlin-yt-embed'))return; // Thumbnail eines YouTube-Platzhalters — eigene Handhabung in merlinYoutubeTapJS
+    if(img.closest('merlin-support-box'))return; // Icon der Support-Infobox: kein Artikelbild, keine Lightbox
     img.dataset.merlinTap='1';
     img.style.cursor='pointer';
     img.addEventListener('click',function(e){
@@ -298,7 +299,7 @@ private let merlinImageTapJS: String = #"""
       window.webkit.messageHandlers.imageTap.postMessage({index:idx,srcs:srcs});
     });
   }
-  function all(){return Array.from(document.querySelectorAll('img')).filter(function(i){return !i.closest('.merlin-yt-embed');});}
+  function all(){return Array.from(document.querySelectorAll('img')).filter(function(i){return !i.closest('.merlin-yt-embed')&&!i.closest('merlin-support-box');});}
   all().forEach(function(img){wire(img,all);});
   new MutationObserver(function(ms){
     ms.forEach(function(m){
@@ -396,6 +397,7 @@ private let merlinDebugJS: String = #"""
 
   function addPanel(img){
     if(img.dataset.merlinDbg)return;
+    if(img.closest('merlin-support-box'))return; // Icon der Support-Infobox: kein Artikelbild
     img.dataset.merlinDbg='1';
     var wrap=document.createElement('div');
     wrap.className='mdbg-wrap';
@@ -3145,13 +3147,15 @@ struct ArticleReaderView: View {
 
         let accent = box.accentColor.range(of: "^#[0-9a-fA-F]{6}$", options: .regularExpression) != nil
             ? box.accentColor : "#FF3B30"
-        let config: [String: Any] = [
+        var config: [String: Any] = [
             "seed": String(seed),
             "accent": accent,
             "title": String(format: L("articleReader.supportBox.title"), box.siteName),
             "template": template,
             "links": links,
         ]
+        // Icon der konkreten Artikelseite; nur http(s), sonst fehlt der Schlüssel (kein Icon).
+        if let iconURL = httpURL(box.iconUrl) { config["iconUrl"] = iconURL }
         guard let data = try? JSONSerialization.data(withJSONObject: config),
               let json = String(data: data, encoding: .utf8) else { return nil }
 
@@ -3172,12 +3176,30 @@ struct ArticleReaderView: View {
           var idx=1+((h>>>0)%(ps.length-2));
           var box=document.createElement('merlin-support-box');
           box.setAttribute('role','note');
-          box.style.cssText='display:block;margin:1.5em 0;padding:0.85em 1em;border-left:4px solid '+cfg.accent+';border-radius:0 8px 8px 0;background:rgba(128,128,128,0.1);background:color-mix(in srgb,'+cfg.accent+' 12%,transparent);font-size:0.93em;line-height:1.6;-webkit-user-select:none;user-select:none;';
+          box.style.cssText='display:flex;align-items:stretch;gap:0.9em;margin:1.5em 0;padding:0.85em 1em;border-left:4px solid '+cfg.accent+';border-radius:0 8px 8px 0;background:rgba(128,128,128,0.1);background:color-mix(in srgb,'+cfg.accent+' 12%,transparent);font-size:0.93em;line-height:1.6;-webkit-user-select:none;user-select:none;';
+          // Zwei Spalten: links das Icon der Seite über die volle Höhe der Box (fehlt es, entfällt die
+          // Spalte), rechts Titel und Satz.
+          if(cfg.iconUrl){
+            var icon=document.createElement('img');
+            icon.alt=''; icon.referrerPolicy='no-referrer';
+            // Inline-Stil schlägt die globalen img-Regeln (margin, max-width, height, border-radius);
+            // align-self:stretch + height:auto macht die Spalte so hoch wie die Box.
+            icon.style.cssText='display:block;flex:none;align-self:stretch;width:6.5em;height:auto;max-width:6.5em;min-height:0;margin:0;padding:0.3em;box-sizing:border-box;object-fit:contain;border-radius:6px;';
+            // Kaputtes/blockiertes Icon: weglassen, die Box bleibt vollständig.
+            icon.addEventListener('error',function(){icon.remove();});
+            icon.src=cfg.iconUrl;
+            box.appendChild(icon);
+          }
+          var body=document.createElement('div');
+          // Text in der rechten Spalte vertikal zentriert (Flex-Spalte statt align-content, das für
+          // Block-Container erst in neueren WebKit-Versionen greift), ohne Absatzabstände.
+          body.style.cssText='flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;';
           var title=document.createElement('div');
-          title.style.cssText='font-weight:600;margin:0 0 0.25em;';
+          title.style.cssText='font-weight:600;margin:0;';
           title.textContent=cfg.title;
-          box.appendChild(title);
+          body.appendChild(title);
           var text=document.createElement('div');
+          text.style.cssText='margin:0;';
           var parts=cfg.template.split('%@');
           for(var j=0;j<parts.length;j++){
             if(parts[j]) text.appendChild(document.createTextNode(parts[j]));
@@ -3189,7 +3211,8 @@ struct ArticleReaderView: View {
               text.appendChild(a);
             }
           }
-          box.appendChild(text);
+          body.appendChild(text);
+          box.appendChild(body);
           ps[idx].after(box);
         """# + "})(" + json + ");"
     }
@@ -3477,6 +3500,9 @@ struct ArticleReaderView: View {
 
             function attachError(img) {
               if (img.dataset.merlinPhAttached) return;
+              // Icon der Support-Infobox: kein Artikelbild, hat einen eigenen Umgang mit Ladefehlern
+              // (wird einfach entfernt, siehe supportBoxScript) statt des großen Platzhalters.
+              if (img.closest && img.closest('merlin-support-box')) return;
               img.dataset.merlinPhAttached = '1';
               if (img.complete && img.naturalWidth === 0 && img.src) {
                 makePlaceholder(img);
