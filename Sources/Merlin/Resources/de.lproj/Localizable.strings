@@ -23,6 +23,8 @@
 "articleList.archiveToast.undoButton" = "Rückgängig";
 "articleList.emptyState.allMessage" = "Keine Artikel gespeichert. Tippe auf +, um einen hinzuzufügen.";
 "articleList.emptyState.archiveMessage" = "Dein Archiv ist leer.";
+"articleList.emptyState.continueReadingMessage" = "Nichts zum Weiterlesen. Angefangene Artikel erscheinen hier.";
+"articleList.emptyState.continueWatchingMessage" = "Nichts zum Weiterschauen. Angefangene Videos erscheinen hier.";
 "articleList.emptyState.favoritesMessage" = "Noch keine Favoriten. Markiere Artikel mit einem Stern, um sie hier zu finden.";
 "articleList.emptyState.refreshButton" = "Aktualisieren";
 "articleList.emptyState.taggedMessage" = "Keine Artikel mit Tag \"%@\".";
@@ -30,6 +32,8 @@
 "articleList.emptyState.unseenMessage" = "Noch keine ungesehenen Videos. Füge einen YouTube- oder Video-Link hinzu, um ihn hier zu sehen.";
 "articleList.emptyState.videosMessage" = "Noch keine Videos gespeichert. Füge einen YouTube- oder Video-Link hinzu, um ihn hier zu sehen.";
 "articleList.filter.archive" = "Archiv";
+"articleList.filter.continueReading" = "Weiterlesen";
+"articleList.filter.continueWatching" = "Weiterschauen";
 "articleList.filter.favorites" = "Favoriten";
 "articleList.filter.pages" = "Seiten";
 "articleList.filter.unread" = "Ungelesen";
@@ -62,6 +66,9 @@
 "articleReader.paywallBanner.connectButton" = "Verbinden";
 "articleReader.paywallBanner.message" = "Dieser Artikel könnte auf %@ hinter einer Paywall liegen. Verbinde dein Abo, um ihn freizuschalten.";
 "articleReader.paywallBanner.retryButton" = "Erneut versuchen";
+"articleReader.paywallSubscribeBanner.archiveButton" = "Archivieren";
+"articleReader.paywallSubscribeBanner.message" = "Dies ist ein Bezahlartikel. Merlin kann ihn nicht automatisch freischalten.";
+"articleReader.paywallSubscribeBanner.subscribeButton" = "Abo abschliessen";
 "articleReader.shareLink.createButton" = "Freigabelink erstellen";
 "articleReader.shareLink.expiresOn" = "Läuft ab am";
 "articleReader.shareLink.explainer" = "Erstelle einen öffentlichen Link, um diesen Artikel mit anderen zu teilen – auch ohne Merlin-Konto.";
@@ -136,6 +143,7 @@
 "merlinServer.account.remove" = "Entfernen";
 "merlinServer.account.revoke" = "Widerrufen";
 "merlinServer.account.saveAndLogin" = "Speichern und einloggen";
+"merlinServer.account.sourceCodeLink" = "Quellcode auf GitHub";
 "merlinServer.account.statusInvalidCredentials" = "Login fehlgeschlagen – Passwort prüfen";
 "merlinServer.account.statusLoginFlowBroken" = "Login vorübergehend nicht verfügbar";
 "merlinServer.account.statusNotConnected" = "Nicht verbunden";
@@ -389,7 +397,7 @@
 "report.title" = "Artikel melden";
 "settings.about.commitLabel" = "Commit";
 "settings.about.sectionHeader" = "Über";
-"settings.about.sourceCodeLabel" = "Quellcode / Git-Repository";
+"settings.about.sourceCodeLabel" = "Quellcode";
 "settings.about.versionLabel" = "Version";
 "settings.account.footer" = "Tippe auf \"Mit Nextcloud anmelden\", um dich über deinen Browser zu authentifizieren.";
 "settings.account.loggedInSuccess" = "Erfolgreich angemeldet!";
@@ -422,6 +430,11 @@
 "settings.preferences.resumeOnOpenLabel" = "Beim Öffnen fortsetzen";
 "settings.preferences.saveProgressLabel" = "Leseposition speichern";
 "settings.preferences.sectionHeader" = "Einstellungen";
+"settings.storage.footer" = "Zeigt, wie viel Speicherplatz deine Artikel und Highlights auf dem Server sowie im lokalen Zwischenspeicher belegen.";
+"settings.storage.loadError" = "Konnte nicht geladen werden";
+"settings.storage.localLabel" = "Lokaler Zwischenspeicher";
+"settings.storage.sectionHeader" = "Speicher";
+"settings.storage.serverLabel" = "Server";
 "settings.testConnection.button" = "Verbindung testen";
 "share.extracting.subtitle" = "Geteilten Inhalt wird gelesen…";
 "share.rateLimited.subtitle" = "Rate-Limit erreicht";
