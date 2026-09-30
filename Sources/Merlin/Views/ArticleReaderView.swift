@@ -3290,6 +3290,19 @@ struct ArticleReaderView: View {
         }()
         let isSepia = theme == .sepia
 
+        // Am Ende des Artikels noch einmal „Autor, Medium“ (z. B. „Max Muster, taz.de“).
+        let footerBylineHTML: String = {
+            let parts = [current.author, current.displaySiteName]
+                .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            guard !parts.isEmpty else { return "" }
+            let text = parts.joined(separator: ", ")
+                .replacingOccurrences(of: "&", with: "&amp;")
+                .replacingOccurrences(of: "<", with: "&lt;")
+                .replacingOccurrences(of: ">", with: "&gt;")
+            return "<div class=\"merlin-footer-byline\">\(text)</div>"
+        }()
+
         let bg             = isSepia ? "#f4ecd8" : (effectiveDark ? "#000000" : "#ffffff")
         let fg             = isSepia ? "#3b2f1e" : (effectiveDark ? "#e5e5ea" : "#1c1c1e")
         let fgMuted        = isSepia ? "#7a6350" : (effectiveDark ? "#98989d" : "#6e6e73")
@@ -3466,6 +3479,11 @@ struct ArticleReaderView: View {
               border: 1px solid \(effectiveDark ? "#3a3a3c" : "#d1d1d6");
               border-radius: 8px; padding: 14px 16px; margin: 1.5em 0; color: \(fg);
             }
+            .merlin-footer-byline {
+              margin-top: 32px; padding-top: 16px;
+              border-top: 1px solid rgba(127,127,127,0.25);
+              font-size: 0.9em; font-style: italic; color: \(fgMuted);
+            }
             .merlin-mastodon-post + .merlin-mastodon-post { margin-top: 8px; }
             .merlin-mastodon-post__header {
               display: flex; align-items: center; gap: 10px;
@@ -3498,7 +3516,7 @@ struct ArticleReaderView: View {
           </style>
         </head>
         <body>
-          \(rewriteYouTubeEmbeds(in: stripAudioPlayerElements(in: stripHeroImageIfShownAsVideoCover(in: rewriteImageURLs(in: injectHeroImageIfNeeded(into: promoteLazyImageAttributes(in: content)))))))
+          \(rewriteYouTubeEmbeds(in: stripAudioPlayerElements(in: stripHeroImageIfShownAsVideoCover(in: rewriteImageURLs(in: injectHeroImageIfNeeded(into: promoteLazyImageAttributes(in: content)))))))\(footerBylineHTML)
           <script>\(merlinHighlightJS)</script>
           <script>
           (function(){
