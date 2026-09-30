@@ -1137,6 +1137,7 @@ struct ArticleReaderView: View {
     var onNavigateNext: (() -> Void)? = nil
 
     @ObservedObject var piperTTS: PiperAudioService
+    @ObservedObject var audio: AudioPlaybackService
     @State private var nearBottom          = false
     @State private var scrollingDown       = false
     @State private var showBottomBar            = true
@@ -1218,6 +1219,9 @@ struct ArticleReaderView: View {
     @State private var paywallSubscribeBannerDismissed = false
     /// Abo-/Spendenlink der Quelle für die Infobox im Text; kommt nur vom Einzelabruf, nicht aus der Liste.
     @State private var supportBox: SupportBox?
+    /// Über `GET /articles/{id}/media` aufgelöste Audio-Quelle (kurzlebige Streams, Artikel ohne Marker).
+    /// Quellen, die direkt im Content-Marker stehen, kennt `audioSource` synchron.
+    @State private var fetchedAudioSource: AudioSource?
     /// Verbindet bottomBar + Piper-Panel zu einer einzigen Liquid-Glass-Form
     /// (ab iOS 26 – siehe `ReaderBarGlassBackground`).
     @Namespace private var bottomGlassNamespace
@@ -1315,6 +1319,10 @@ struct ArticleReaderView: View {
                     }
 
                     articleHeader
+
+                    if !current.isPDF, let source = audioSource {
+                        audioPlayerCard(source: source)
+                    }
 
                     if NativeVideoHost.matches(current.url) {
                         NativeVideoPlayerCard(articleId: current.id,
@@ -1749,6 +1757,11 @@ struct ArticleReaderView: View {
         .task(id: current.id) {
             await fetchMissingContentImages()
         }
+        // ── Audio-Quelle (Player statt Hero Image) ──────────────────────────
+        .task(id: "\(current.id)|\(current.content == nil)|\(current.category ?? "")") {
+            guard MediaMarker.inlineAudioSource(from: current.content) == nil, !current.isPDF else { return }
+            fetchedAudioSource = await MediaMarker.resolveAudio(for: current)
+        }
         // ── Support-Infobox (Abo-/Spendenlink) ──────────────────────────────
         .task(id: current.id) {
             supportBox = nil
@@ -1954,6 +1967,47 @@ struct ArticleReaderView: View {
     private static let accentSteps: [(height: CGFloat, amount: Double)] =
         [(14, 0.75), (12, 0.55), (10, 0.35), (8, 0.15)]
 
+    // MARK: – Audio-Player (ersetzt das Hero Image)
+
+    /// Audio-Quelle des Artikels: Marker im Content (synchron) oder per `/media` aufgelöst.
+    private var audioSource: AudioSource? {
+        MediaMarker.inlineAudioSource(from: current.content) ?? fetchedAudioSource
+    }
+
+    private var hasNativeAudio: Bool { audioSource != nil && !current.isPDF }
+
+    /// Bildunterschrift des führenden Hero Images, die der Audio-Player selbst anzeigt.
+    private var audioCaption: String? {
+        guard let content = current.content else { return nil }
+        return MediaMarker.splitLeadingHero(from: MediaMarker.stripMarker(from: injectHeroImageIfNeeded(into: content))).caption
+    }
+
+    private func audioPlayerCard(source: AudioSource) -> some View {
+        let accent = Color(hexString: accentColorHex) ?? .red
+        let steps: [(height: CGFloat, color: Color)] = Self.accentSteps.map { step in
+            (height: step.height,
+             color: accent.mix(with: readerBgColor, by: 1 - step.amount, in: .perceptual))
+        }
+        return AudioPlayerCard(
+            audio: audio,
+            article: current,
+            source: source,
+            coverURL: current.imageUrl.flatMap(URL.init(string:)),
+            caption: audioCaption,
+            accent: accent,
+            onAccent: Color(hexString: onAccentHex) ?? .white,
+            design: readerFont.swiftUIDesign,
+            steps: steps
+        )
+    }
+
+    /// Entfernt bei aktivem Audio-Player das führende Hero Image (Cover + Bildunterschrift zeigt
+    /// der Player) sowie den Medien-Marker samt „Zum Audio“-Link aus dem Artikeltext.
+    private func stripAudioPlayerElements(in content: String) -> String {
+        guard hasNativeAudio else { return content }
+        return MediaMarker.splitLeadingHero(from: MediaMarker.stripMarker(from: content)).rest
+    }
+
     /// true, wenn der WebView-Inhalt direkt mit dem Titelbild beginnt – dann setzt das CSS
     /// Fläche + Tonstufen fort, sonst zeichnet der native Header die Stufen.
     private var readerLeadsWithHero: Bool {
@@ -2063,8 +2117,9 @@ struct ArticleReaderView: View {
             }
             .background(accent)
 
-            // ── Tonstufen nur, wenn kein Titelbild im WebView die Fläche fortsetzt ──
-            if !readerLeadsWithHero {
+            // ── Tonstufen nur, wenn kein Titelbild im WebView die Fläche fortsetzt
+            //    (und der native Audio-Player sie nicht selbst unter dem Cover zeichnet) ──
+            if !readerLeadsWithHero && !hasNativeAudio {
                 ForEach(Self.accentSteps.indices, id: \.self) { i in
                     let step = Self.accentSteps[i]
                     Rectangle()
@@ -3443,7 +3498,7 @@ struct ArticleReaderView: View {
           </style>
         </head>
         <body>
-          \(rewriteYouTubeEmbeds(in: stripHeroImageIfShownAsVideoCover(in: rewriteImageURLs(in: injectHeroImageIfNeeded(into: promoteLazyImageAttributes(in: content))))))
+          \(rewriteYouTubeEmbeds(in: stripAudioPlayerElements(in: stripHeroImageIfShownAsVideoCover(in: rewriteImageURLs(in: injectHeroImageIfNeeded(into: promoteLazyImageAttributes(in: content)))))))
           <script>\(merlinHighlightJS)</script>
           <script>
           (function(){

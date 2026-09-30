@@ -113,6 +113,16 @@
 "articleReader.ttsPanel.preparing" = "Audio wird vorbereitet …";
 "articleReader.unsupportedSiteBanner.message" = "Diese Seite (%@) kann von Merlin nicht gespeichert werden: sie liefert keinen lesbaren Artikeltext, den Merlin abrufen könnte.";
 "articleReader.video.variant" = "Fassung";
+"audioPlayer.airplay" = "AirPlay";
+"audioPlayer.error.generic" = "Audio konnte nicht abgespielt werden.";
+"audioPlayer.pause" = "Pause";
+"audioPlayer.play" = "Abspielen";
+"audioPlayer.position" = "Position";
+"audioPlayer.rate" = "Geschwindigkeit";
+"audioPlayer.resumeAt" = "Weiter bei %@";
+"audioPlayer.skipBack" = "15 Sekunden zurück";
+"audioPlayer.skipForward" = "30 Sekunden vor";
+"audioPlayer.variant" = "Fassung";
 "common.add" = "Hinzufügen";
 "common.back" = "Zurück";
 "common.cancel" = "Abbrechen";

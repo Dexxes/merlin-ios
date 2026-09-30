@@ -6,6 +6,7 @@ struct ArticleListView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     @StateObject private var piperTTS = PiperAudioService()
+    @StateObject private var audio = AudioPlaybackService()
 
     @State private var selectedArticle: Article? = nil
     @State private var tagSheetArticle: Article? = nil
@@ -172,7 +173,8 @@ struct ArticleListView: View {
                     initialFraction: resolvedInitialFraction(for: article),
                     viewModel: viewModel,
                     onNavigateNext: nextArticle(after: article).map { next in { selectedArticle = next } },
-                    piperTTS: piperTTS
+                    piperTTS: piperTTS,
+                    audio: audio
                 )
             }
             // ── Shake-to-undo ──────────────────────────────────────────────
@@ -199,12 +201,26 @@ struct ArticleListView: View {
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if piperTTS.hasContent {
-                persistentMiniPlayer
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            VStack(spacing: 0) {
+                if audio.hasContent {
+                    audioMiniPlayer
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+                if piperTTS.hasContent {
+                    persistentMiniPlayer
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
             }
         }
         .animation(.easeInOut(duration: 0.25), value: piperTTS.hasContent)
+        .animation(.easeInOut(duration: 0.25), value: audio.hasContent)
+        // Nur eine Tonquelle gleichzeitig: TTS und Artikel-Audio pausieren sich gegenseitig.
+        .onChange(of: piperTTS.isPlaying) { _, playing in
+            if playing, audio.isPlaying { audio.pause() }
+        }
+        .onChange(of: audio.isPlaying) { _, playing in
+            if playing, piperTTS.isPlaying { piperTTS.pause() }
+        }
         .listFlyout(viewModel: viewModel)
         .overlay {
             if showTour {
@@ -292,6 +308,94 @@ struct ArticleListView: View {
             .contentShape(Rectangle())
             .onTapGesture {
                 if let articleId = piperTTS.currentArticleId,
+                   let article = viewModel.articles.first(where: { $0.id == articleId }) {
+                    selectedArticle = article
+                }
+            }
+        }
+    }
+
+    // MARK: Audio mini player (Artikel-Audio läuft weiter, während man in der Liste stöbert)
+
+    private var audioMiniPlayer: some View {
+        VStack(spacing: 0) {
+            Divider()
+            VStack(spacing: 6) {
+                HStack(spacing: 10) {
+                    Group {
+                        if let cover = audio.coverURL {
+                            CachedAsyncImage(url: cover) { image in
+                                image.scaledToFill()
+                            } placeholder: {
+                                Color.secondary.opacity(0.2)
+                            }
+                        } else {
+                            Color.secondary.opacity(0.2)
+                                .overlay { Image(systemName: "waveform").foregroundStyle(.secondary) }
+                        }
+                    }
+                    .frame(width: 34, height: 34)
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+
+                    MarqueeText(
+                        text: audio.title.isEmpty ? L("articleList.miniPlayer.fallbackTitle") : audio.title,
+                        font: .caption.weight(.medium)
+                    )
+                    .foregroundStyle(.primary)
+
+                    Button { audio.skip(by: -AudioPlaybackService.skipBackSeconds) } label: {
+                        Image(systemName: "gobackward.15")
+                            .font(.system(size: 16))
+                            .frame(width: 30, height: 30)
+                    }
+                    .accessibilityLabel(L("audioPlayer.skipBack"))
+
+                    Button { audio.togglePlayPause() } label: {
+                        Group {
+                            if audio.isBuffering {
+                                ProgressView().progressViewStyle(.circular).scaleEffect(0.7)
+                            } else {
+                                Image(systemName: audio.isPlaying ? "pause.fill" : "play.fill")
+                                    .font(.system(size: 17, weight: .medium))
+                            }
+                        }
+                        .frame(width: 30, height: 30)
+                    }
+                    .accessibilityLabel(audio.isPlaying ? L("audioPlayer.pause") : L("audioPlayer.play"))
+
+                    Button { audio.skip(by: AudioPlaybackService.skipForwardSeconds) } label: {
+                        Image(systemName: "goforward.30")
+                            .font(.system(size: 16))
+                            .frame(width: 30, height: 30)
+                    }
+                    .accessibilityLabel(L("audioPlayer.skipForward"))
+
+                    Button { audio.stop() } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 26, height: 30)
+                    }
+                    .accessibilityLabel(L("common.close"))
+                }
+
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.secondary.opacity(0.2)).frame(height: 3)
+                        Capsule().fill(Color.accentColor)
+                            .frame(width: geo.size.width * audio.progress, height: 3)
+                    }
+                    .frame(maxHeight: .infinity)
+                }
+                .frame(height: 3)
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(.bar)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                if let articleId = audio.currentArticleId,
                    let article = viewModel.articles.first(where: { $0.id == articleId }) {
                     selectedArticle = article
                 }

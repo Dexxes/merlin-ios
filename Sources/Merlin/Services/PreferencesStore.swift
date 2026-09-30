@@ -203,6 +203,30 @@ final class PreferencesStore: @unchecked Sendable {
         defaults.set(timestampMillis, forKey: "merlin_pcts_\(articleId)")
     }
 
+    // MARK: – Audio playback (position per article + global speed)
+
+    /// Zuletzt gehörte Position (Sekunden) eines Audio-Artikels; 0 = von vorn.
+    func savedAudioPosition(for articleId: Int) -> Double {
+        defaults.double(forKey: "merlin_audio_pos_\(articleId)")
+    }
+
+    func saveAudioPosition(_ seconds: Double, for articleId: Int) {
+        if seconds > 1 {
+            defaults.set(seconds, forKey: "merlin_audio_pos_\(articleId)")
+        } else {
+            defaults.removeObject(forKey: "merlin_audio_pos_\(articleId)")
+        }
+    }
+
+    /// Wiedergabegeschwindigkeit (0,75–2,0), gilt für alle Audio-Artikel.
+    var audioRate: Float {
+        get {
+            let v = defaults.float(forKey: "merlin_audio_rate")
+            return v == 0 ? 1.0 : v
+        }
+        set { defaults.set(newValue, forKey: "merlin_audio_rate") }
+    }
+
     // MARK: – Reader preferences
 
     var readerFontSize: Int {
