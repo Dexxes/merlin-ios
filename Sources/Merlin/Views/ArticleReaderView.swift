@@ -2071,7 +2071,7 @@ struct ArticleReaderView: View {
                     if hasSite || !current.tags.isEmpty {
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
                             if hasSite {
-                                let site = Text(current.displaySiteName.uppercased())
+                                let site = Text(current.displaySiteName)
                                 if let url = URL(string: current.url) {
                                     Button { tappedLinkURL = url } label: { site }
                                         .buttonStyle(.plain)
@@ -2079,7 +2079,7 @@ struct ArticleReaderView: View {
                             }
                             Spacer(minLength: 0)
                             if let tag = current.tags.first {
-                                Text(tag.name.uppercased()).lineLimit(1)
+                                Text(tag.name).lineLimit(1)
                             }
                         }
                         .font(.system(size: 11, weight: .bold, design: design))
@@ -2163,7 +2163,7 @@ struct ArticleReaderView: View {
     @ViewBuilder
     private func metaLineSegment(cell: (kind: InfoCardKind, label: String, value: String),
                                   font: Font, design: Font.Design, onAccent: Color) -> some View {
-        let text = (cell.kind == .author ? "\(cell.label) \(cell.value)" : cell.value).uppercased()
+        let text = (cell.kind == .author ? "\(cell.label) \(cell.value)" : cell.value)
 
         switch cell.kind {
         case .author:
@@ -3417,7 +3417,7 @@ struct ArticleReaderView: View {
             body > figure:first-child figcaption {
               margin: 0; padding: 10px 20px 14px;
               color: \(onAccent);
-              font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+              font-size: 11px; font-weight: 700; letter-spacing: 1px;
             }
             body > figure:first-child::after {
               content: ""; display: block; height: 44px;
