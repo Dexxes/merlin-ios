@@ -2149,6 +2149,10 @@ struct ArticleReaderView: View {
                         .font(font)
                         .foregroundStyle(onAccent)
                         .fixedSize()
+                        // Punkt hinter dem Autor nur bei Trunkierung sichtbar; per
+                        // opacity statt Entfernen, damit das Layout (und damit die
+                        // Trunkierungs-Erkennung) stabil bleibt.
+                        .opacity(cell.kind == .author && !authorIsTruncated ? 0 : 1)
                 }
             }
         }
