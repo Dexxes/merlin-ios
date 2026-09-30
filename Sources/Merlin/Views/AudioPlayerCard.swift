@@ -83,31 +83,33 @@ struct AudioPlayerCard: View {
 
     // MARK: Cover + Overlay
 
+    /// Das Cover behält das Seitenverhältnis des Originalbilds (kein Zuschnitt); bis das Bild
+    /// geladen ist bzw. ohne Bild reserviert ein 16:9-Platzhalter die Fläche.
     private var cover: some View {
-        Color.clear
-            .aspectRatio(4.0 / 3.0, contentMode: .fit)
-            .overlay {
-                ZStack {
-                    accent
-                    if let coverURL {
-                        CachedAsyncImage(url: coverURL) { image in
-                            image.scaledToFill()
-                        } placeholder: {
-                            accent
-                        }
-                    } else {
+        Group {
+            if let coverURL {
+                CachedAsyncImage(url: coverURL) { image in
+                    image.scaledToFit().frame(maxWidth: .infinity)
+                } placeholder: {
+                    accent.aspectRatio(16.0 / 9.0, contentMode: .fit)
+                }
+            } else {
+                accent
+                    .aspectRatio(16.0 / 9.0, contentMode: .fit)
+                    .overlay {
                         Image(systemName: "waveform")
                             .font(.system(size: 64, weight: .light))
                             .foregroundStyle(onAccent.opacity(0.6))
                     }
-                }
             }
-            .clipped()
-            .overlay(alignment: .bottom) {
-                Group {
-                    if isActive { controls } else { idleOverlay }
-                }
+        }
+        .frame(maxWidth: .infinity)
+        .background(accent)
+        .overlay(alignment: .bottom) {
+            Group {
+                if isActive { controls } else { idleOverlay }
             }
+        }
     }
 
     private var idleOverlay: some View {
