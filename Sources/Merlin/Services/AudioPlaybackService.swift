@@ -173,27 +173,27 @@ final class AudioPlaybackService: NSObject, ObservableObject {
         isBuffering = true
 
         let interval = CMTime(seconds: 0.5, preferredTimescale: 600)
-        timeObserver = avp.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
+        timeObserver = avp.addPeriodicTimeObserver(forInterval: interval, queue: .main) { @Sendable [weak self] time in
             let seconds = time.seconds
             MainActor.assumeIsolated { self?.handleTick(seconds) }
         }
 
-        itemStatusObs = item.observe(\.status, options: [.new]) { [weak self] item, _ in
+        itemStatusObs = item.observe(\.status, options: [.new]) { @Sendable [weak self] item, _ in
             let status = item.status
             let message = item.error?.localizedDescription
             Task { @MainActor in self?.handleItemStatus(status, message: message) }
         }
-        itemDurationObs = item.observe(\.duration, options: [.new]) { [weak self] item, _ in
+        itemDurationObs = item.observe(\.duration, options: [.new]) { @Sendable [weak self] item, _ in
             let seconds = item.duration.seconds
             Task { @MainActor in self?.handleDuration(seconds) }
         }
-        controlStatusObs = avp.observe(\.timeControlStatus, options: [.new]) { [weak self] player, _ in
+        controlStatusObs = avp.observe(\.timeControlStatus, options: [.new]) { @Sendable [weak self] player, _ in
             let status = player.timeControlStatus
             Task { @MainActor in self?.handleControlStatus(status) }
         }
         endObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main
-        ) { [weak self] _ in
+        ) { @Sendable [weak self] _ in
             MainActor.assumeIsolated { self?.handleEnded() }
         }
 
@@ -299,14 +299,14 @@ final class AudioPlaybackService: NSObject, ObservableObject {
         let center = NotificationCenter.default
         notificationObservers.append(center.addObserver(
             forName: AVAudioSession.interruptionNotification, object: nil, queue: .main
-        ) { [weak self] note in
+        ) { @Sendable [weak self] note in
             let typeRaw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
             let optionRaw = note.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt
             MainActor.assumeIsolated { self?.handleInterruption(typeRaw: typeRaw, optionRaw: optionRaw) }
         })
         notificationObservers.append(center.addObserver(
             forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main
-        ) { [weak self] note in
+        ) { @Sendable [weak self] note in
             let reasonRaw = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
             MainActor.assumeIsolated { self?.handleRouteChange(reasonRaw: reasonRaw) }
         })
@@ -337,7 +337,7 @@ final class AudioPlaybackService: NSObject, ObservableObject {
     private static func artwork(for url: URL?) -> MPMediaItemArtwork? {
         guard let url, let local = ImageCacheService.shared.localURL(for: url),
               let data = try? Data(contentsOf: local), let image = UIImage(data: data) else { return nil }
-        return MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+        return MPMediaItemArtwork(boundsSize: image.size) { @Sendable _ in image }
     }
 
     private func updateNowPlaying() {
@@ -356,36 +356,36 @@ final class AudioPlaybackService: NSObject, ObservableObject {
 
     private func registerRemoteCommands() {
         let c = MPRemoteCommandCenter.shared()
-        c.playCommand.addTarget { [weak self] _ in
+        c.playCommand.addTarget { @Sendable [weak self] _ in
             Task { @MainActor in self?.play() }
             return .success
         }
-        c.pauseCommand.addTarget { [weak self] _ in
+        c.pauseCommand.addTarget { @Sendable [weak self] _ in
             Task { @MainActor in self?.pause() }
             return .success
         }
-        c.togglePlayPauseCommand.addTarget { [weak self] _ in
+        c.togglePlayPauseCommand.addTarget { @Sendable [weak self] _ in
             Task { @MainActor in self?.togglePlayPause() }
             return .success
         }
         c.skipBackwardCommand.preferredIntervals = [NSNumber(value: Self.skipBackSeconds)]
-        c.skipBackwardCommand.addTarget { [weak self] _ in
+        c.skipBackwardCommand.addTarget { @Sendable [weak self] _ in
             Task { @MainActor in self?.skip(by: -Self.skipBackSeconds) }
             return .success
         }
         c.skipForwardCommand.preferredIntervals = [NSNumber(value: Self.skipForwardSeconds)]
-        c.skipForwardCommand.addTarget { [weak self] _ in
+        c.skipForwardCommand.addTarget { @Sendable [weak self] _ in
             Task { @MainActor in self?.skip(by: Self.skipForwardSeconds) }
             return .success
         }
-        c.changePlaybackPositionCommand.addTarget { [weak self] event in
+        c.changePlaybackPositionCommand.addTarget { @Sendable [weak self] event in
             guard let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
             let position = event.positionTime
             Task { @MainActor in self?.seek(to: position) }
             return .success
         }
         c.changePlaybackRateCommand.supportedPlaybackRates = Self.rates.map { NSNumber(value: $0) }
-        c.changePlaybackRateCommand.addTarget { [weak self] event in
+        c.changePlaybackRateCommand.addTarget { @Sendable [weak self] event in
             guard let event = event as? MPChangePlaybackRateCommandEvent else { return .commandFailed }
             let newRate = event.playbackRate
             Task { @MainActor in self?.setRate(newRate) }
