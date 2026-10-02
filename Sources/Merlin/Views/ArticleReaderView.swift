@@ -3417,10 +3417,11 @@ struct ArticleReaderView: View {
             body > figure:first-child figcaption {
               margin: 0; padding: 10px 20px 14px;
               color: \(onAccent);
-              font-size: 11px; font-weight: 400; font-style: italic; letter-spacing: 1px;
-              opacity: 0.5;
+              font-size: 11px; font-weight: 700; letter-spacing: 1px;
             }
-            body > figure:first-child figcaption * { font-weight: inherit; font-style: inherit; }
+            /* Bildquelle (vom Server als <cite> markiert): nicht fett, kursiv, halbtransparent */
+            figcaption cite { font-weight: 400; font-style: italic; opacity: 0.5; }
+            figcaption cite * { font-weight: inherit; font-style: inherit; }
             body > figure:first-child::after {
               content: ""; display: block; height: 44px;
               background: linear-gradient(to bottom,
