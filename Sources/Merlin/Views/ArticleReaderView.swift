@@ -3378,10 +3378,11 @@ struct ArticleReaderView: View {
               margin-top: 0.3em;
               color: \(accentColorHex);
             }
-            /* Some sources place the attribution in a paragraph right after the
-               blockquote (e.g. <blockquote>…</blockquote><p><cite>Name</cite></p>)
-               instead of nesting it inside the blockquote itself. */
-            blockquote + p {
+            /* Der Server (normalizeQuotes) legt die Quellenangabe als <cite> ins
+               blockquote. Nur ein Folgeabsatz, der ausschließlich aus einem <cite>
+               besteht, gilt als Attribution - ein normaler Absatz nach einem Zitat
+               darf nicht wie ein Zitatgeber aussehen. */
+            blockquote + p:has(> cite:only-child) {
               display: block;
               width: 100%;
               text-align: center !important;
@@ -3389,7 +3390,8 @@ struct ArticleReaderView: View {
               font-size: 0.85em;
               color: \(accentColorHex);
             }
-            blockquote + p cite, blockquote + p cite * { font-style: normal; }
+            blockquote + p:has(> cite:only-child) cite, blockquote + p:has(> cite:only-child) cite * { font-style: normal; }
+            blockquote cite em, blockquote cite strong { font-style: normal; }
             pre, code {
               background: \(effectiveDark ? "#2c2c2e" : "#f2f2f7");
               border-radius: 6px; font-family: 'SF Mono', Menlo, monospace; font-size: 0.9em;

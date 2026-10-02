@@ -43,6 +43,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   simply left out. It is not treated as an article image: no lightbox on tap
   and no "website prevents image download" placeholder.
 
+### Fixed
+- Quotes: a normal paragraph following a blockquote is no longer styled as the
+  quote attribution; only a paragraph consisting solely of a `<cite>` is.
+
 ## [0.1.0] - 2026-08-25
 
 Initial public snapshot of the iOS client.
