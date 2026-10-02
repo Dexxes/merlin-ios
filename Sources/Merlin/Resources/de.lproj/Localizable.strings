@@ -500,3 +500,5 @@
 "tagFilterSheet.emptyMessage" = "Füge Artikeln Tags hinzu, um sie hier filtern zu können.";
 "tagFilterSheet.emptyTitle" = "Keine Tags vorhanden";
 "tagFilterSheet.title" = "Tag-Filter";
+"splash.slowConnection.message" = "Verbindungsaufbau dauert... Im Offlinemodus starten?";
+"splash.slowConnection.offline" = "Offline starten";

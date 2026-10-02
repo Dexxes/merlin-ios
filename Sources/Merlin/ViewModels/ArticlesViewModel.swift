@@ -248,13 +248,30 @@ final class ArticlesViewModel {
 
     // MARK: – Load
 
+    /// Laufender Netzwerkabruf von `load()`; wird von `continueOffline()` abgebrochen.
+    private var fetchTask: Task<(articles: [Article], counts: ArticleCounts), Error>?
+
+    /// Bricht einen hängenden Ladevorgang ab, damit `load()` sofort auf den
+    /// lokalen Cache zurückfällt (Splash-Screen: "Im Offlinemodus starten?").
+    func continueOffline() {
+        fetchTask?.cancel()
+    }
+
     func load() async {
         prefetchTask?.cancel()
         isLoading = true
         error = nil
+        let filter = selectedFilter
+        let task = Task { [self] in
+            let fetched = try await fetchForFilter(filter)
+            let newCounts = try await MerlinAPI.shared.getCounts()
+            return (articles: fetched, counts: newCounts)
+        }
+        fetchTask = task
         do {
-            let fetched = try await fetchForFilter(selectedFilter)
-            counts      = try await MerlinAPI.shared.getCounts()
+            let result  = try await task.value
+            let fetched = result.articles
+            counts      = result.counts
             articles    = fetched
             isOffline   = false
             // Persist to cache so offline reads work later.
@@ -271,6 +288,10 @@ final class ArticlesViewModel {
                 articles  = cached
                 isOffline = true
                 // Don't overwrite `counts` – keep whatever we have from the last online session.
+            } else if task.isCancelled {
+                // Vom Nutzer abgebrochen (Offlinemodus) und kein Cache vorhanden:
+                // leere Liste statt Fehler-Alert "abgebrochen".
+                isOffline = true
             } else {
                 isOffline       = false
                 self.error = error.localizedDescription
