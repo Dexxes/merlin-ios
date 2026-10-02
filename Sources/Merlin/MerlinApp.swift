@@ -63,6 +63,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
 // MARK: – Splash screen
 
 private struct SplashView: View {
+    /// Nach einigen Sekunden ohne Antwort blendet der Splash die Frage
+    /// "Im Offlinemodus starten?" ein.
+    var showOfflinePrompt: Bool
+    var onStartOffline: () -> Void
+
     var body: some View {
         ZStack {
             Color.white.ignoresSafeArea()
@@ -75,8 +80,24 @@ private struct SplashView: View {
                         .scaledToFit()
                         .frame(width: 96, height: 96)
                 }
+                // Ladeindikator bleibt die ganze Splash-Zeit sichtbar.
                 ProgressView()
+                    .controlSize(.large)
                     .tint(.gray)
+
+                // Immer Platz reservieren, damit Logo/Spinner nicht springen.
+                VStack(spacing: 6) {
+                    Text(L("splash.slowConnection.message"))
+                        .font(.footnote)
+                        .foregroundStyle(.gray)
+                        .multilineTextAlignment(.center)
+                    Button(L("splash.slowConnection.offline"), action: onStartOffline)
+                        .font(.footnote.weight(.semibold))
+                }
+                .opacity(showOfflinePrompt ? 1 : 0)
+                .allowsHitTesting(showOfflinePrompt)
+                .accessibilityHidden(!showOfflinePrompt)
+                .padding(.horizontal, 32)
             }
         }
     }
@@ -88,6 +109,10 @@ private struct SplashView: View {
 struct MerlinApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @State private var splashVisible = true
+    @State private var showOfflinePrompt = false
+
+    /// Nach so vielen Sekunden ohne fertigen ersten Ladevorgang erscheint die Offline-Frage.
+    private let offlinePromptDelay: TimeInterval = 3
 
     /// Reacts to theme changes so the whole app (cards, flyout, sheets)
     /// switches colour scheme immediately — not just the reader.
@@ -119,13 +144,17 @@ struct MerlinApp: App {
                     .environment(AppNavigator.shared)
 
                 if splashVisible {
-                    SplashView()
-                        .transition(.opacity)
-                        .zIndex(1)
+                    SplashView(showOfflinePrompt: showOfflinePrompt) {
+                        showOfflinePrompt = false
+                        sharedViewModel.continueOffline()
+                    }
+                    .transition(.opacity)
+                    .zIndex(1)
                 }
             }
             .preferredColorScheme(preferredScheme)
             .animation(.easeOut(duration: 0.3), value: splashVisible)
+            .animation(.easeOut(duration: 0.3), value: showOfflinePrompt)
             .task {
                 // Server-Settings einmal pro App-Start ziehen ("Server gewinnt"),
                 // statt erst beim Öffnen von SettingsView – sonst zeigt z.B. der
@@ -146,10 +175,17 @@ struct MerlinApp: App {
                     // lädt dann automatisch mit dem korrekten Filter neu.
                     sharedViewModel.selectedFilter = PreferencesStore.shared.defaultFilter
                 }
-
+            }
+            .task {
                 // Show splash at least briefly, then wait for first load to finish.
+                // Dauert das zu lange (schlechte Verbindung), erscheint die Frage,
+                // ob im Offlinemodus gestartet werden soll.
+                let start = Date()
                 try? await Task.sleep(nanoseconds: 200_000_000)
                 while sharedViewModel.isLoading && sharedViewModel.articles.isEmpty {
+                    if !showOfflinePrompt, Date().timeIntervalSince(start) >= offlinePromptDelay {
+                        showOfflinePrompt = true
+                    }
                     try? await Task.sleep(nanoseconds: 80_000_000)
                 }
                 splashVisible = false
