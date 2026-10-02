@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Inline videos: videos in the middle of an article (server `<media><inline>`,
+  e.g. the ARD player on rbb24.de, delivered as `figure.merlin-inline-media`
+  with a poster image and a `div.merlin-inline-media-source` marker) now play
+  directly in the reader. A native WebKit player (mp4 or HLS, inline with a
+  fullscreen option) replaces the poster image and the "Zum Video" link; if
+  playback fails, image and link come back. The caption stays below the
+  player, highlights in it keep working.
 - Audio articles: instead of the hero image plus a "Zum Audio" link, the reader
   header now shows a native audio player with the hero image as cover and the
   controls as an overlay (play/pause, scrubber with elapsed/remaining time,
