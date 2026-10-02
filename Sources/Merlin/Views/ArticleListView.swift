@@ -403,13 +403,6 @@ struct ArticleListView: View {
         }
     }
 
-    /// True once a pull-triggered load is running AND the List's own bounce has
-    /// settled back to zero — the moment it's safe to reserve safeAreaInset space
-    /// for the loading indicator without fighting the still-collapsing pull gap.
-    private var showReservedRefreshSpinner: Bool {
-        viewModel.isLoading && cardPullDistance < 1
-    }
-
     private var articleGrid: some View {
         // Echte List-Zeilen statt eines einzelnen LazyVGrid als Row-Inhalt:
         // GridItem(.flexible()) ist ohnehin nur eine Spalte, das LazyVGrid
@@ -462,31 +455,22 @@ struct ArticleListView: View {
             }
         }
         .overlay(alignment: .top) {
-            // Tracks the live pull, then — unlike before — stays visible through
-            // the release/settle bounce instead of handing off to the safeAreaInset
-            // below the instant isLoading flips true: switching indicators while
-            // the bounce gap was still open is exactly what caused the list to
-            // visibly jump. This one only disappears once the bounce has fully
-            // collapsed back to rest.
-            if cardPullDistance >= 1 {
+            // Single indicator that never touches the scroll view's layout: it
+            // fades in with the live pull and stays while the load runs. Reserving
+            // space via .safeAreaInset changed contentInsets.top, which feeds back
+            // into cardPullDistance (see onScrollGeometryChange above) and made
+            // the list jump when scrolled to the top during a load.
+            if cardPullDistance >= 1 || viewModel.isLoading {
                 ProgressView()
-                    .padding(.top, 10)
+                    .padding(10)
+                    .background(.regularMaterial, in: Circle())
+                    .padding(.top, 8)
                     .opacity(viewModel.isLoading ? 1 : min(1, cardPullDistance / cardRefreshThreshold))
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
             }
         }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            // Takes over only once the bounce has settled back to zero AND the
-            // load is still running — at that point there's no competing gap left
-            // to jump against, so reserving space here is the first (and only)
-            // thing changing the layout.
-            if showReservedRefreshSpinner {
-                ProgressView()
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(Color(.systemGroupedBackground))
-            }
-        }
-        .animation(.easeInOut(duration: 0.2), value: showReservedRefreshSpinner)
+        .animation(.easeInOut(duration: 0.2), value: viewModel.isLoading)
         .background(Color(.systemGroupedBackground))
     }
 
