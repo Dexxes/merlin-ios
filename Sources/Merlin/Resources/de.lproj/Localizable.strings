@@ -371,6 +371,10 @@
 "navigationMenu.clearTagFilter" = "Tag-Filter aufheben";
 "navigationMenu.filterWithCount" = "%@ (%lld)";
 "navigationMenu.listView" = "Listenansicht";
+"navigationMenu.mediaTypePicker" = "Medienart";
+"navigationMenu.tab.audio" = "Audio";
+"navigationMenu.tab.text" = "Text";
+"navigationMenu.tab.video" = "Video";
 "navigationMenu.tagsHeader" = "Tags";
 "onboarding.buttons.getStarted" = "Los geht's";
 "onboarding.demo.leftFlyout.archive" = "Archiv (47)";
