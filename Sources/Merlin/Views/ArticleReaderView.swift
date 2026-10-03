@@ -3402,6 +3402,14 @@ struct ArticleReaderView: View {
         let accent         = accentColorHex
         let onAccent       = onAccentHex
         let imgPlaceholderBg = isSepia ? "#e8d9be" : (effectiveDark ? "#2c2c2e" : "#f2f2f7")
+        // Lokalisierter Platzhaltertext als JS-String-Literal (JSON-kodiert, "</" entschärft,
+        // damit eine Übersetzung weder das Literal noch den <script>-Block beenden kann).
+        let imgPlaceholderText: String = {
+            let text = L("articleReader.imagePlaceholder.unavailable")
+            guard let data = try? JSONSerialization.data(withJSONObject: text, options: .fragmentsAllowed),
+                  let json = String(data: data, encoding: .utf8) else { return "''" }
+            return json.replacingOccurrences(of: "</", with: "<\\/")
+        }()
 
         return """
         <!DOCTYPE html>
@@ -3658,6 +3666,7 @@ struct ArticleReaderView: View {
           (function(){
             var PH_BG = '\(imgPlaceholderBg)';
             var PH_FG = '\(fgMuted)';
+            var PH_TEXT = \(imgPlaceholderText);
             var PH_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="'+PH_FG+'" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2.5" ry="2.5"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>';
 
             function makePlaceholder(img) {
@@ -3688,7 +3697,11 @@ struct ArticleReaderView: View {
                 'height:' + maxH + 'px',
                 'min-height:60px'
               ].join(';');
-              ph.innerHTML = PH_SVG + '<span style="font-size:12px;color:'+PH_FG+';text-align:center;padding:0 12px">Webseite verhindert Bilddownload</span>';
+              ph.innerHTML = PH_SVG;
+              var label = document.createElement('span');
+              label.style.cssText = 'font-size:12px;color:' + PH_FG + ';text-align:center;padding:0 12px';
+              label.textContent = PH_TEXT;
+              ph.appendChild(label);
               if (img.parentNode) img.parentNode.replaceChild(ph, img);
             }
 

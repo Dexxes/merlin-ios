@@ -55,6 +55,7 @@
 "articleReader.appearance.progressAndHighlights" = "Progress bar & highlights";
 "articleReader.appearance.theme" = "Theme";
 "articleReader.highlightToolbar.title" = "Highlight Color";
+"articleReader.imagePlaceholder.unavailable" = "Image unavailable";
 "articleReader.labels.author" = "BY";
 "articleReader.labels.published" = "PUBLISHED";
 "articleReader.labels.readingTime" = "READING TIME";

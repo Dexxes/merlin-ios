@@ -60,6 +60,7 @@
 "articleReader.appearance.progressAndHighlights" = "Fortschrittsbalken & Hervorhebungen";
 "articleReader.appearance.theme" = "Design";
 "articleReader.highlightToolbar.title" = "Markierungsfarbe";
+"articleReader.imagePlaceholder.unavailable" = "Bild nicht abrufbar";
 "articleReader.labels.author" = "Von";
 "articleReader.labels.published" = "Erschienen";
 "articleReader.labels.readingTime" = "Lesezeit";
