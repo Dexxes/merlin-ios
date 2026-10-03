@@ -2227,10 +2227,14 @@ struct ArticleReaderView: View {
 
         switch cell.kind {
         case .author:
+            // Mit Profil-Link (authorUrl) ist der Name unterstrichen und öffnet per Tap
+            // den Link-Dialog; ist er trunkiert, zeigt der Tap zuerst den vollen Namen.
+            let profileURL = current.authorProfileURL
             Button {
                 if authorIsTruncated { showAuthorFlyout = true }
+                else if let profileURL { tappedLinkURL = profileURL }
             } label: {
-                Text(text)
+                (Text("\(cell.label) ") + Text(cell.value).underline(profileURL != nil))
                     .font(font)
                     .foregroundStyle(onAccent)
                     .lineLimit(1)
@@ -2256,11 +2260,26 @@ struct ArticleReaderView: View {
             .buttonStyle(.plain)
             .onPreferenceChange(AuthorTruncationKey.self) { authorIsTruncated = $0 }
             .popover(isPresented: $showAuthorFlyout) {
-                Text(text)
-                    .font(.system(size: 13, weight: .semibold, design: design))
-                    .foregroundStyle(readerFgColor)
-                    .padding(14)
-                    .presentationCompactAdaptation(.popover)
+                Group {
+                    if let profileURL {
+                        Button {
+                            showAuthorFlyout = false
+                            // Erst das Popover schließen, dann den Link-Dialog zeigen.
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                                tappedLinkURL = profileURL
+                            }
+                        } label: {
+                            (Text("\(cell.label) ") + Text(cell.value).underline())
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        Text(text)
+                    }
+                }
+                .font(.system(size: 13, weight: .semibold, design: design))
+                .foregroundStyle(readerFgColor)
+                .padding(14)
+                .presentationCompactAdaptation(.popover)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .layoutPriority(-1)
@@ -3356,15 +3375,25 @@ struct ArticleReaderView: View {
 
         // Am Ende des Artikels noch einmal „Autor, Medium“ (z. B. „Max Muster, taz.de“).
         let footerBylineHTML: String = {
-            let parts = [current.author, current.displaySiteName]
-                .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }
+            // Mit Profil-Link (authorUrl) wird der Autorname verlinkt.
+            func esc(_ s: String) -> String {
+                s.replacingOccurrences(of: "&", with: "&amp;")
+                 .replacingOccurrences(of: "<", with: "&lt;")
+                 .replacingOccurrences(of: ">", with: "&gt;")
+                 .replacingOccurrences(of: "\"", with: "&quot;")
+            }
+            var parts: [String] = []
+            if let author = current.author?.trimmingCharacters(in: .whitespacesAndNewlines), !author.isEmpty {
+                if let profileURL = current.authorProfileURL {
+                    parts.append("<a href=\"\(esc(profileURL.absoluteString))\">\(esc(author))</a>")
+                } else {
+                    parts.append(esc(author))
+                }
+            }
+            let site = current.displaySiteName.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !site.isEmpty { parts.append(esc(site)) }
             guard !parts.isEmpty else { return "" }
-            let text = parts.joined(separator: ", ")
-                .replacingOccurrences(of: "&", with: "&amp;")
-                .replacingOccurrences(of: "<", with: "&lt;")
-                .replacingOccurrences(of: ">", with: "&gt;")
-            return "<div class=\"merlin-footer-byline\">\(text)</div>"
+            return "<div class=\"merlin-footer-byline\">\(parts.joined(separator: ", "))</div>"
         }()
 
         let bg             = isSepia ? "#f4ecd8" : (effectiveDark ? "#000000" : "#ffffff")
@@ -3553,6 +3582,7 @@ struct ArticleReaderView: View {
               border-top: 1px solid rgba(127,127,127,0.25);
               font-size: 0.9em; font-style: italic; color: \(fgMuted);
             }
+            .merlin-footer-byline a { color: inherit !important; }
             .merlin-mastodon-post + .merlin-mastodon-post { margin-top: 8px; }
             .merlin-mastodon-post__header {
               display: flex; align-items: center; gap: 10px;

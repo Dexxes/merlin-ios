@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Author links: when the server delivers a profile link for the author
+  (`authorUrl`, detected automatically or set by a content filter's
+  `<metadata><author-link>` rule), the author name in the reader header is
+  underlined and opens the link dialog on tap (if the name is truncated, the
+  flyout with the full name carries the link). The byline at the end of the
+  article links the name too. Only absolute http(s) links are used; older
+  servers without the field are unaffected.
 - Inline videos: videos in the middle of an article (server `<media><inline>`,
   e.g. the ARD player on rbb24.de, delivered as `figure.merlin-inline-media`
   with a poster image and a `div.merlin-inline-media-source` marker) now play
