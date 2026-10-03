@@ -59,7 +59,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`supportBox.iconUrl`, read by the server from the page's
   `apple-touch-icon` / `<link rel="icon">`). An icon that fails to load is
   simply left out. It is not treated as an article image: no lightbox on tap
-  and no "website prevents image download" placeholder.
+  and no "image unavailable" placeholder.
+
+### Changed
+- Reader: the placeholder for images that cannot be loaded now reads
+  "Bild nicht abrufbar" / "Image unavailable" (previously the hard-coded
+  German text "Webseite verhindert Bilddownload") and comes from the
+  localization key `articleReader.imagePlaceholder.unavailable`.
 
 ### Fixed
 - Quotes: a normal paragraph following a blockquote is no longer styled as the
