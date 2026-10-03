@@ -166,37 +166,11 @@ struct ListFlyoutModifier: ViewModifier {
                 // Platz für Statusleiste / Dynamic Island
                 Color.clear.frame(height: safeAreaTop)
 
-                // ── Filter: Pages and Videos, each with their own
-                //    Unread(/Unseen)/Favorites/Archive sub-view ──────────────────
-                menuSectionCaption(L("articleList.filter.pages"))
-                ForEach(ArticleFilter.allCases.filter { !$0.isVideo }) { filter in
-                    menuRow(
-                        icon: filter.systemImage,
-                        label: filterLabel(filter),
-                        tint: viewModel.selectedFilter == filter && viewModel.selectedTagId == nil
-                            ? .accentColor : nil
-                    ) {
-                        viewModel.selectedTagId = nil
-                        viewModel.selectedFilter = filter
-                        Task { await viewModel.load() }
-                        close(then: onNavigate)
-                    }
-                }
-
-                menuSectionCaption(L("articleList.filter.videos"))
-                ForEach(ArticleFilter.allCases.filter { $0.isVideo }) { filter in
-                    menuRow(
-                        icon: filter.systemImage,
-                        label: filterLabel(filter),
-                        tint: viewModel.selectedFilter == filter && viewModel.selectedTagId == nil
-                            ? .accentColor : nil
-                    ) {
-                        viewModel.selectedTagId = nil
-                        viewModel.selectedFilter = filter
-                        Task { await viewModel.load() }
-                        close(then: onNavigate)
-                    }
-                }
+                // ── Filter: Pages, Videos and Audio, each with their own
+                //    Continue/Unread(/Unseen/Unheard)/Favorites/Archive sub-view ──
+                filterSection(L("articleList.filter.pages"), group: .pages)
+                filterSection(L("articleList.filter.videos"), group: .videos)
+                filterSection(L("articleList.filter.audio"), group: .audio)
 
                 // ── Tags (ausklappbar) ─────────────────────────────────────────
                 if !viewModel.allTags.isEmpty {
@@ -364,18 +338,35 @@ struct ListFlyoutModifier: ViewModifier {
         }
     }
 
+    @ViewBuilder
+    private func filterSection(_ caption: String, group: ContentGroup) -> some View {
+        menuSectionCaption(caption)
+        ForEach(ArticleFilter.allCases.filter { $0.group == group }) { filter in
+            menuRow(
+                icon: filter.systemImage,
+                label: filterLabel(filter),
+                tint: viewModel.selectedFilter == filter && viewModel.selectedTagId == nil
+                    ? .accentColor : nil
+            ) {
+                viewModel.selectedTagId = nil
+                viewModel.selectedFilter = filter
+                Task { await viewModel.load() }
+                close(then: onNavigate)
+            }
+        }
+    }
+
     private func filterLabel(_ filter: ArticleFilter) -> String {
-        // Weiterlesen/Weiterschauen wird rein client-seitig aus `scrollProgress`
+        // Weiterlesen/-schauen/-hören wird rein client-seitig aus `scrollProgress`
         // gefiltert (siehe ArticlesViewModel.fetchForFilter) – dafür gibt es
         // keine Server-Zählung, daher kein Badge.
-        guard !filter.isContinue else { return filter.label }
-        let group = filter.isVideo ? viewModel.counts.videos : viewModel.counts.pages
+        let group = viewModel.counts[filter.group]
         let count: Int
-        switch filter {
-        case .pagesUnread, .videosUnread:       count = group.unread
-        case .pagesFavorites, .videosFavorites: count = group.favorites
-        case .pagesArchive, .videosArchive:     count = group.archived
-        case .pagesContinue, .videosContinue:   count = 0 // unreachable, siehe guard oben
+        switch filter.kind {
+        case .unread:    count = group.unread
+        case .favorites: count = group.favorites
+        case .archive:   count = group.archived
+        case .continue:  return filter.label
         }
         return String(format: L("navigationMenu.filterWithCount"), filter.label, count)
     }

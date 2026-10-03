@@ -23,9 +23,34 @@ struct UndoableAction {
 
 // MARK: –
 
-/// Zwei oberste Kategorien (Seiten/Videos), je mit eigener Unread(/Unseen)-
-/// /Favorites-/Archive-Unteransicht - siehe getCounts() in
-/// merlin-standalone-server/src/Db/ArticleRepository.php für das
+/// Oberste Inhaltskategorie eines Artikels (Seiten/Videos/Audio), analog zu
+/// den Gruppen in Sidebar.vue und ArticleController::index() (contentType)
+/// in merlin-nextcloud. "Video" und "Audio" sind eigene Kategorien, alles
+/// andere (inkl. "Mixed", also Text mit Medium) zählt zu den Seiten.
+enum ContentGroup {
+    case pages, videos, audio
+
+    init(category: String?) {
+        switch category {
+        case "Video": self = .videos
+        case "Audio": self = .audio
+        default:      self = .pages
+        }
+    }
+
+    /// Wert für den `contentType`-Parameter von `GET /api/articles`.
+    var contentType: String {
+        switch self {
+        case .pages:  return "page"
+        case .videos: return "video"
+        case .audio:  return "audio"
+        }
+    }
+}
+
+/// Drei oberste Kategorien (Seiten/Videos/Audio), je mit eigener
+/// Weiter-/Unread(/Unseen/Unheard)-/Favorites-/Archive-Unteransicht - siehe
+/// getCounts() in merlin-nextcloud/lib/Db/ArticleMapper.php für das
 /// serverseitige Äquivalent dieser Aufteilung.
 enum ArticleFilter: String, CaseIterable, Identifiable {
     case pagesContinue   = "PagesContinue"
@@ -36,36 +61,48 @@ enum ArticleFilter: String, CaseIterable, Identifiable {
     case videosUnread    = "VideosUnread"
     case videosFavorites = "VideosFavorites"
     case videosArchive   = "VideosArchive"
+    case audioContinue   = "AudioContinue"
+    case audioUnread     = "AudioUnread"
+    case audioFavorites  = "AudioFavorites"
+    case audioArchive    = "AudioArchive"
 
     var id: String { rawValue }
 
-    /// Ob dieser Filter zur Videos- oder zur Seiten-Gruppe gehört (UI-Gruppierung).
-    var isVideo: Bool {
+    /// Unteransicht innerhalb einer Gruppe, unabhängig von Seiten/Videos/Audio.
+    enum Kind { case `continue`, unread, favorites, archive }
+
+    /// Zu welcher obersten Gruppe dieser Filter gehört (UI-Gruppierung).
+    var group: ContentGroup {
         switch self {
-        case .videosContinue, .videosUnread, .videosFavorites, .videosArchive: return true
-        case .pagesContinue, .pagesUnread, .pagesFavorites, .pagesArchive:     return false
+        case .pagesContinue, .pagesUnread, .pagesFavorites, .pagesArchive:     return .pages
+        case .videosContinue, .videosUnread, .videosFavorites, .videosArchive: return .videos
+        case .audioContinue, .audioUnread, .audioFavorites, .audioArchive:     return .audio
         }
     }
 
-    /// Ob dieser Filter angefangene, aber nicht fertig gelesene/geschaute
-    /// Inhalte listet (Weiterlesen/Weiterschauen) – siehe `fetchForFilter`.
-    var isContinue: Bool {
+    var kind: Kind {
         switch self {
-        case .pagesContinue, .videosContinue: return true
-        default:                              return false
+        case .pagesContinue, .videosContinue, .audioContinue:    return .continue
+        case .pagesUnread, .videosUnread, .audioUnread:          return .unread
+        case .pagesFavorites, .videosFavorites, .audioFavorites: return .favorites
+        case .pagesArchive, .videosArchive, .audioArchive:       return .archive
         }
     }
+
+    /// Ob dieser Filter angefangene, aber nicht fertig gelesene/geschaute/
+    /// gehörte Inhalte listet (Weiterlesen/-schauen/-hören) – siehe `fetchForFilter`.
+    var isContinue: Bool { kind == .continue }
 
     var label: String {
         switch self {
         case .pagesContinue:   return L("articleList.filter.continueReading")
         case .pagesUnread:     return L("articleList.filter.unread")
-        case .pagesFavorites:  return L("articleList.filter.favorites")
-        case .pagesArchive:    return L("articleList.filter.archive")
         case .videosContinue:  return L("articleList.filter.continueWatching")
         case .videosUnread:    return L("articleList.filter.unseen")
-        case .videosFavorites: return L("articleList.filter.favorites")
-        case .videosArchive:   return L("articleList.filter.archive")
+        case .audioContinue:   return L("articleList.filter.continueListening")
+        case .audioUnread:     return L("articleList.filter.unheard")
+        case .pagesFavorites, .videosFavorites, .audioFavorites: return L("articleList.filter.favorites")
+        case .pagesArchive, .videosArchive, .audioArchive:       return L("articleList.filter.archive")
         }
     }
 
@@ -73,12 +110,12 @@ enum ArticleFilter: String, CaseIterable, Identifiable {
         switch self {
         case .pagesContinue:   return "book.pages"
         case .pagesUnread:     return "tray.full"
-        case .pagesFavorites:  return "star"
-        case .pagesArchive:    return "archivebox"
         case .videosContinue:  return "play.circle"
         case .videosUnread:    return "play.rectangle"
-        case .videosFavorites: return "star"
-        case .videosArchive:   return "archivebox"
+        case .audioContinue:   return "headphones.circle"
+        case .audioUnread:     return "headphones"
+        case .pagesFavorites, .videosFavorites, .audioFavorites: return "star"
+        case .pagesArchive, .videosArchive, .audioArchive:       return "archivebox"
         }
     }
 
@@ -95,24 +132,37 @@ enum ArticleFilter: String, CaseIterable, Identifiable {
         case .videosUnread:    return "videos-unread"
         case .videosFavorites: return "videos-favorites"
         case .videosArchive:   return "videos-archived"
+        case .audioContinue:   return "audio-continue"
+        case .audioUnread:     return "audio-unread"
+        case .audioFavorites:  return "audio-favorites"
+        case .audioArchive:    return "audio-archived"
         }
     }
 
-    /// Aus Server-Wert (z.B. "pages-unread", "videos-favorites") in iOS-Filter konvertieren.
+    /// Aus Server-Wert (z.B. "pages-unread", "audio-favorites") in iOS-Filter konvertieren.
     static func fromServerValue(_ value: String) -> ArticleFilter {
+        if let match = allCases.first(where: { $0.serverValue == value }) { return match }
         switch value {
-        case "pages-continue":   return .pagesContinue
-        case "pages-unread":     return .pagesUnread
-        case "pages-favorites":  return .pagesFavorites
-        case "pages-archived":   return .pagesArchive
-        case "videos-continue":  return .videosContinue
-        case "videos-unread":    return .videosUnread
-        case "videos-favorites": return .videosFavorites
-        case "videos-archived":  return .videosArchive
         // Legacy-Werte aus der Zeit vor der Pages/Videos-Aufteilung.
         case "favorites":        return .pagesFavorites
         case "video":            return .videosUnread
         default:                 return .pagesUnread
+        }
+    }
+
+    /// Ob `article` in diesem Filter erscheint (ohne Tag-Filter). Gemeinsame
+    /// Grundlage für `ArticlesViewModel.shouldHide` und den Offline-Cache
+    /// (`ArticleCacheService.matches`), spiegelt `fetchForFilter`.
+    func matches(_ article: Article) -> Bool {
+        guard ContentGroup(category: article.category) == group else { return false }
+        switch kind {
+        case .continue:
+            let progress = article.scrollProgress ?? 0
+            return !article.isArchived && progress > 0 && progress < 1
+        case .unread:    return !article.isArchived
+        // Bewusst OHNE isArchived-Bedingung: Favoriten unabhängig vom Archiv-Status.
+        case .favorites: return article.isFavorite
+        case .archive:   return article.isArchived
         }
     }
 }
@@ -308,9 +358,9 @@ final class ArticlesViewModel {
             return try await MerlinAPI.shared.getArticles(
                 isArchived: showArchivedInTagView ? nil : false, tagId: tagId)
         }
-        let contentType = filter.isVideo ? "video" : "page"
-        switch filter {
-        case .pagesContinue, .videosContinue:
+        let contentType = filter.group.contentType
+        switch filter.kind {
+        case .continue:
             // Angefangene, aber weder fertig gelesene/geschaute noch archivierte
             // Inhalte – nutzt den bereits geräteübergreifend synchronisierten
             // `scrollProgress` (siehe ProgressSyncQueue), keine eigene Server-Anfrage.
@@ -321,16 +371,16 @@ final class ArticlesViewModel {
                     return progress > 0 && progress < 1
                 }
                 .sorted { ($0.scrollUpdatedAt ?? 0) > ($1.scrollUpdatedAt ?? 0) }
-        case .pagesUnread, .videosUnread:
+        case .unread:
             return try await MerlinAPI.shared.getArticles(isArchived: false, contentType: contentType)
-        case .pagesFavorites, .videosFavorites:
+        case .favorites:
             // Bewusst OHNE isArchived-Filter: Favoriten sollen unabhängig vom
             // Archiv-Status angezeigt werden. Chronologisch nach
             // Favorisierungszeitpunkt sortieren (Server sortiert bereits so,
             // client-seitig hier abgesichert – analog zum .archive-Fall unten).
             let fetched = try await MerlinAPI.shared.getArticles(isFavorite: true, contentType: contentType)
             return fetched.sorted { ($0.favoritedAt ?? "") > ($1.favoritedAt ?? "") }
-        case .pagesArchive, .videosArchive:
+        case .archive:
             let fetched = try await MerlinAPI.shared.getArticles(isArchived: true, contentType: contentType)
             return fetched.sorted { ($0.archivedAt ?? "") > ($1.archivedAt ?? "") }
         }
@@ -542,18 +592,7 @@ final class ArticlesViewModel {
     /// `reinsertIfMissing` (to decide whether a rolled-back row needs
     /// restoring).
     private func shouldHide(_ article: Article, in filter: ArticleFilter) -> Bool {
-        let isVideo = article.category == "Video"
-        let isInProgress = (article.scrollProgress ?? 0) > 0 && (article.scrollProgress ?? 0) < 1
-        switch filter {
-        case .pagesContinue:   return article.isArchived || isVideo || !isInProgress
-        case .pagesUnread:     return article.isArchived || isVideo
-        case .pagesFavorites:  return !article.isFavorite || isVideo
-        case .pagesArchive:    return !article.isArchived || isVideo
-        case .videosContinue:  return article.isArchived || !isVideo || !isInProgress
-        case .videosUnread:    return article.isArchived || !isVideo
-        case .videosFavorites: return !article.isFavorite || !isVideo
-        case .videosArchive:   return !article.isArchived || !isVideo
-        }
+        !filter.matches(article)
     }
 
     /// Restores `article` to the list — in roughly sorted position — if the
@@ -569,9 +608,9 @@ final class ArticlesViewModel {
             return
         }
         let idx: Int
-        if selectedFilter == .pagesArchive || selectedFilter == .videosArchive {
+        if selectedFilter.kind == .archive {
             idx = articles.firstIndex { ($0.archivedAt ?? "") < (article.archivedAt ?? "") } ?? articles.endIndex
-        } else if selectedFilter == .pagesContinue || selectedFilter == .videosContinue {
+        } else if selectedFilter.kind == .continue {
             idx = articles.firstIndex { ($0.scrollUpdatedAt ?? 0) < (article.scrollUpdatedAt ?? 0) } ?? articles.endIndex
         } else {
             idx = articles.firstIndex { $0.createdAt < article.createdAt } ?? articles.endIndex
