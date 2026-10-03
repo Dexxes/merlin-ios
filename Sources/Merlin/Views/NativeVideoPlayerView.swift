@@ -21,8 +21,10 @@ enum NativeVideoHost {
 
 /// Lädt und spielt den nativen ARD/ZDF/Arte-Stream für einen Artikel ab. Fragt den
 /// `/video-stream`-Endpunkt nur einmal pro Artikel ab (`.task(id: articleId)`) und blendet sich
-/// selbst aus, wenn kein Stream verfügbar ist (z. B. Sendung nicht mehr online) — analog zu
-/// `VideoPlayer.vue`, das bei `available == false` ebenfalls nichts rendert.
+/// den Player aus, wenn kein Stream verfügbar ist (z. B. Sendung nicht mehr online oder wegen
+/// Jugendschutz erst abends abrufbar). Das Titelbild bleibt dann trotzdem stehen: der Reader
+/// blendet es bei Mediathek-Artikeln im Text aus, weil es sonst als Player-Cover doppelt
+/// erschiene - ohne Player fehlte es sonst ganz.
 struct NativeVideoPlayerCard: View {
     let articleId: Int
     /// Artikel-Titelbild - dient als Player-Cover (wie das `poster`-Attribut bei HTML5-Video),
@@ -116,6 +118,18 @@ struct NativeVideoPlayerCard: View {
                 .onChange(of: selectedIndex) { _, newIndex in
                     loadPlayer(for: variants[newIndex])
                 }
+            } else if let posterURL {
+                // Noch kein oder gar kein Stream: Titelbild ohne Play-Symbol zeigen.
+                CachedAsyncImage(url: posterURL) { image in
+                    image.aspectRatio(16.0 / 9.0, contentMode: .fill)
+                } placeholder: {
+                    Color.secondary.opacity(0.15)
+                }
+                .aspectRatio(16.0 / 9.0, contentMode: .fit)
+                .frame(maxWidth: .infinity)
+                .clipped()
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .padding(.top, 4)
             }
         }
         .padding(.horizontal, 20)
