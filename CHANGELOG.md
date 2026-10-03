@@ -82,6 +82,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   localization key `articleReader.imagePlaceholder.unavailable`.
 
 ### Fixed
+- Reader: 3sat videos play in the native player like ARD, ZDF and Arte
+  (needs Merlin for Nextcloud with 3sat support).
+- Reader: ARD/ZDF/Arte articles whose stream cannot be loaded (e.g. a film
+  that is only available late in the evening, or one that is no longer
+  online) show the title image again instead of nothing at the top.
 - Quotes: a normal paragraph following a blockquote is no longer styled as the
   quote attribution; only a paragraph consisting solely of a `<cite>` is.
 
