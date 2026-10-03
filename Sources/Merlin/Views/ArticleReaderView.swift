@@ -2068,6 +2068,14 @@ struct ArticleReaderView: View {
         return MediaMarker.splitLeadingHero(from: MediaMarker.stripMarker(from: content)).rest
     }
 
+    /// Aufmacher-Video eines Textartikels (Medien-Marker mit `kind == video`): legt den Player
+    /// über `merlinInlineMediaJS` auf das Hero Image, siehe `MediaMarker.promoteHeroVideo(in:)`.
+    /// ARD/ZDF/Arte haben ihren eigenen nativen Player (NativeVideoPlayerCard).
+    private func promoteHeroVideo(in content: String) -> String {
+        guard !NativeVideoHost.matches(current.url), !current.isPDF else { return content }
+        return MediaMarker.promoteHeroVideo(in: content)
+    }
+
     /// true, wenn der WebView-Inhalt direkt mit dem Titelbild beginnt – dann setzt das CSS
     /// Fläche + Tonstufen fort, sonst zeichnet der native Header die Stufen.
     private var readerLeadsWithHero: Bool {
@@ -3644,7 +3652,7 @@ struct ArticleReaderView: View {
           </style>
         </head>
         <body>
-          \(rewriteYouTubeEmbeds(in: stripAudioPlayerElements(in: stripHeroImageIfShownAsVideoCover(in: rewriteImageURLs(in: injectHeroImageIfNeeded(into: promoteLazyImageAttributes(in: content)))))))\(footerBylineHTML)
+          \(rewriteYouTubeEmbeds(in: stripAudioPlayerElements(in: promoteHeroVideo(in: stripHeroImageIfShownAsVideoCover(in: rewriteImageURLs(in: injectHeroImageIfNeeded(into: promoteLazyImageAttributes(in: content))))))))\(footerBylineHTML)
           <script>\(merlinHighlightJS)</script>
           <script>
           (function(){

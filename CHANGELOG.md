@@ -19,6 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   flyout with the full name carries the link). The byline at the end of the
   article links the name too. Only absolute http(s) links are used; older
   servers without the field are unaffected.
+- Lead videos in text articles: when the server delivers the article's lead
+  medium as a video (`div.merlin-media` with `data-media-kind="video"` and an
+  https file/HLS source, e.g. the JSON-LD VideoObject on tagesschau.de), the
+  reader now plays it on top of the hero image, like the web reader does.
+  Previously only the hero image plus a "Zum Video" link were shown. The
+  player reuses the inline-video player (hero image as poster, caption below);
+  if playback fails, image and link come back.
 - Inline videos: videos in the middle of an article (server `<media><inline>`,
   e.g. the ARD player on rbb24.de, delivered as `figure.merlin-inline-media`
   with a poster image and a `div.merlin-inline-media-source` marker) now play

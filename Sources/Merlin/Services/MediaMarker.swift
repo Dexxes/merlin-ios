@@ -113,6 +113,84 @@ enum MediaMarker {
         return (caption, rest)
     }
 
+    // MARK: – Aufmacher-Video
+
+    private static let figureOpenTagRegex = try? NSRegularExpression(
+        pattern: #"^\s*<figure\b[^>]*>"#, options: [.caseInsensitive]
+    )
+    private static let classAttributeRegex = try? NSRegularExpression(
+        pattern: #"\bclass\s*=\s*"([^"]*)""#, options: [.caseInsensitive]
+    )
+    private static let figureInsertRegex = try? NSRegularExpression(
+        pattern: #"<figcaption\b|</figure>"#, options: [.caseInsensitive]
+    )
+
+    /// Aufmacher-Video eines Textartikels (Marker `div.merlin-media` mit `kind == video` und
+    /// https-Datei/HLS, z. B. das VideoObject aus dem JSON-LD bei tagesschau.de): Das führende
+    /// Hero Image wird zur Inline-Medien-Figure (`figure.merlin-inline-media` mit
+    /// `div.merlin-inline-media-source`), auf die `merlinInlineMediaJS` den Player mit dem Hero
+    /// Image als Poster legt – wie das Web (`MediaPlayer.vue`), das den Player ebenfalls auf das
+    /// Hero-Bild setzt. Die Bildunterschrift bleibt unter dem Player.
+    ///
+    /// Der ursprüngliche Marker bleibt im DOM und wird nur per `display:none` ausgeblendet, damit sich
+    /// die Tag-Zähler der Highlight-XPaths nicht verschieben; seinen „Zum Video“-Link übernimmt
+    /// die Figure (sichtbar, bis der Player steht oder wenn die Wiedergabe scheitert).
+    static func promoteHeroVideo(in html: String) -> String {
+        guard let marker = parse(html), marker.kind == "video",
+              let delivery = marker.delivery, delivery == "file" || delivery == "hls",
+              let src = marker.src,
+              let divRegex, let fallbackLinkRegex, let leadingHeroRegex,
+              let figureOpenTagRegex, let classAttributeRegex, let figureInsertRegex else { return html }
+
+        let ns = html as NSString
+        guard let markerMatch = divRegex.firstMatch(in: html, range: NSRange(location: 0, length: ns.length)) else {
+            return html
+        }
+        let markerHTML = ns.substring(with: markerMatch.range)
+        let markerNS = markerHTML as NSString
+        let link = fallbackLinkRegex.firstMatch(in: markerHTML, range: NSRange(location: 0, length: markerNS.length))
+            .map { markerNS.substring(with: $0.range) } ?? ""
+
+        func escaped(_ value: String) -> String {
+            value.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "\"", with: "&quot;")
+        }
+        let sourceDiv = "<div class=\"merlin-inline-media-source\" data-media-kind=\"video\""
+            + " data-media-delivery=\"\(delivery)\" data-media-src=\"\(escaped(src.absoluteString))\">"
+            + link + "</div>"
+
+        // Marker ausblenden (vor dem Umbau der Figure, die davor steht – Offsets bleiben gültig).
+        var result = ns.replacingCharacters(
+            in: NSRange(location: markerMatch.range.location, length: 4), with: "<div style=\"display:none\"")
+
+        let resultNS = result as NSString
+        guard let hero = leadingHeroRegex.firstMatch(in: result, range: NSRange(location: 0, length: resultNS.length)),
+              hero.range.location + hero.range.length <= markerMatch.range.location,
+              let openTag = figureOpenTagRegex.firstMatch(in: result, range: hero.range) else {
+            // Kein führendes Hero-Figure: Player ohne Poster ganz oben.
+            return "<figure class=\"merlin-inline-media\">\(sourceDiv)</figure>" + result
+        }
+
+        // sourceDiv vor der figcaption (bzw. vor </figure>) einsetzen …
+        let heroNS = resultNS.substring(with: hero.range) as NSString
+        if let insert = figureInsertRegex.firstMatch(in: heroNS as String, range: NSRange(location: 0, length: heroNS.length)) {
+            result = resultNS.replacingCharacters(
+                in: NSRange(location: hero.range.location + insert.range.location, length: 0), with: sourceDiv)
+        }
+
+        // … und die Figure als Inline-Medien-Figure markieren.
+        let tagNS = (result as NSString).substring(with: openTag.range) as NSString
+        let newTag: String
+        if let cls = classAttributeRegex.firstMatch(in: tagNS as String, range: NSRange(location: 0, length: tagNS.length)) {
+            newTag = tagNS.replacingCharacters(in: NSRange(location: cls.range(at: 1).location, length: 0),
+                                               with: "merlin-inline-media ")
+        } else {
+            let figureEnd = tagNS.range(of: "<figure", options: .caseInsensitive)
+            newTag = tagNS.replacingCharacters(in: NSRange(location: figureEnd.location + figureEnd.length, length: 0),
+                                               with: " class=\"merlin-inline-media\"")
+        }
+        return (result as NSString).replacingCharacters(in: openTag.range, with: newTag)
+    }
+
     // MARK: – Quelle auflösen
 
     /// Nur die im Content-Marker mitgelieferte Quelle (synchron, ohne Netzwerk).
