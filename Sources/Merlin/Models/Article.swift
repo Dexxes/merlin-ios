@@ -20,6 +20,9 @@ struct Article: Identifiable, Codable, Equatable {
     var content: String?
     var excerpt: String?
     var author: String?
+    /// Link zum Autorenprofil bei der Quelle (`authorUrl`, Merlin-Server ab Migration 26). Nur bei genau
+    /// einem Autor gesetzt; nil bei älteren Servern. Für die Anzeige `authorProfileURL` verwenden.
+    var authorUrl: String?
     var siteName: String?
     var imageUrl: String?
     var isFavorite: Bool
@@ -66,7 +69,7 @@ struct Article: Identifiable, Codable, Equatable {
     var supportBox: SupportBox?
 
     enum CodingKeys: String, CodingKey {
-        case id, url, title, content, excerpt, author, siteName, imageUrl
+        case id, url, title, content, excerpt, author, authorUrl, siteName, imageUrl
         case isFavorite, isArchived, readingTime, publishedAt, createdAt, updatedAt, archivedAt
         case tags, isProcessing, category, scrollProgress, scrollUpdatedAt
         case requiresLoginDomain, requiresLoginPage
@@ -83,6 +86,7 @@ struct Article: Identifiable, Codable, Equatable {
         content = try c.decodeIfPresent(String.self, forKey: .content)
         excerpt = try c.decodeIfPresent(String.self, forKey: .excerpt)
         author = try c.decodeIfPresent(String.self, forKey: .author)
+        authorUrl = try? c.decodeIfPresent(String.self, forKey: .authorUrl)
         siteName = try c.decodeIfPresent(String.self, forKey: .siteName)
         imageUrl = try c.decodeIfPresent(String.self, forKey: .imageUrl)
         isArchived = try c.decode(Bool.self, forKey: .isArchived)
@@ -123,6 +127,7 @@ struct Article: Identifiable, Codable, Equatable {
         try c.encodeIfPresent(content, forKey: .content)
         try c.encodeIfPresent(excerpt, forKey: .excerpt)
         try c.encodeIfPresent(author, forKey: .author)
+        try c.encodeIfPresent(authorUrl, forKey: .authorUrl)
         try c.encodeIfPresent(siteName, forKey: .siteName)
         try c.encodeIfPresent(imageUrl, forKey: .imageUrl)
         try c.encode(isArchived, forKey: .isArchived)
@@ -166,6 +171,17 @@ struct Article: Identifiable, Codable, Equatable {
 
     var displaySiteName: String {
         siteName ?? URL(string: url)?.host ?? url
+    }
+
+    /// Autorenprofil-Link für die Anzeige: nur absolute http(s)-URLs und nur, wenn auch ein Autorname
+    /// da ist (wie `safeAuthorUrl` im Web-Reader).
+    var authorProfileURL: URL? {
+        guard let name = author?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty,
+              let raw = authorUrl?.trimmingCharacters(in: .whitespacesAndNewlines),
+              let url = URL(string: raw),
+              let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https",
+              url.host?.isEmpty == false else { return nil }
+        return url
     }
 
     /// DuckDuckGo favicon service – works for virtually any domain.
