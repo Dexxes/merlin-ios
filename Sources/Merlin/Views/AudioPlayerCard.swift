@@ -40,6 +40,9 @@ struct AirPlayRoutePicker: UIViewRepresentable {
 ///
 /// Solange der Artikel nicht der aktuell geladene ist, zeigt die Karte nur Cover + Play - ein
 /// bereits laufendes Audio eines anderen Artikels wird durch das bloße Öffnen nicht unterbrochen.
+///
+/// Wie beim Videoplayer (AVKit) blendet ein Tap aufs Cover die Bedienung aus und wieder ein;
+/// während der Wiedergabe verschwindet sie nach kurzer Zeit ohne Interaktion von selbst.
 struct AudioPlayerCard: View {
     @ObservedObject var audio: AudioPlaybackService
     let article: Article
@@ -52,6 +55,13 @@ struct AudioPlayerCard: View {
     let steps: [(height: CGFloat, color: Color)]
 
     @State private var scrubFraction: Double?
+    @State private var controlsVisible = true
+    /// Wird bei jeder Interaktion erhöht und startet damit den Auto-Ausblenden-Timer neu.
+    @State private var hideToken = 0
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
+
+    /// Wie lange die Bedienung während der Wiedergabe ohne Interaktion sichtbar bleibt.
+    private static let autoHideDelay: Duration = .seconds(3)
 
     private var isActive: Bool { audio.currentArticleId == article.id }
     private var savedPosition: Double { PreferencesStore.shared.savedAudioPosition(for: article.id) }
@@ -107,9 +117,50 @@ struct AudioPlayerCard: View {
         .background(accent)
         .overlay(alignment: .bottom) {
             Group {
-                if isActive { controls } else { idleOverlay }
+                if isActive {
+                    controls
+                        .opacity(controlsVisible ? 1 : 0)
+                        .allowsHitTesting(controlsVisible)
+                } else {
+                    idleOverlay
+                }
             }
         }
+        // Tap aufs Cover (oder auf eine freie Stelle der Bedienleiste) schaltet die Bedienung um;
+        // Buttons, Menüs und der Scrubber haben Vorrang vor dieser Geste.
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard isActive else { return }
+            withAnimation(.easeInOut(duration: 0.2)) { controlsVisible.toggle() }
+            if controlsVisible { hideToken += 1 }
+        }
+        .task(id: hideToken) {
+            try? await Task.sleep(for: Self.autoHideDelay)
+            guard !Task.isCancelled, shouldAutoHide else { return }
+            withAnimation(.easeInOut(duration: 0.3)) { controlsVisible = false }
+        }
+        .onChange(of: audio.isPlaying) { _, playing in
+            // Pausieren holt die Bedienung zurück, (Wieder-)Start lässt sie danach auslaufen.
+            if !playing { showControls() } else { hideToken += 1 }
+        }
+        .onChange(of: isActive) { _, _ in showControls() }
+        .onChange(of: scrubFraction) { _, _ in hideToken += 1 }
+        .onChange(of: audio.rate) { _, _ in hideToken += 1 }
+        .onChange(of: audio.selectedVariant) { _, _ in hideToken += 1 }
+        .onChange(of: audio.errorMessage) { _, message in
+            if message != nil { showControls() }
+        }
+    }
+
+    /// Auto-Ausblenden nur während laufender Wiedergabe und nie mit VoiceOver, sonst wären die
+    /// Bedienelemente für VoiceOver-Nutzer plötzlich unerreichbar.
+    private var shouldAutoHide: Bool {
+        isActive && audio.isPlaying && scrubFraction == nil && audio.errorMessage == nil && !voiceOverEnabled
+    }
+
+    private func showControls() {
+        withAnimation(.easeInOut(duration: 0.2)) { controlsVisible = true }
+        hideToken += 1
     }
 
     private var idleOverlay: some View {
@@ -219,7 +270,10 @@ struct AudioPlayerCard: View {
             Spacer(minLength: 0)
 
             HStack(spacing: 22) {
-                Button { audio.skip(by: -AudioPlaybackService.skipBackSeconds) } label: {
+                Button {
+                    audio.skip(by: -AudioPlaybackService.skipBackSeconds)
+                    hideToken += 1
+                } label: {
                     Image(systemName: "gobackward.15").font(.system(size: 24))
                 }
                 .accessibilityLabel(L("audioPlayer.skipBack"))
@@ -237,7 +291,10 @@ struct AudioPlayerCard: View {
                 }
                 .accessibilityLabel(audio.isPlaying ? L("audioPlayer.pause") : L("audioPlayer.play"))
 
-                Button { audio.skip(by: AudioPlaybackService.skipForwardSeconds) } label: {
+                Button {
+                    audio.skip(by: AudioPlaybackService.skipForwardSeconds)
+                    hideToken += 1
+                } label: {
                     Image(systemName: "goforward.30").font(.system(size: 24))
                 }
                 .accessibilityLabel(L("audioPlayer.skipForward"))
