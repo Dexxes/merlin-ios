@@ -99,6 +99,9 @@ struct ListFlyoutModifier: ViewModifier {
 
     @State private var showSideMenu:   Bool    = false
     @State private var tagsExpanded:   Bool    = false
+    /// Im Menü angezeigte Medienart (Tab). Steht beim Öffnen auf der Gruppe
+    /// des aktiven Filters; ein Tab-Wechsel lädt nichts, erst die Zeile.
+    @State private var menuGroup:      ContentGroup = .pages
     @State private var safeAreaTop:    CGFloat = 0
     @State private var safeAreaBottom: CGFloat = 0
     @State private var showSettings:   Bool    = false
@@ -155,6 +158,9 @@ struct ListFlyoutModifier: ViewModifier {
                 }
             }
             .animation(.spring(response: 0.32, dampingFraction: 0.88), value: showSideMenu)
+            .onChange(of: showSideMenu) { _, isShown in
+                if isShown { menuGroup = viewModel.selectedFilter.group }
+            }
     }
 
     // MARK: – Drawer-Inhalt
@@ -166,11 +172,21 @@ struct ListFlyoutModifier: ViewModifier {
                 // Platz für Statusleiste / Dynamic Island
                 Color.clear.frame(height: safeAreaTop)
 
-                // ── Filter: Pages, Videos and Audio, each with their own
-                //    Continue/Unread(/Unseen/Unheard)/Favorites/Archive sub-view ──
-                filterSection(L("articleList.filter.pages"), group: .pages)
-                filterSection(L("articleList.filter.videos"), group: .videos)
-                filterSection(L("articleList.filter.audio"), group: .audio)
+                // ── Filter: Tabs Text/Video/Audio, darunter die
+                //    Continue/Unread(/Unseen/Unheard)/Favorites/Archive-Ansichten
+                //    der gewählten Medienart ──
+                Picker(L("navigationMenu.mediaTypePicker"), selection: $menuGroup) {
+                    Text(L("navigationMenu.tab.text")).tag(ContentGroup.pages)
+                    Text(L("navigationMenu.tab.video")).tag(ContentGroup.videos)
+                    Text(L("navigationMenu.tab.audio")).tag(ContentGroup.audio)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .padding(.horizontal, 16)
+                .padding(.top, 4)
+                .padding(.bottom, 6)
+
+                filterSection(group: menuGroup)
 
                 // ── Tags (ausklappbar) ─────────────────────────────────────────
                 if !viewModel.allTags.isEmpty {
@@ -318,15 +334,6 @@ struct ListFlyoutModifier: ViewModifier {
         Divider().padding(.leading, 20)
     }
 
-    private func menuSectionCaption(_ text: String) -> some View {
-        Text(text.uppercased())
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 20)
-            .padding(.top, 10)
-            .padding(.bottom, 2)
-    }
-
     private func close(then completion: (() -> Void)? = nil) {
         withAnimation(.spring(response: 0.32, dampingFraction: 0.88)) {
             showSideMenu = false
@@ -339,8 +346,7 @@ struct ListFlyoutModifier: ViewModifier {
     }
 
     @ViewBuilder
-    private func filterSection(_ caption: String, group: ContentGroup) -> some View {
-        menuSectionCaption(caption)
+    private func filterSection(group: ContentGroup) -> some View {
         ForEach(ArticleFilter.allCases.filter { $0.group == group }) { filter in
             menuRow(
                 icon: filter.systemImage,

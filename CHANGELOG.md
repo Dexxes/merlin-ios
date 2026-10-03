@@ -69,6 +69,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and no "image unavailable" placeholder.
 
 ### Changed
+- Side menu: Pages, Videos and Audio are no longer three stacked groups.
+  A segmented control at the top (Text · Video · Audio) picks the media
+  type, and only its four views (Continue, Unread/Unseen/Not listened,
+  Favorites, Archive with counts) are listed below. Switching tabs does not
+  change the list; tapping a view does. When the menu opens, the tab matches
+  the current list. Tags, view mode, Reminders, Settings and App Tour stay
+  shared below. The app tour's demo menu shows the same control.
 - Reader: the placeholder for images that cannot be loaded now reads
   "Bild nicht abrufbar" / "Image unavailable" (previously the hard-coded
   German text "Webseite verhindert Bilddownload") and comes from the

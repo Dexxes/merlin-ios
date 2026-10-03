@@ -356,6 +356,10 @@
 "navigationMenu.clearTagFilter" = "Clear tag filter";
 "navigationMenu.filterWithCount" = "%@ (%lld)";
 "navigationMenu.listView" = "List View";
+"navigationMenu.mediaTypePicker" = "Media type";
+"navigationMenu.tab.audio" = "Audio";
+"navigationMenu.tab.text" = "Text";
+"navigationMenu.tab.video" = "Video";
 "navigationMenu.tagsHeader" = "Tags";
 "onboarding.buttons.getStarted" = "Get Started";
 "onboarding.demo.leftFlyout.archive" = "Archive (47)";

@@ -152,6 +152,17 @@ private struct DemoLeftFlyout: View {
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 0) {
                 Color.clear.frame(height: 54)
+                Picker(L("navigationMenu.mediaTypePicker"), selection: .constant(0)) {
+                    Text(L("navigationMenu.tab.text")).tag(0)
+                    Text(L("navigationMenu.tab.video")).tag(1)
+                    Text(L("navigationMenu.tab.audio")).tag(2)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .allowsHitTesting(false)
+                .padding(.horizontal, 16)
+                .padding(.top, 4)
+                .padding(.bottom, 6)
                 flyoutRow(icon: "tray.2",           label: L("onboarding.demo.leftFlyout.unread"),  tint: .accentColor)
                 flyoutRow(icon: "star",              label: L("onboarding.demo.leftFlyout.favorites"))
                 flyoutRow(icon: "archivebox",        label: L("onboarding.demo.leftFlyout.archive"))
