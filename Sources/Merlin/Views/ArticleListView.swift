@@ -420,8 +420,8 @@ struct ArticleListView: View {
                 onDelete:         { Task { await viewModel.delete(article) } },
                 onEditTags:       { tagSheetArticle = article },
                 onTap:            { selectedArticle = article },
-                showFavoriteAction: viewModel.selectedFilter != .pagesFavorites && viewModel.selectedFilter != .videosFavorites,
-                showArchiveAction:  viewModel.selectedFilter != .pagesArchive && viewModel.selectedFilter != .videosArchive
+                showFavoriteAction: viewModel.selectedFilter.kind != .favorites,
+                showArchiveAction:  viewModel.selectedFilter.kind != .archive
             )
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
@@ -487,8 +487,8 @@ struct ArticleListView: View {
                     onToggleArchive:    { Task { await viewModel.toggleArchive(article) } },
                     onDelete:           { Task { await viewModel.delete(article) } },
                     onEditTags:         { tagSheetArticle = article },
-                    showFavoriteAction: viewModel.selectedFilter != .pagesFavorites && viewModel.selectedFilter != .videosFavorites,
-                    showArchiveAction:  viewModel.selectedFilter != .pagesArchive && viewModel.selectedFilter != .videosArchive
+                    showFavoriteAction: viewModel.selectedFilter.kind != .favorites,
+                    showArchiveAction:  viewModel.selectedFilter.kind != .archive
                 )
             }
             .buttonStyle(.plain)
@@ -553,6 +553,10 @@ struct ArticleListView: View {
         case .videosUnread:    return L("articleList.emptyState.unseenMessage")
         case .videosFavorites: return L("articleList.emptyState.favoritesMessage")
         case .videosArchive:   return L("articleList.emptyState.archiveMessage")
+        case .audioContinue:   return L("articleList.emptyState.continueListeningMessage")
+        case .audioUnread:     return L("articleList.emptyState.unheardMessage")
+        case .audioFavorites:  return L("articleList.emptyState.favoritesMessage")
+        case .audioArchive:    return L("articleList.emptyState.archiveMessage")
         }
     }
 

@@ -59,8 +59,8 @@ actor ArticleCacheService {
     }
 
     /// All cached articles without any filter (independent of archive/favorite
-    /// status or Pages/Videos category) - for fallback lookups that go beyond
-    /// the six `ArticleFilter` views, e.g. warming the image cache at launch.
+    /// status or Pages/Videos/Audio category) - for fallback lookups that go beyond
+    /// the `ArticleFilter` views, e.g. warming the image cache at launch.
     func loadAllCached() -> [Article] {
         loadFromDiskIfNeeded()
         return cache.values.map(\.article)
@@ -132,19 +132,7 @@ actor ArticleCacheService {
             // `showArchivedForTag`, ob archivierte Artikel mitgezählt werden.
             return showArchivedForTag || !article.isArchived
         }
-        let isVideo = article.category == "Video"
-        let isInProgress = (article.scrollProgress ?? 0) > 0 && (article.scrollProgress ?? 0) < 1
-        switch filter {
-        case .pagesContinue:   return !article.isArchived && !isVideo &&  isInProgress
-        case .pagesUnread:     return !article.isArchived && !isVideo
-        // Bewusst OHNE isArchived-Bedingung: Favoriten unabhängig vom Archiv-Status.
-        case .pagesFavorites:  return  article.isFavorite  && !isVideo
-        case .pagesArchive:    return  article.isArchived  && !isVideo
-        case .videosContinue:  return !article.isArchived  &&  isVideo &&  isInProgress
-        case .videosUnread:    return !article.isArchived  &&  isVideo
-        case .videosFavorites: return  article.isFavorite  &&  isVideo
-        case .videosArchive:   return  article.isArchived  &&  isVideo
-        }
+        return filter.matches(article)
     }
 
     // MARK: – Persistence

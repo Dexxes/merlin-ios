@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Side menu: the "Audio" category (Continue listening, Not listened,
+  Favorites, Archive with counts) is now shown alongside Pages and Videos, as
+  in Merlin for Nextcloud. Audio articles (server category `Audio`) no longer
+  appear under Pages; "Audio" views can also be chosen as the start view.
 - Author links: when the server delivers a profile link for the author
   (`authorUrl`, detected automatically or set by a content filter's
   `<metadata><author-link>` rule), the author name in the reader header is

@@ -56,7 +56,7 @@ enum MerlinAPIError: LocalizedError {
 
 // MARK: – Counts response
 
-// Pages/Videos sind die obersten Kategorien, Unread/Favorites/Archived
+// Pages/Videos/Audio sind die obersten Kategorien, Unread/Favorites/Archived
 // darunter je Kategorie gezählt - siehe getCounts() in
 // merlin-standalone-server/src/Db/ArticleRepository.php.
 struct CategoryCounts: Codable {
@@ -76,10 +76,30 @@ struct CategoryCounts: Codable {
 struct ArticleCounts: Codable {
     var pages: CategoryCounts
     var videos: CategoryCounts
+    var audio: CategoryCounts
 
-    init(pages: CategoryCounts = CategoryCounts(), videos: CategoryCounts = CategoryCounts()) {
+    init(pages: CategoryCounts = CategoryCounts(),
+         videos: CategoryCounts = CategoryCounts(),
+         audio: CategoryCounts = CategoryCounts()) {
         self.pages  = pages
         self.videos = videos
+        self.audio  = audio
+    }
+
+    // `audio` fehlt bei Servern ohne Audio-Kategorie - dann 0 statt Decode-Fehler.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        pages  = try c.decode(CategoryCounts.self, forKey: .pages)
+        videos = try c.decode(CategoryCounts.self, forKey: .videos)
+        audio  = try c.decodeIfPresent(CategoryCounts.self, forKey: .audio) ?? CategoryCounts()
+    }
+
+    subscript(group: ContentGroup) -> CategoryCounts {
+        switch group {
+        case .pages:  return pages
+        case .videos: return videos
+        case .audio:  return audio
+        }
     }
 }
 
