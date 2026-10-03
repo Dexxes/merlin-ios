@@ -4,12 +4,12 @@ import UIKit
 
 // MARK: – Host detection (mirrors VideoPlayer.vue's NATIVE_VIDEO_HOSTS/hasNativeVideoHost())
 
-/// ARD-, ZDF- und Arte-Mediathek-Artikel können vom Server (siehe
+/// ARD-, ZDF-, 3sat- und Arte-Mediathek-Artikel können vom Server (siehe
 /// `VideoStreamResolverService` in merlin-nextcloud/merlin-server) in eine direkt abspielbare
 /// HLS-Stream-URL aufgelöst werden. Dieser Host-Check entscheidet, ob es sich überhaupt lohnt,
 /// den `/video-stream`-Endpunkt für einen Artikel anzufragen.
 enum NativeVideoHost {
-    private static let hosts = ["ardmediathek.de", "zdf.de", "arte.tv"]
+    private static let hosts = ["ardmediathek.de", "zdf.de", "3sat.de", "arte.tv"]
 
     static func matches(_ urlString: String) -> Bool {
         guard let host = URL(string: urlString)?.host?.lowercased() else { return false }
