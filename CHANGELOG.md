@@ -12,6 +12,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Favorites, Archive with counts) is now shown alongside Pages and Videos, as
   in Merlin for Nextcloud. Audio articles (server category `Audio`) no longer
   appear under Pages; "Audio" views can also be chosen as the start view.
+- Author links: when the server delivers a profile link for the author
+  (`authorUrl`, detected automatically or set by a content filter's
+  `<metadata><author-link>` rule), the author name in the reader header is
+  underlined and opens the link dialog on tap (if the name is truncated, the
+  flyout with the full name carries the link). The byline at the end of the
+  article links the name too. Only absolute http(s) links are used; older
+  servers without the field are unaffected.
+- Inline videos: videos in the middle of an article (server `<media><inline>`,
+  e.g. the ARD player on rbb24.de, delivered as `figure.merlin-inline-media`
+  with a poster image and a `div.merlin-inline-media-source` marker) now play
+  directly in the reader. A native WebKit player (mp4 or HLS, inline with a
+  fullscreen option) replaces the poster image and the "Zum Video" link; if
+  playback fails, image and link come back. The caption stays below the
+  player, highlights in it keep working.
 - Audio articles: instead of the hero image plus a "Zum Audio" link, the reader
   header now shows a native audio player with the hero image as cover and the
   controls as an overlay (play/pause, scrubber with elapsed/remaining time,

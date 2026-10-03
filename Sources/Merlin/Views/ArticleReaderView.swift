@@ -259,8 +259,8 @@ private let merlinHighlightJS: String = #"""
   document.addEventListener('click',e=>{
     const mark=e.target.closest('mark.merlin-highlight');
     if(mark){e.preventDefault();selectHighlight(mark);}
-    // Toggle floating back button unless the tap landed on a link or highlight
-    if(!e.target.closest('a')&&!mark){
+    // Toggle floating back button unless the tap landed on a link, highlight or inline player
+    if(!e.target.closest('a,merlin-inline-player')&&!mark){
       window.webkit.messageHandlers.toggleUI.postMessage({});
     }
   });
@@ -299,7 +299,7 @@ private let merlinImageTapJS: String = #"""
       window.webkit.messageHandlers.imageTap.postMessage({index:idx,srcs:srcs});
     });
   }
-  function all(){return Array.from(document.querySelectorAll('img')).filter(function(i){return !i.closest('.merlin-yt-embed')&&!i.closest('merlin-support-box');});}
+  function all(){return Array.from(document.querySelectorAll('img')).filter(function(i){return !i.closest('.merlin-yt-embed')&&!i.closest('merlin-support-box')&&!i.closest('.merlin-inline-media--playable');});}
   all().forEach(function(img){wire(img,all);});
   new MutationObserver(function(ms){
     ms.forEach(function(m){
@@ -362,6 +362,63 @@ private let merlinYoutubeTapJS: String = #"""
     report();
   }).observe(document.body);
   window.addEventListener('resize',report);
+})();
+"""#
+
+// MARK: – Inline media JS (Videos mitten im Text)
+//
+// Der Server (InlineMediaService in merlin-nextcloud) ersetzt Videos mitten im
+// Artikeltext (z. B. den ARD-Player bei rbb24.de) durch
+//
+//   <figure class="merlin-inline-media">
+//     <img src="Vorschaubild">
+//     <div class="merlin-inline-media-source" data-media-kind data-media-delivery data-media-src>
+//       <a class="merlin-inline-media-fallback-link">Zum Video</a>
+//     </div>
+//     <figcaption>…</figcaption>
+//   </figure>
+//
+// Wie src/inline-media.js im Web legt dieses Skript auf jede solche Figure einen
+// Player (natives <video>/<audio> von WebKit, spielt mp4 und HLS ohne hls.js)
+// mit dem Vorschaubild als Poster. Bild, Marker und figcaption bleiben im DOM
+// und werden nur per CSS ausgeblendet; der Player steckt in einem eigenen
+// Element <merlin-inline-player>, das den Tag-Zähler der Highlight-XPaths
+// (getXPath/resolveXPath) für img/div/figcaption nicht verschiebt. Scheitert
+// die Wiedergabe, verschwindet der Player wieder und Bild samt "Zum Video"-Link
+// (öffnet die Quelle über onLinkTapped) sind wieder sichtbar.
+private let merlinInlineMediaJS: String = #"""
+(function(){
+  var PLAYABLE='merlin-inline-media--playable';
+  document.querySelectorAll('figure.merlin-inline-media').forEach(function(figure){
+    if(figure.querySelector('merlin-inline-player'))return;
+    var source=figure.querySelector('div.merlin-inline-media-source[data-media-kind]');
+    if(!source)return;
+    var kind=source.getAttribute('data-media-kind');
+    var delivery=source.getAttribute('data-media-delivery');
+    var src=source.getAttribute('data-media-src')||'';
+    // Gleiche Prüfung wie parseMediaMarker() im Web: nur https-Dateien/HLS.
+    if((kind!=='video'&&kind!=='audio')||(delivery!=='file'&&delivery!=='hls')||src.indexOf('https://')!==0)return;
+
+    var media=document.createElement(kind);
+    media.controls=true;
+    media.preload='none';
+    media.setAttribute('playsinline','');
+    media.setAttribute('webkit-playsinline','');
+    var poster=figure.querySelector('img');
+    if(kind==='video'&&poster&&(poster.currentSrc||poster.src))media.poster=poster.currentSrc||poster.src;
+    media.src=src;
+
+    var player=document.createElement('merlin-inline-player');
+    player.className='merlin-inline-player--'+kind;
+    player.appendChild(media);
+    figure.insertBefore(player,figure.firstChild);
+    figure.classList.add(PLAYABLE);
+
+    media.addEventListener('error',function(){
+      if(player.parentNode)player.parentNode.removeChild(player);
+      figure.classList.remove(PLAYABLE);
+    },{once:true});
+  });
 })();
 """#
 
@@ -732,6 +789,9 @@ struct ArticleWebView: UIViewRepresentable {
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.dataDetectorTypes = [.link, .phoneNumber]
+        // Inline-Videos im Text (merlinInlineMediaJS) im Artikel abspielen statt beim Start sofort
+        // ins Vollbild zu springen; Vollbild bleibt über die Player-Steuerung erreichbar.
+        config.allowsInlineMediaPlayback = true
         config.userContentController.add(
             WeakMessageHandler(context.coordinator), name: "highlights")
         config.userContentController.add(
@@ -2167,10 +2227,14 @@ struct ArticleReaderView: View {
 
         switch cell.kind {
         case .author:
+            // Mit Profil-Link (authorUrl) ist der Name unterstrichen und öffnet per Tap
+            // den Link-Dialog; ist er trunkiert, zeigt der Tap zuerst den vollen Namen.
+            let profileURL = current.authorProfileURL
             Button {
                 if authorIsTruncated { showAuthorFlyout = true }
+                else if let profileURL { tappedLinkURL = profileURL }
             } label: {
-                Text(text)
+                (Text("\(cell.label) ") + Text(cell.value).underline(profileURL != nil))
                     .font(font)
                     .foregroundStyle(onAccent)
                     .lineLimit(1)
@@ -2196,11 +2260,26 @@ struct ArticleReaderView: View {
             .buttonStyle(.plain)
             .onPreferenceChange(AuthorTruncationKey.self) { authorIsTruncated = $0 }
             .popover(isPresented: $showAuthorFlyout) {
-                Text(text)
-                    .font(.system(size: 13, weight: .semibold, design: design))
-                    .foregroundStyle(readerFgColor)
-                    .padding(14)
-                    .presentationCompactAdaptation(.popover)
+                Group {
+                    if let profileURL {
+                        Button {
+                            showAuthorFlyout = false
+                            // Erst das Popover schließen, dann den Link-Dialog zeigen.
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                                tappedLinkURL = profileURL
+                            }
+                        } label: {
+                            (Text("\(cell.label) ") + Text(cell.value).underline())
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        Text(text)
+                    }
+                }
+                .font(.system(size: 13, weight: .semibold, design: design))
+                .foregroundStyle(readerFgColor)
+                .padding(14)
+                .presentationCompactAdaptation(.popover)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .layoutPriority(-1)
@@ -3296,15 +3375,25 @@ struct ArticleReaderView: View {
 
         // Am Ende des Artikels noch einmal „Autor, Medium“ (z. B. „Max Muster, taz.de“).
         let footerBylineHTML: String = {
-            let parts = [current.author, current.displaySiteName]
-                .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }
+            // Mit Profil-Link (authorUrl) wird der Autorname verlinkt.
+            func esc(_ s: String) -> String {
+                s.replacingOccurrences(of: "&", with: "&amp;")
+                 .replacingOccurrences(of: "<", with: "&lt;")
+                 .replacingOccurrences(of: ">", with: "&gt;")
+                 .replacingOccurrences(of: "\"", with: "&quot;")
+            }
+            var parts: [String] = []
+            if let author = current.author?.trimmingCharacters(in: .whitespacesAndNewlines), !author.isEmpty {
+                if let profileURL = current.authorProfileURL {
+                    parts.append("<a href=\"\(esc(profileURL.absoluteString))\">\(esc(author))</a>")
+                } else {
+                    parts.append(esc(author))
+                }
+            }
+            let site = current.displaySiteName.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !site.isEmpty { parts.append(esc(site)) }
             guard !parts.isEmpty else { return "" }
-            let text = parts.joined(separator: ", ")
-                .replacingOccurrences(of: "&", with: "&amp;")
-                .replacingOccurrences(of: "<", with: "&lt;")
-                .replacingOccurrences(of: ">", with: "&gt;")
-            return "<div class=\"merlin-footer-byline\">\(text)</div>"
+            return "<div class=\"merlin-footer-byline\">\(parts.joined(separator: ", "))</div>"
         }()
 
         let bg             = isSepia ? "#f4ecd8" : (effectiveDark ? "#000000" : "#ffffff")
@@ -3493,6 +3582,7 @@ struct ArticleReaderView: View {
               border-top: 1px solid rgba(127,127,127,0.25);
               font-size: 0.9em; font-style: italic; color: \(fgMuted);
             }
+            .merlin-footer-byline a { color: inherit !important; }
             .merlin-mastodon-post + .merlin-mastodon-post { margin-top: 8px; }
             .merlin-mastodon-post__header {
               display: flex; align-items: center; gap: 10px;
@@ -3522,6 +3612,27 @@ struct ArticleReaderView: View {
             .merlin-mastodon-post__media-item {
               width: 100%; height: 140px; object-fit: cover; border-radius: 6px; margin: 0;
             }
+            /* Videos mitten im Text (siehe merlinInlineMediaJS): sobald der Player
+               steht, ersetzt er Vorschaubild und "Zum Video"-Link. */
+            figure.merlin-inline-media.merlin-inline-media--playable > img,
+            figure.merlin-inline-media.merlin-inline-media--playable > .merlin-img-placeholder,
+            figure.merlin-inline-media.merlin-inline-media--playable > .mdbg-wrap,
+            figure.merlin-inline-media.merlin-inline-media--playable > .merlin-inline-media-source {
+              display: none;
+            }
+            figure.merlin-inline-media > .merlin-inline-media-source {
+              margin: 4px 0 1em; font-size: 0.85em;
+            }
+            merlin-inline-player { display: block; margin: 8px 0 0; }
+            merlin-inline-player video {
+              display: block; width: 100%; height: auto;
+              aspect-ratio: auto 16 / 9; max-height: 125vw;
+              background: #000; border-radius: 8px; object-fit: contain;
+            }
+            merlin-inline-player audio { display: block; width: 100%; }
+            body > figure.merlin-inline-media:first-child merlin-inline-player { margin: 0; }
+            body > figure.merlin-inline-media:first-child merlin-inline-player video { border-radius: 0; }
+            body > figure.merlin-inline-media:first-child > .merlin-inline-media-source { padding: 0 20px; }
           </style>
         </head>
         <body>
@@ -3542,6 +3653,7 @@ struct ArticleReaderView: View {
           \(developerMode ? "<script>\(merlinDebugJS)</script>" : "")
           <script>\(merlinImageTapJS)</script>
           <script>\(merlinYoutubeTapJS)</script>
+          <script>\(merlinInlineMediaJS)</script>
           <script>
           (function(){
             var PH_BG = '\(imgPlaceholderBg)';
