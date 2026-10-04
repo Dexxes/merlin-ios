@@ -11,8 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Retention period (Löschfrist): Merlin for Nextcloud can now delete archived
   articles automatically after a period counted from archiving, with a
   separate period for favorites. Settings has a new "Retention Period"
-  section to choose a period per type; options longer than the maximum set
-  by the server admin are not offered. The onboarding tour has a new step
+  section to choose a period per type, from presets or by typing any number
+  of days; options longer than the maximum set by the server admin are not
+  offered, and typed values above it are set to the maximum. The onboarding tour has a new step
   explaining the periods that apply, and users who already finished the tour
   see a one-time notice when a period is set or shortened (shared with the
   Nextcloud web app, so it is shown only once per change). Standalone servers

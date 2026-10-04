@@ -457,8 +457,11 @@
 "settings.preferences.saveProgressLabel" = "Save reading position";
 "settings.preferences.sectionHeader" = "Preferences";
 "settings.retention.articlesLabel" = "Archived Articles";
+"settings.retention.customLabel" = "Custom Value (Days)";
+"settings.retention.customPlaceholder" = "e.g. 45";
 "settings.retention.favoritesLabel" = "Archived Favorites";
 "settings.retention.footer" = "Archived articles are permanently deleted from the server once the period ends, counted from when you archive them. Applies to all devices and the Nextcloud web app.";
+"settings.retention.invalidDays" = "Please enter a whole number of days. An empty field removes your own period.";
 "settings.retention.never" = "Never delete";
 "settings.retention.saveFailed" = "Could not save the retention period.";
 "settings.retention.sectionHeader" = "Retention Period";

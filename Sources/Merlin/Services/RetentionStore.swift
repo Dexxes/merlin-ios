@@ -23,6 +23,8 @@ final class RetentionStore {
 
     /// Optionen der Auswahl (zusätzlich 0 = „Nie“ bzw. „Maximum“).
     static let presetDays = [7, 30, 90, 180, 365]
+    /// Obergrenze wie `RetentionPolicy::MAX_DAYS` auf dem Server.
+    static let maxDaysLimit = 36500
 
     /// Server kennt die Löschfrist (Felder in `GET /api/settings` vorhanden).
     private(set) var isSupported = false
