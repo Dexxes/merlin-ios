@@ -588,6 +588,27 @@ actor MerlinAPI {
         _ = try await performRaw(req)
     }
 
+    /// Wie `updateSettings`, liefert aber die gespeicherten Werte aus
+    /// `{"success": true, "settings": {…}}` zurück. merlin-nextcloud hängt dort
+    /// die neu berechneten Löschfristen an (siehe `RetentionStore`).
+    func updateSettingsReturningSaved(_ settings: [String: Any]) async throws -> [String: String] {
+        struct Response: Decodable { let settings: [String: SettingValue]? }
+        var req = try makeRequest("/settings", method: "PUT")
+        req.httpBody = try JSONSerialization.data(withJSONObject: settings)
+        let res: Response = try await perform(req)
+        return (res.settings ?? [:]).mapValues(\.stringValue)
+    }
+
+    // MARK: – Retention
+
+    /// Markiert den Löschfrist-Hinweis als gelesen (POST /retention/notice,
+    /// nur merlin-nextcloud). Liefert die Löschfrist-Felder wie `getSettings()`.
+    func acknowledgeRetentionNotice() async throws -> [String: String] {
+        let req = try makeRequest("/retention/notice", method: "POST")
+        let raw: [String: SettingValue] = try await perform(req)
+        return raw.mapValues(\.stringValue)
+    }
+
     // MARK: – Storage usage
 
     /// Antwort von `GET /storage` (identischer Pfad und identisches

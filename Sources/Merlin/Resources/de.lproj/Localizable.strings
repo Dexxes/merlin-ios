@@ -390,6 +390,13 @@
 "onboarding.demo.sampleArticle.meta" = "rbb|24 · 8 Min.";
 "onboarding.demo.sampleArticle.title" = "Fischotter könnte in Berlin wieder heimisch werden";
 "onboarding.demo.sampleHighlight" = "In einer Zeit endlosen Scrollens wirkt langsames Lesen fast schon radikal. Doch eine wachsende Zahl an Studien legt nahe, dass tiefes, bewusstes Lesen eine der wertvollsten Fähigkeiten sein könnte, die wir kultivieren können.";
+"onboarding.retention.articlesKept" = "Archivierte Artikel werden nicht automatisch gelöscht.";
+"onboarding.retention.bodyUnknown" = "Archivierte Artikel können nach einer Frist automatisch vom Server gelöscht werden, gezählt ab dem Archivieren. Die Frist wählst du in den Einstellungen, dein Server kann eine Höchstdauer vorgeben.";
+"onboarding.retention.favoritesKept" = "Archivierte Favoriten bleiben erhalten.";
+"onboarding.retention.gotIt" = "Verstanden";
+"onboarding.retention.openSettings" = "Einstellungen öffnen";
+"onboarding.retention.settingsHint" = "Eine kürzere Frist kannst du in den Einstellungen wählen.";
+"onboarding.retention.title" = "Löschfrist";
 "onboarding.step1.body" = "Eine kurze Tour durch die wichtigsten Funktionen.";
 "onboarding.step1.title" = "Willkommen bei Merlin!";
 "onboarding.step10.body" = "Setze eine Erinnerung, damit du nicht vergisst, einen Artikel zu lesen. Alle Erinnerungen findest du im Navigationsmenü.";
@@ -464,6 +471,12 @@
 "settings.preferences.resumeOnOpenLabel" = "Beim Öffnen fortsetzen";
 "settings.preferences.saveProgressLabel" = "Leseposition speichern";
 "settings.preferences.sectionHeader" = "Einstellungen";
+"settings.retention.articlesLabel" = "Archivierte Artikel";
+"settings.retention.favoritesLabel" = "Archivierte Favoriten";
+"settings.retention.footer" = "Archivierte Artikel werden nach Ablauf der Frist endgültig vom Server gelöscht, gezählt ab dem Archivieren. Gilt für alle Geräte und die Nextcloud-Web-App.";
+"settings.retention.never" = "Nie löschen";
+"settings.retention.saveFailed" = "Löschfrist konnte nicht gespeichert werden.";
+"settings.retention.sectionHeader" = "Löschfrist";
 "settings.storage.footer" = "Zeigt, wie viel Speicherplatz deine Artikel und Highlights auf dem Server sowie im lokalen Zwischenspeicher belegen.";
 "settings.storage.loadError" = "Konnte nicht geladen werden";
 "settings.storage.localLabel" = "Lokaler Zwischenspeicher";

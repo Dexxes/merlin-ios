@@ -23,6 +23,10 @@ struct SettingsView: View {
     /// Slider braucht Double; Persistenz erfolgt als Int (siehe PreferencesStore.cacheRetentionDays).
     @State private var cacheRetentionDays    = Double(PreferencesStore.shared.cacheRetentionDays)
     @AppStorage("merlin_developer_mode") private var developerMode: Bool = false
+    /// Löschfrist (serverseitig, siehe RetentionStore); 0 = keine eigene Frist.
+    @State private var retentionDays          = 0
+    @State private var retentionFavoritesDays = 0
+    @State private var retentionError: String? = nil
     @State private var isTesting              = false
     @State private var showClearCacheConfirm  = false
     @State private var showLogoutConfirm      = false
@@ -221,6 +225,33 @@ struct SettingsView: View {
                     Text(L("settings.preferences.footer"))
                 }
 
+                // MARK: - Löschfrist
+                if RetentionStore.shared.isSupported {
+                    Section {
+                        retentionPicker(L("settings.retention.articlesLabel"),
+                                        selection: $retentionDays,
+                                        maxDays: RetentionStore.shared.maxDays)
+                            .onChange(of: retentionDays) { _, new in
+                                saveRetention(days: new)
+                            }
+                        retentionPicker(L("settings.retention.favoritesLabel"),
+                                        selection: $retentionFavoritesDays,
+                                        maxDays: RetentionStore.shared.favoritesMaxDays)
+                            .onChange(of: retentionFavoritesDays) { _, new in
+                                saveRetention(favoritesDays: new)
+                            }
+                        if let err = retentionError {
+                            Label(err, systemImage: "xmark.circle.fill")
+                                .foregroundStyle(.red)
+                                .font(.footnote)
+                        }
+                    } header: {
+                        Text(L("settings.retention.sectionHeader"))
+                    } footer: {
+                        Text(L("settings.retention.footer"))
+                    }
+                }
+
                 // MARK: - Cache
                 Section {
                     Toggle(L("settings.cache.wifiOnlyToggle"), isOn: $prefetchWifiOnly)
@@ -342,6 +373,11 @@ struct SettingsView: View {
                     .ignoresSafeArea()
             }
             .task { await loadStorageUsage() }
+            .task {
+                syncRetentionState()
+                await RetentionStore.shared.refresh()
+                syncRetentionState()
+            }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button(L("common.done")) { dismiss() }
@@ -370,6 +406,52 @@ struct SettingsView: View {
                     SettingsSyncQueue.shared.markDirty()
                 }
             }
+        }
+    }
+
+    // MARK: - Löschfrist
+
+    /// Auswahl: 0 („Nie“ bzw. „Maximum“ bei Admin-Vorgabe) plus die Vorgaben
+    /// bis zum Admin-Maximum. Ein gespeicherter Sonderwert (z. B. aus der
+    /// Web-App) bleibt sichtbar, damit der Picker eine passende Option hat.
+    private func retentionPicker(_ title: String, selection: Binding<Int>, maxDays: Int) -> some View {
+        var options = [0] + RetentionStore.presetDays.filter { maxDays == 0 || $0 < maxDays }
+        if !options.contains(selection.wrappedValue) { options.append(selection.wrappedValue) }
+        return Picker(title, selection: selection) {
+            ForEach(options.sorted(), id: \.self) { days in
+                Text(retentionLabel(days, maxDays: maxDays)).tag(days)
+            }
+        }
+    }
+
+    private func retentionLabel(_ days: Int, maxDays: Int) -> String {
+        if days == 0 {
+            return maxDays > 0
+                ? String(format: L("settings.retention.maximum"), maxDays)
+                : L("settings.retention.never")
+        }
+        return String(format: L("settings.retention.afterDays"), days)
+    }
+
+    private func syncRetentionState() {
+        retentionDays          = RetentionStore.shared.userDays
+        retentionFavoritesDays = RetentionStore.shared.favoritesUserDays
+    }
+
+    /// Speichert direkt (nicht über SettingsSyncQueue, siehe RetentionStore).
+    /// Bei einem Fehler springt die Auswahl auf den Serverstand zurück.
+    private func saveRetention(days: Int? = nil, favoritesDays: Int? = nil) {
+        let store = RetentionStore.shared
+        if days == store.userDays, favoritesDays == nil { return }
+        if favoritesDays == store.favoritesUserDays, days == nil { return }
+        retentionError = nil
+        Task {
+            do {
+                try await store.save(days: days, favoritesDays: favoritesDays)
+            } catch {
+                retentionError = L("settings.retention.saveFailed")
+            }
+            syncRetentionState()
         }
     }
 
@@ -402,6 +484,8 @@ struct SettingsView: View {
                     saveProgress     = PreferencesStore.shared.saveProgress
                     resumeOnOpen     = PreferencesStore.shared.resumeOnOpen
                     prefetchWifiOnly = PreferencesStore.shared.prefetchImagesOnWifiOnly
+                    RetentionStore.shared.apply(serverSettings)
+                    syncRetentionState()
                 }
 
                 // Debug: direkt nach dem Speichern prüfen ob Keychain lesbar ist

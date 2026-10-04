@@ -18,5 +18,69 @@
             <string>%lld Tags ausgeblendet</string>
         </dict>
     </dict>
+    <key>onboarding.retention.articles</key>
+    <dict>
+        <key>NSStringLocalizedFormatKey</key>
+        <string>%#@count@</string>
+        <key>count</key>
+        <dict>
+            <key>NSStringFormatSpecTypeKey</key>
+            <string>NSStringPluralRuleType</string>
+            <key>NSStringFormatValueTypeKey</key>
+            <string>lld</string>
+            <key>one</key>
+            <string>Archivierte Artikel werden %lld Tag nach dem Archivieren gelöscht.</string>
+            <key>other</key>
+            <string>Archivierte Artikel werden %lld Tage nach dem Archivieren gelöscht.</string>
+        </dict>
+    </dict>
+    <key>onboarding.retention.favorites</key>
+    <dict>
+        <key>NSStringLocalizedFormatKey</key>
+        <string>%#@count@</string>
+        <key>count</key>
+        <dict>
+            <key>NSStringFormatSpecTypeKey</key>
+            <string>NSStringPluralRuleType</string>
+            <key>NSStringFormatValueTypeKey</key>
+            <string>lld</string>
+            <key>one</key>
+            <string>Archivierte Favoriten nach %lld Tag.</string>
+            <key>other</key>
+            <string>Archivierte Favoriten nach %lld Tagen.</string>
+        </dict>
+    </dict>
+    <key>settings.retention.afterDays</key>
+    <dict>
+        <key>NSStringLocalizedFormatKey</key>
+        <string>%#@count@</string>
+        <key>count</key>
+        <dict>
+            <key>NSStringFormatSpecTypeKey</key>
+            <string>NSStringPluralRuleType</string>
+            <key>NSStringFormatValueTypeKey</key>
+            <string>lld</string>
+            <key>one</key>
+            <string>Nach %lld Tag</string>
+            <key>other</key>
+            <string>Nach %lld Tagen</string>
+        </dict>
+    </dict>
+    <key>settings.retention.maximum</key>
+    <dict>
+        <key>NSStringLocalizedFormatKey</key>
+        <string>%#@count@</string>
+        <key>count</key>
+        <dict>
+            <key>NSStringFormatSpecTypeKey</key>
+            <string>NSStringPluralRuleType</string>
+            <key>NSStringFormatValueTypeKey</key>
+            <string>lld</string>
+            <key>one</key>
+            <string>Maximum (%lld Tag)</string>
+            <key>other</key>
+            <string>Maximum (%lld Tage)</string>
+        </dict>
+    </dict>
 </dict>
 </plist>

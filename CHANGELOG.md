@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Retention period (Löschfrist): Merlin for Nextcloud can now delete archived
+  articles automatically after a period counted from archiving, with a
+  separate period for favorites. Settings has a new "Retention Period"
+  section to choose a period per type; options longer than the maximum set
+  by the server admin are not offered. The onboarding tour has a new step
+  explaining the periods that apply, and users who already finished the tour
+  see a one-time notice when a period is set or shortened (shared with the
+  Nextcloud web app, so it is shown only once per change). Standalone servers
+  without retention support are unaffected.
 - Side menu: the "Audio" category (Continue listening, Not listened,
   Favorites, Archive with counts) is now shown alongside Pages and Videos, as
   in Merlin for Nextcloud. Audio articles (server category `Audio`) no longer
