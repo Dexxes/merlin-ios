@@ -16,6 +16,9 @@ private struct AuthorTruncationKey: PreferenceKey {
 private let merlinHighlightJS: String = #"""
 (function(){
   const COLORS=[{id:'yellow',hex:'#fde68a'},{id:'green',hex:'#bbf7d0'},{id:'blue',hex:'#bfdbfe'},{id:'pink',hex:'#fbcfe8'},{id:'orange',hex:'#fed7aa'}];
+  // Stelle, die nur kommentiert (nicht markiert) wurde. Der Server legt sie
+  // mit dem ersten Kommentar an und entfernt sie mit dem letzten.
+  const COMMENT_COLOR='comment';
 
   function getXPath(node){
     const root=document.body;const parts=[];let cur=node;
@@ -61,6 +64,11 @@ private let merlinHighlightJS: String = #"""
     const makeSpan=()=>{
       const s=document.createElement('mark');
       s.className='merlin-highlight';s.dataset.highlightId=String(hlId);s.dataset.highlightColor=color;
+      // Kommentierte Stelle: nur unterstrichen, Text und Hintergrund bleiben.
+      if(color===COMMENT_COLOR){
+        s.style.cssText='background-color:transparent;color:inherit;text-decoration:underline;text-decoration-color:#f59e0b;text-decoration-thickness:2px;text-underline-offset:3px;-webkit-text-decoration:underline;box-decoration-break:clone;-webkit-box-decoration-break:clone;cursor:pointer;';
+        return s;
+      }
       // All five highlight swatches are light pastels, so the text needs a
       // fixed dark colour rather than `color:inherit` — in the dark reader
       // theme, inherited text is near-white and unreadable on a light
@@ -193,18 +201,32 @@ private let merlinHighlightJS: String = #"""
     window.webkit.messageHandlers.highlights.postMessage({action:'delete',id:id});
     flushDeferred();
   };
+  function openCommentsFor(id){
+    id=String(id);
+    const text=Array.from(document.querySelectorAll('mark.merlin-highlight[data-highlight-id="'+id+'"]')).map(e=>e.textContent).join('');
+    window.webkit.messageHandlers.highlights.postMessage({action:'openComments',id:id,text:text});
+  }
+
   // Knopf "Kommentieren": an einer bestehenden Markierung deren Kommentare
-  // öffnen, an einer frischen Auswahl gelb markieren und dann kommentieren.
+  // öffnen. An einer frischen Auswahl wird noch nichts eingefärbt: Swift
+  // bekommt nur die Position und öffnet das Kommentarfeld. Erst der
+  // abgeschickte Kommentar legt die (unterstrichene) Stelle an.
   window.merlinCommentFromNative=function(){
     if(selectedHighlightId!==null){
       const id=String(selectedHighlightId);
-      const text=Array.from(document.querySelectorAll('mark.merlin-highlight[data-highlight-id="'+id+'"]')).map(e=>e.textContent).join('');
       selectedHighlightId=null;pendingRange=null;
       window.getSelection()?.removeAllRanges();
-      window.webkit.messageHandlers.highlights.postMessage({action:'openComments',id:id,text:text});
+      openCommentsFor(id);
       return;
     }
-    applyHighlight('yellow',true);
+    const range=pendingRange;pendingRange=null;
+    if(!range||range.collapsed)return;
+    const sx=getXPath(range.startContainer),ex=getXPath(range.endContainer);
+    if(!sx||!ex)return;
+    const text=range.toString().trim();if(!text)return;
+    window.getSelection()?.removeAllRanges();
+    window.webkit.messageHandlers.highlights.postMessage({action:'commentAnchor',data:{highlightedText:text,startXpath:sx,startOffset:range.startOffset,endXpath:ex,endOffset:range.endOffset}});
+    flushDeferred();
   };
 
   // Called from Swift once the outer SwiftUI ScrollView has moved far enough
@@ -285,7 +307,9 @@ private let merlinHighlightJS: String = #"""
 
   document.addEventListener('click',e=>{
     const mark=e.target.closest('mark.merlin-highlight');
-    if(mark){e.preventDefault();selectHighlight(mark);}
+    // Unterstrichene Kommentarstelle: gleich die Kommentare öffnen, es gibt
+    // keine Farbe zu ändern.
+    if(mark){e.preventDefault();if(mark.dataset.highlightColor===COMMENT_COLOR)openCommentsFor(mark.dataset.highlightId);else selectHighlight(mark);}
     // Toggle floating back button unless the tap landed on a link, highlight or inline player
     if(!e.target.closest('a,merlin-inline-player')&&!mark){
       window.webkit.messageHandlers.toggleUI.postMessage({});
@@ -943,6 +967,9 @@ struct ArticleWebView: UIViewRepresentable {
     /// Kommentar-Dialog für eine Markierung öffnen (id, markierter Text) –
     /// nach "Kommentieren" an einer neuen oder bestehenden Markierung.
     var onOpenComments: ((Int, String) -> Void)? = nil
+    /// "Kommentieren" an einer frischen Auswahl: Kommentarfeld für diese
+    /// Stelle öffnen. Die Stelle selbst entsteht erst mit dem Kommentar.
+    var onCommentAnchor: ((CommentAnchor) -> Void)? = nil
     /// Eine eigene Markierung wurde angelegt oder gelöscht.
     var onHighlightsChanged: (() -> Void)? = nil
     /// Stand von `CommentStore.revision`; ändert er sich, holt der WebView
@@ -1017,6 +1044,7 @@ struct ArticleWebView: UIViewRepresentable {
         context.coordinator.applySupportBoxIfReady(to: webView)
 
         context.coordinator.onOpenComments = onOpenComments
+        context.coordinator.onCommentAnchor = onCommentAnchor
         context.coordinator.onHighlightsChanged = onHighlightsChanged
         if context.coordinator.commentRevision != commentRevision {
             context.coordinator.commentRevision = commentRevision
@@ -1065,6 +1093,7 @@ struct ArticleWebView: UIViewRepresentable {
         var onSelectionChanged: ((CGRect, String?) -> Void)?
         var onSelectionCleared: (() -> Void)?
         var onOpenComments: ((Int, String) -> Void)?
+        var onCommentAnchor: ((CommentAnchor) -> Void)?
         var onHighlightsChanged: (() -> Void)?
         var commentRevision = 0
         /// Letztes Skript aus `CommentStore.webViewScript()`; wird nach jedem
@@ -1240,6 +1269,22 @@ guard message.name == "highlights",
                     OfflineHighlightQueue.shared.cancelPendingCreate(tempId: rawId, articleId: aid)
                 }
 
+            case "commentAnchor":
+                guard let data       = body["data"]             as? [String: Any],
+                      let text       = data["highlightedText"]  as? String,
+                      let startXpath = data["startXpath"]       as? String,
+                      let startOff   = data["startOffset"]      as? Int,
+                      let endXpath   = data["endXpath"]         as? String,
+                      let endOff     = data["endOffset"]        as? Int
+                else { return }
+                let anchor = CommentAnchor(
+                    highlightedText: text,
+                    startXpath: startXpath,
+                    startOffset: startOff,
+                    endXpath: endXpath,
+                    endOffset: endOff)
+                DispatchQueue.main.async { [weak self] in self?.onCommentAnchor?(anchor) }
+
             case "openComments":
                 // Noch nicht gespeicherte Markierung (tmp_…): keine id, an
                 // der ein Kommentar hängen könnte.
@@ -1316,11 +1361,13 @@ guard message.name == "highlights",
 // MARK: – Kommentare im Reader
 
 /// Was der Kommentar-Dialog beim Öffnen zeigt: die Threads einer Markierung
-/// (`highlightId`) oder alle (nil).
+/// (`highlightId`), alle (nil) oder – mit `anchor` – das Feld für den ersten
+/// Kommentar an einer noch nicht angelegten Stelle.
 struct CommentFocus: Identifiable {
     let id = UUID()
     let highlightId: Int?
     let quote: String?
+    var anchor: CommentAnchor? = nil
 }
 
 /// Kommentar-Dialog, Push-Kanal-Lebenszyklus und die Rückfrage vor dem
@@ -1343,6 +1390,7 @@ private struct ReaderCommentsModifier: ViewModifier {
                     store: store,
                     initialHighlightId: focus.highlightId,
                     initialQuote: focus.quote,
+                    initialAnchor: focus.anchor,
                     onShowInText: { highlightId in
                         self.focus = nil
                         Task {
@@ -1715,6 +1763,10 @@ struct ArticleReaderView: View {
                             onOpenComments: { highlightId, text in
                                 hideHighlightToolbar()
                                 commentFocus = CommentFocus(highlightId: highlightId, quote: text)
+                            },
+                            onCommentAnchor: { anchor in
+                                hideHighlightToolbar()
+                                commentFocus = CommentFocus(highlightId: nil, quote: anchor.highlightedText, anchor: anchor)
                             },
                             onHighlightsChanged: {
                                 Task { await comments.refresh() }

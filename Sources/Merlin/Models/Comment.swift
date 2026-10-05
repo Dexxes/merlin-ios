@@ -53,3 +53,25 @@ enum CommentStreamEvent: Sendable {
     /// erst nach einer Änderung am Link neu verbinden.
     case closed
 }
+
+/// Textstelle für den ersten Kommentar an einer Auswahl. Wird mit dem
+/// Kommentar mitgeschickt (`anchor`); der Server legt daraus eine
+/// unterstrichene Stelle (Farbe `comment`) an und entfernt sie wieder, wenn
+/// ihr letzter Kommentar gelöscht wird.
+struct CommentAnchor: Equatable, Sendable {
+    let highlightedText: String
+    let startXpath: String
+    let startOffset: Int
+    let endXpath: String
+    let endOffset: Int
+
+    var payload: [String: Any] {
+        [
+            "highlightedText": highlightedText,
+            "startXpath": startXpath,
+            "startOffset": startOffset,
+            "endXpath": endXpath,
+            "endOffset": endOffset,
+        ]
+    }
+}

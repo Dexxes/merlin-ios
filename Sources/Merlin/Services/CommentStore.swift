@@ -147,10 +147,15 @@ final class CommentStore {
 
     // MARK: – Schreiben
 
-    func create(body: String, highlightId: Int?, parentId: Int?) async throws {
-        guard let articleId else { return }
-        _ = try await MerlinAPI.shared.createComment(articleId, body: body, highlightId: highlightId, parentId: parentId)
+    /// Mit `anchor` legt der Server die kommentierte Stelle gleich mit an;
+    /// ihre id steht dann in `highlightId` des Ergebnisses.
+    @discardableResult
+    func create(body: String, highlightId: Int?, parentId: Int?, anchor: CommentAnchor? = nil) async throws -> Comment? {
+        guard let articleId else { return nil }
+        let saved = try await MerlinAPI.shared.createComment(
+            articleId, body: body, highlightId: highlightId, parentId: parentId, anchor: anchor)
         await refresh()
+        return saved
     }
 
     func update(_ id: Int, body: String) async throws {

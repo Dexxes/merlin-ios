@@ -7,6 +7,9 @@ import SwiftUI
 ///
 /// Mit `initialHighlightId` zeigt der Dialog zuerst nur die Threads dieser
 /// Markierung und kommentiert neu an ihr; "Alle Kommentare" schaltet um.
+/// Mit `initialAnchor` (frische Auswahl, noch keine Markierung) zeigt er nur
+/// die zitierte Stelle und das Eingabefeld; erst der abgeschickte Kommentar
+/// legt die Stelle an, danach zeigt der Dialog deren Thread.
 struct CommentsSheet: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -15,9 +18,11 @@ struct CommentsSheet: View {
     /// Markierter Text, falls die Markierung gerade erst angelegt wurde und
     /// der Store sie noch nicht kennt.
     let initialQuote: String?
+    let initialAnchor: CommentAnchor?
     var onShowInText: ((Int) -> Void)? = nil
 
     @State private var focusedHighlightId: Int?
+    @State private var pendingAnchor: CommentAnchor?
     @State private var draft = ""
     @State private var replyTarget: Comment?
     @State private var editing: Comment?
@@ -26,20 +31,29 @@ struct CommentsSheet: View {
     @State private var errorMessage: String?
     @FocusState private var inputFocused: Bool
 
-    init(store: CommentStore, initialHighlightId: Int?, initialQuote: String?, onShowInText: ((Int) -> Void)? = nil) {
+    init(store: CommentStore, initialHighlightId: Int?, initialQuote: String?,
+         initialAnchor: CommentAnchor? = nil, onShowInText: ((Int) -> Void)? = nil) {
         self.store = store
         self.initialHighlightId = initialHighlightId
         self.initialQuote = initialQuote
+        self.initialAnchor = initialAnchor
         self.onShowInText = onShowInText
         _focusedHighlightId = State(initialValue: initialHighlightId)
+        _pendingAnchor = State(initialValue: initialAnchor)
     }
 
+    /// Eine Stelle ist im Fokus: eine bestehende Markierung oder die Auswahl,
+    /// zu der gerade der erste Kommentar entsteht.
+    private var isPassageFocused: Bool { focusedHighlightId != nil || pendingAnchor != nil }
+
     private var visibleThreads: [Comment] {
+        if pendingAnchor != nil { return [] }
         guard let hid = focusedHighlightId else { return store.threads }
         return store.threads.filter { $0.highlightId == hid }
     }
 
     private var focusedQuote: String? {
+        if let anchor = pendingAnchor { return anchor.highlightedText }
         guard let hid = focusedHighlightId else { return nil }
         if let text = store.highlight(hid)?.highlightedText { return text }
         return hid == initialHighlightId ? initialQuote : nil
@@ -53,7 +67,7 @@ struct CommentsSheet: View {
                         QuoteView(text: quote)
                     }
 
-                    if visibleThreads.isEmpty {
+                    if visibleThreads.isEmpty && pendingAnchor == nil {
                         Text(focusedHighlightId != nil
                              ? L("articleReader.comments.noneOnPassage")
                              : L("articleReader.comments.none"))
@@ -71,7 +85,7 @@ struct CommentsSheet: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .safeAreaInset(edge: .bottom) { composer }
-            .navigationTitle(focusedHighlightId != nil
+            .navigationTitle(isPassageFocused
                              ? L("articleReader.comments.onPassageTitle")
                              : L("articleReader.comments.title"))
             .navigationBarTitleDisplayMode(.inline)
@@ -79,10 +93,11 @@ struct CommentsSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(L("common.close")) { dismiss() }
                 }
-                if focusedHighlightId != nil {
+                if isPassageFocused {
                     ToolbarItem(placement: .primaryAction) {
                         Button(L("articleReader.comments.allComments")) {
                             focusedHighlightId = nil
+                            pendingAnchor = nil
                             replyTarget = nil
                         }
                     }
@@ -99,6 +114,10 @@ struct CommentsSheet: View {
                 }
                 Button(L("common.cancel"), role: .cancel) { commentToDelete = nil }
             }
+        }
+        .onAppear {
+            // Frische Auswahl: der Nutzer wollte kommentieren, also gleich tippen.
+            if pendingAnchor != nil { inputFocused = true }
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
@@ -242,6 +261,11 @@ struct CommentsSheet: View {
             } else if let target = replyTarget {
                 try await store.create(body: body, highlightId: nil, parentId: target.id)
                 replyTarget = nil
+            } else if let anchor = pendingAnchor {
+                let saved = try await store.create(body: body, highlightId: nil, parentId: nil, anchor: anchor)
+                // Ab jetzt gibt es die Stelle: ihren Thread zeigen.
+                pendingAnchor = nil
+                focusedHighlightId = saved?.highlightId
             } else {
                 try await store.create(body: body, highlightId: focusedHighlightId, parentId: nil)
             }

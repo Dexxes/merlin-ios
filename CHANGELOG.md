@@ -9,10 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Comments: highlighted passages and the whole article can be commented on,
-  with threaded replies. The highlight toolbar has a new "Comment" button
-  (highlights the selection and opens the comment dialog, or opens the
-  comments of a tapped highlight); highlights with comments show a count
-  badge. All comments are reachable from the side menu. Comments and
+  with threaded replies. The highlight toolbar has a new "Comment" button: on
+  a fresh selection it opens the comment field with the quoted passage
+  without marking anything; only once the comment is sent is the passage
+  underlined (not colored). Tapping an underlined passage opens its comments,
+  and deleting its last comment removes the underline. On an existing
+  highlight the button opens its comments. Highlights with comments show a
+  count badge. All comments are reachable from the side menu. Comments and
   highlights from visitors of the public share link (and from other devices)
   appear right away: the reader keeps a push connection to the server
   (Server-Sent Events) instead of polling. Your own comments can be edited,

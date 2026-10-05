@@ -387,10 +387,12 @@ actor MerlinAPI {
     /// Neuer Kommentar: an einer Markierung (`highlightId`), am ganzen Artikel
     /// (beides nil) oder als Antwort (`parentId`; der Server hängt Antworten
     /// auf Antworten an die Thread-Wurzel).
-    func createComment(_ articleId: Int, body: String, highlightId: Int? = nil, parentId: Int? = nil) async throws -> Comment {
+    func createComment(_ articleId: Int, body: String, highlightId: Int? = nil, parentId: Int? = nil,
+                       anchor: CommentAnchor? = nil) async throws -> Comment {
         var payload: [String: Any] = ["body": body]
         if let highlightId { payload["highlightId"] = highlightId }
         if let parentId { payload["parentId"] = parentId }
+        if let anchor { payload["anchor"] = anchor.payload }
         var req = try makeRequest("/articles/\(articleId)/comments", method: "POST")
         req.httpBody = try JSONSerialization.data(withJSONObject: payload)
         return try await performComment(req)
