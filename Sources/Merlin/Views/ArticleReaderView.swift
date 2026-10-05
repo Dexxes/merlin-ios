@@ -132,7 +132,8 @@ private let merlinHighlightJS: String = #"""
     const rect=pendingRange.getBoundingClientRect();
     window.webkit.messageHandlers.selectionToolbar.postMessage({
       top:rect.top,bottom:rect.bottom,left:rect.left,right:rect.right,
-      hasHighlight:selectedHighlightId!==null
+      hasHighlight:selectedHighlightId!==null,
+      highlightId:selectedHighlightId!==null?String(selectedHighlightId):null
     });
   }
 
@@ -140,7 +141,9 @@ private let merlinHighlightJS: String = #"""
     window.webkit.messageHandlers.selectionToolbar.postMessage({cleared:true});
   }
 
-  function applyHighlight(color){
+  // `comment`: nach dem Speichern gleich den Kommentar-Dialog für die neue
+  // Markierung öffnen (Knopf "Kommentieren" in der nativen Leiste).
+  function applyHighlight(color,comment){
     const range=pendingRange;pendingRange=null;
     if(!range||range.collapsed)return;
     // If the user tapped an existing highlight and then chose a colour, delete
@@ -161,7 +164,7 @@ private let merlinHighlightJS: String = #"""
       if(oldId!==null){
         window.webkit.messageHandlers.highlights.postMessage({action:'delete',id:oldId});
       }
-      window.webkit.messageHandlers.highlights.postMessage({action:'create',data:{highlightedText:text,startXpath:sx,startOffset:startOffset,endXpath:ex,endOffset:endOffset,color:color,tempId:tempId}});
+      window.webkit.messageHandlers.highlights.postMessage({action:'create',data:{highlightedText:text,startXpath:sx,startOffset:startOffset,endXpath:ex,endOffset:endOffset,color:color,tempId:tempId,comment:!!comment}});
     });
   }
 
@@ -181,6 +184,28 @@ private let merlinHighlightJS: String = #"""
   // a colour swatch or the delete button.
   window.merlinApplyHighlightFromNative=function(color){applyHighlight(color);};
   window.merlinDeleteSelectedHighlightFromNative=function(){deleteSelectedHighlight();};
+  // Löschen über die id statt über die Auswahl: nach der Rückfrage "Markierung
+  // hat Kommentare" kann die Auswahl schon weg sein.
+  window.merlinDeleteHighlightFromNative=function(id){
+    id=String(id);
+    if(selectedHighlightId!==null&&String(selectedHighlightId)===id){selectedHighlightId=null;pendingRange=null;window.getSelection()?.removeAllRanges();}
+    removeHighlightSpans(id);
+    window.webkit.messageHandlers.highlights.postMessage({action:'delete',id:id});
+    flushDeferred();
+  };
+  // Knopf "Kommentieren": an einer bestehenden Markierung deren Kommentare
+  // öffnen, an einer frischen Auswahl gelb markieren und dann kommentieren.
+  window.merlinCommentFromNative=function(){
+    if(selectedHighlightId!==null){
+      const id=String(selectedHighlightId);
+      const text=Array.from(document.querySelectorAll('mark.merlin-highlight[data-highlight-id="'+id+'"]')).map(e=>e.textContent).join('');
+      selectedHighlightId=null;pendingRange=null;
+      window.getSelection()?.removeAllRanges();
+      window.webkit.messageHandlers.highlights.postMessage({action:'openComments',id:id,text:text});
+      return;
+    }
+    applyHighlight('yellow',true);
+  };
 
   // Called from Swift once the outer SwiftUI ScrollView has moved far enough
   // that any live selection no longer points at visible content. Collapsing
@@ -196,6 +221,7 @@ private let merlinHighlightJS: String = #"""
     clearTimeout(selTimer);clearTimeout(hideTimer);
     pendingRange=null;selectedHighlightId=null;
     clearNativeSelectionToolbar();
+    flushDeferred();
   };
 
   // Track whether a finger is currently on screen. While touching, we must not
@@ -252,6 +278,7 @@ private let merlinHighlightJS: String = #"""
       hideTimer=setTimeout(()=>{
         pendingRange=null;selectedHighlightId=null;
         clearNativeSelectionToolbar();
+        flushDeferred();
       },250);
     }
   });
@@ -265,16 +292,80 @@ private let merlinHighlightJS: String = #"""
     }
   });
 
-  window.merlinApplyHighlights=highlights=>{
+  // ── Neu zeichnen bei Push (Kommentare/Gast-Markierungen) ──────────────
+  // Der Server schickt bei jeder Änderung die vollständige Liste. Gezeichnet
+  // wird dann von Grund auf: alle Marks auspacken, Liste neu setzen. Solange
+  // eine Auswahl offen ist oder eine eigene Markierung noch auf ihre id wartet
+  // (tmp_…), wird die Liste nur vorgemerkt – sonst gingen Auswahl bzw. die
+  // gerade gesetzte Markierung verloren.
+  let deferredHighlights=null,commentCounts={};
+
+  function hasPendingWork(){
+    return pendingRange!==null||selectedHighlightId!==null||
+      document.querySelector('mark.merlin-highlight[data-highlight-id^="tmp_"]')!==null;
+  }
+
+  function unwrapAllMarks(){
+    const parents=new Set();
+    document.querySelectorAll('mark.merlin-highlight').forEach(el=>{
+      const p=el.parentNode;if(!p)return;
+      while(el.firstChild)p.insertBefore(el.firstChild,el);
+      p.removeChild(el);parents.add(p);
+    });
+    parents.forEach(p=>{if(p.isConnected)p.normalize();});
+  }
+
+  function renderHighlights(highlights){
+    unwrapAllMarks();
     // Resolve start nodes first so we can sort without repeated XPath lookups
     const items=highlights.map(h=>({h,n:resolveXPath(h.startXpath)})).filter(x=>x.n);
     // Process in reverse document order (last → first) so splitText calls
     // from later highlights don't invalidate XPaths of earlier ones
     items.sort((a,b)=>{const p=a.n.compareDocumentPosition(b.n);return(p&4)?1:(p&2)?-1:0;});
     items.forEach(x=>restoreHighlight(x.h));
+    applyCommentCounts();
+  }
+
+  // Zähler-Plakette am letzten Stück jeder kommentierten Markierung (CSS
+  // ::after, ändert also weder Text noch XPaths).
+  function applyCommentCounts(){
+    document.querySelectorAll('mark.merlin-highlight[data-comment-count]').forEach(el=>{delete el.dataset.commentCount;});
+    Object.keys(commentCounts).forEach(id=>{
+      const n=commentCounts[id];if(!n)return;
+      const spans=document.querySelectorAll('mark.merlin-highlight[data-highlight-id="'+id+'"]');
+      if(spans.length)spans[spans.length-1].dataset.commentCount=String(n);
+    });
+  }
+
+  function flushDeferred(){
+    if(deferredHighlights===null||hasPendingWork())return;
+    const list=deferredHighlights;deferredHighlights=null;
+    renderHighlights(list);
+  }
+
+  (function(){
+    const st=document.createElement('style');
+    st.textContent='mark.merlin-highlight[data-comment-count]::after{content:attr(data-comment-count);display:inline-block;margin-left:3px;padding:0 5px;min-width:8px;border-radius:8px;background:#f59e0b;color:#fff;font-size:0.68em;font-weight:700;line-height:1.5;text-align:center;vertical-align:super;}';
+    (document.head||document.documentElement).appendChild(st);
+  })();
+
+  window.merlinApplyHighlights=highlights=>{
+    if(hasPendingWork()){deferredHighlights=highlights;return;}
+    renderHighlights(highlights);
   };
-  window.merlinUpdateTempId=(tempId,realId)=>{
+  window.merlinSetCommentState=(highlights,counts)=>{
+    commentCounts=counts||{};
+    if(highlights)window.merlinApplyHighlights(highlights);
+    applyCommentCounts();
+  };
+  // `saved`: die gerade gespeicherte Markierung – fehlt sie in einer
+  // vorgemerkten (älteren) Liste, kommt sie dazu, statt kurz zu verschwinden.
+  window.merlinUpdateTempId=(tempId,realId,saved)=>{
     document.querySelectorAll('mark.merlin-highlight[data-highlight-id="'+tempId+'"]').forEach(el=>{el.dataset.highlightId=String(realId);});
+    if(saved&&deferredHighlights!==null&&!deferredHighlights.some(h=>String(h.id)===String(realId))){
+      deferredHighlights=deferredHighlights.concat([saved]);
+    }
+    flushDeferred();
   };
 })();
 """#
@@ -589,7 +680,11 @@ private class WeakMessageHandler: NSObject, WKScriptMessageHandler {
 /// existing highlight (so the delete button shows).
 struct SelectionToolbarState: Equatable {
     var screenRect: CGRect
-    var hasHighlight: Bool
+    /// id der angetippten Markierung (Zahl oder noch "tmp_…"), nil bei einer
+    /// frischen Textauswahl.
+    var highlightId: String?
+
+    var hasHighlight: Bool { highlightId != nil }
 }
 
 /// Native, screen-edge-docked replacement for the old text-anchored colour
@@ -597,6 +692,8 @@ struct SelectionToolbarState: Equatable {
 /// since it no longer needs to hug the selection.
 private struct HighlightToolbarView: View {
     let hasHighlight: Bool
+    /// Knopf "Kommentieren" zeigen (nur wenn der Server Kommentare kann).
+    let showComment: Bool
     /// true = docked to the top edge, false = bottom edge. Decides which side
     /// gets the extra `edgeInset` padding so the background can extend into
     /// the safe area (notch / home indicator) instead of leaving it bare.
@@ -613,6 +710,7 @@ private struct HighlightToolbarView: View {
     let availableWidth: CGFloat
     let bgColor: Color
     let onColor: (String) -> Void
+    let onComment: () -> Void
     let onDelete: () -> Void
 
     /// Mirrors the COLORS table in merlinHighlightJS — keep these in sync.
@@ -628,10 +726,13 @@ private struct HighlightToolbarView: View {
     /// edge, even at full size on a wide iPad.
     private static let horizontalPadding: CGFloat = 24
 
-    /// Number of fixed-size circles in the row (colours, plus the delete
-    /// button when a highlight is selected).
-    private var circleCount: Int { Self.colors.count + (hasHighlight ? 1 : 0) }
-    private var gapCount: Int { circleCount - 1 + (hasHighlight ? 1 : 0) }
+    /// Buttons after the separator: comment (if supported) and delete (when
+    /// a highlight is selected).
+    private var trailingCount: Int { (showComment ? 1 : 0) + (hasHighlight ? 1 : 0) }
+
+    /// Number of fixed-size circles in the row (colours plus trailing buttons).
+    private var circleCount: Int { Self.colors.count + trailingCount }
+    private var gapCount: Int { circleCount - 1 + (trailingCount > 0 ? 1 : 0) }
 
     /// Shrinks circles + spacing uniformly so the row always fits
     /// `availableWidth`, instead of overflowing off-screen once the delete
@@ -639,7 +740,7 @@ private struct HighlightToolbarView: View {
     /// screens — `min(1, …)`.
     private var scale: CGFloat {
         let usable = max(availableWidth - Self.horizontalPadding * 2, 0)
-        let separator = hasHighlight ? Self.separatorWidth : 0
+        let separator = trailingCount > 0 ? Self.separatorWidth : 0
         let idealTotal = CGFloat(circleCount) * Self.idealDiameter
             + CGFloat(gapCount) * Self.idealSpacing
             + separator
@@ -666,10 +767,26 @@ private struct HighlightToolbarView: View {
                     }
                     .buttonStyle(.plain)
                 }
-                if hasHighlight {
+                if trailingCount > 0 {
                     Rectangle()
                         .fill(Color(.separator))
                         .frame(width: Self.separatorWidth, height: circleDiameter * 0.625)
+                }
+                if showComment {
+                    Button(action: onComment) {
+                        Circle()
+                            .fill(Color(.systemGray5))
+                            .frame(width: circleDiameter, height: circleDiameter)
+                            .overlay(
+                                Image(systemName: "text.bubble")
+                                    .font(.system(size: 18 * scale, weight: .semibold))
+                                    .foregroundStyle(.primary)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(L("articleReader.comments.comment"))
+                }
+                if hasHighlight {
                     Button(action: onDelete) {
                         Circle()
                             .fill(Color(.systemGray5))
@@ -736,6 +853,48 @@ private struct HighlightToolbarBackground: ViewModifier {
         webView?.evaluateJavaScript(
             "window.merlinDeleteSelectedHighlightFromNative && window.merlinDeleteSelectedHighlightFromNative()")
     }
+
+    /// Löscht eine bestimmte Markierung (nach der Rückfrage, ob ihre
+    /// Kommentare mit verschwinden sollen – die Auswahl kann dann schon weg sein).
+    func deleteHighlight(id: String) {
+        guard let data = try? JSONEncoder().encode(id),
+              let json = String(data: data, encoding: .utf8) else { return }
+        webView?.evaluateJavaScript(
+            "window.merlinDeleteHighlightFromNative && window.merlinDeleteHighlightFromNative(\(json))")
+    }
+
+    /// Knopf "Kommentieren" in der Leiste.
+    func comment() {
+        webView?.evaluateJavaScript(
+            "window.merlinCommentFromNative && window.merlinCommentFromNative()")
+    }
+
+    /// "Im Text zeigen": scrollt den Reader zur Markierung und lässt sie kurz
+    /// aufblinken. Der WebView scrollt nie selbst (siehe makeUIView); die
+    /// Lage im Dokument wird daher in die äußere UIScrollView umgerechnet.
+    func reveal(highlightId id: Int) async {
+        guard let webView else { return }
+        let js = """
+        (function(){var ms=document.querySelectorAll('mark.merlin-highlight[data-highlight-id="\(id)"]');if(!ms.length)return -1;\
+        ms.forEach(function(m){m.style.outline='2px solid #f59e0b';m.style.outlineOffset='1px';});\
+        setTimeout(function(){ms.forEach(function(m){m.style.outline='';m.style.outlineOffset='';});},1600);\
+        var r=ms[0].getBoundingClientRect();return r.top+window.scrollY;})()
+        """
+        // -1 statt null: ein nil-Ergebnis verträgt die async-Variante von
+        // evaluateJavaScript nicht auf allen iOS-Versionen.
+        guard let top = try? await webView.evaluateJavaScript(js) as? Double, top >= 0 else { return }
+        var view: UIView? = webView.superview
+        while let v = view {
+            if let scroll = v as? UIScrollView {
+                let point = webView.convert(CGPoint(x: 0, y: top), to: scroll)
+                let maxOffset = max(0, scroll.contentSize.height - scroll.bounds.height)
+                let target = min(max(0, point.y - scroll.bounds.height / 3), maxOffset)
+                scroll.setContentOffset(CGPoint(x: 0, y: target), animated: true)
+                return
+            }
+            view = v.superview
+        }
+    }
 }
 
 // MARK: – WKWebView wrapper
@@ -760,9 +919,9 @@ struct ArticleWebView: UIViewRepresentable {
     /// (document-absolute, non-scrolling) coordinate space — see the comment
     /// on `scrollOffset` below for why. The SwiftUI layer adds this WebView's
     /// own on-screen frame to get a true screen position for its native
-    /// `HighlightToolbarView` overlay. `hasHighlight` is true when the
-    /// selection is an existing highlight (tapped to edit/delete it).
-    var onSelectionChanged: ((CGRect, Bool) -> Void)? = nil
+    /// `HighlightToolbarView` overlay. `highlightId` is set when the
+    /// selection is an existing highlight (tapped to edit/delete/comment it).
+    var onSelectionChanged: ((CGRect, String?) -> Void)? = nil
     /// Called once the selection is cleared (deliberately, or via the
     /// debounced collapse-blip guard in the JS layer).
     var onSelectionCleared: (() -> Void)?            = nil
@@ -781,6 +940,16 @@ struct ArticleWebView: UIViewRepresentable {
     /// über den HTML-String, würde deren spätes Eintreffen (Einzelabruf) die Seite neu laden und
     /// Scrollposition/Highlights zurücksetzen. Wird nach dem Laden bzw. bei Änderung direkt ausgeführt.
     var supportBoxScript: String? = nil
+    /// Kommentar-Dialog für eine Markierung öffnen (id, markierter Text) –
+    /// nach "Kommentieren" an einer neuen oder bestehenden Markierung.
+    var onOpenComments: ((Int, String) -> Void)? = nil
+    /// Eine eigene Markierung wurde angelegt oder gelöscht.
+    var onHighlightsChanged: (() -> Void)? = nil
+    /// Stand von `CommentStore.revision`; ändert er sich, holt der WebView
+    /// über `commentScript` Markierungen und Kommentar-Zähler neu. Getrennt
+    /// vom Skript selbst, damit nicht bei jedem Scroll-Frame JSON gebaut wird.
+    var commentRevision: Int = 0
+    var commentScript: (() -> String?)? = nil
 
     func makeCoordinator() -> Coordinator {
         Coordinator(articleId: articleId)
@@ -847,6 +1016,16 @@ struct ArticleWebView: UIViewRepresentable {
         context.coordinator.supportBoxScript = supportBoxScript
         context.coordinator.applySupportBoxIfReady(to: webView)
 
+        context.coordinator.onOpenComments = onOpenComments
+        context.coordinator.onHighlightsChanged = onHighlightsChanged
+        if context.coordinator.commentRevision != commentRevision {
+            context.coordinator.commentRevision = commentRevision
+            context.coordinator.commentStateScript = commentScript?()
+            if context.coordinator.pageLoaded, let script = context.coordinator.commentStateScript {
+                webView.evaluateJavaScript(script, completionHandler: nil)
+            }
+        }
+
         let newHash = html.hashValue
         guard context.coordinator.loadedHTMLHash != newHash else { return }
         context.coordinator.loadedHTMLHash = newHash
@@ -883,8 +1062,14 @@ struct ArticleWebView: UIViewRepresentable {
         var onImageTapped:  ((Int, [String]) -> Void)?
         var onYouTubeTapped: ((String, Int?, CGRect) -> Void)?
         var onYouTubeRectChanged: ((CGRect) -> Void)?
-        var onSelectionChanged: ((CGRect, Bool) -> Void)?
+        var onSelectionChanged: ((CGRect, String?) -> Void)?
         var onSelectionCleared: (() -> Void)?
+        var onOpenComments: ((Int, String) -> Void)?
+        var onHighlightsChanged: (() -> Void)?
+        var commentRevision = 0
+        /// Letztes Skript aus `CommentStore.webViewScript()`; wird nach jedem
+        /// Seitenladen erneut ausgeführt.
+        var commentStateScript: String?
         var lastScrollOffset: CGFloat = 0
 weak var webView:   WKWebView?
 
@@ -958,9 +1143,9 @@ weak var webView:   WKWebView?
                    let bottom = body["bottom"] as? Double,
                    let left   = body["left"]   as? Double,
                    let right  = body["right"]  as? Double {
-                    let hasHighlight = body["hasHighlight"] as? Bool ?? false
+                    let highlightId = body["highlightId"] as? String
                     let rect = CGRect(x: left, y: top, width: right - left, height: bottom - top)
-                    DispatchQueue.main.async { [weak self] in self?.onSelectionChanged?(rect, hasHighlight) }
+                    DispatchQueue.main.async { [weak self] in self?.onSelectionChanged?(rect, highlightId) }
                 }
                 return
             }
@@ -980,6 +1165,7 @@ guard message.name == "highlights",
                       let endOff     = data["endOffset"]        as? Int,
                       let color      = data["color"]            as? String
                 else { return }
+                let wantsComment = data["comment"] as? Bool ?? false
 
                 let payload = HighlightCreate(
                     highlightedText: text,
@@ -997,11 +1183,17 @@ guard message.name == "highlights",
                         await HighlightCacheService.shared.upsert(saved)
                         if let encodedTempId = try? JSONEncoder().encode(tempId),
                            let tempIdJSON    = String(data: encodedTempId, encoding: .utf8) {
+                            let savedJSON = (try? JSONEncoder().encode(saved)).flatMap { String(data: $0, encoding: .utf8) } ?? "null"
                             await MainActor.run {
                                 webView?.evaluateJavaScript(
-                                    "merlinUpdateTempId(\(tempIdJSON), \(saved.id))",
+                                    "merlinUpdateTempId(\(tempIdJSON), \(saved.id), \(savedJSON))",
                                     completionHandler: nil)
                             }
+                        }
+                        let savedId = saved.id
+                        DispatchQueue.main.async { [weak self] in
+                            self?.onHighlightsChanged?()
+                            if wantsComment { self?.onOpenComments?(savedId, text) }
                         }
                     } catch {
                         if case MerlinAPIError.networkError = error {
@@ -1029,6 +1221,7 @@ guard message.name == "highlights",
                         do {
                             try await MerlinAPI.shared.deleteHighlight(highlightId)
                             await HighlightCacheService.shared.remove(id: highlightId, articleId: aid)
+                            DispatchQueue.main.async { [weak self] in self?.onHighlightsChanged?() }
                         } catch {
                             if case MerlinAPIError.networkError = error {
                                 // Offline: drop it from the local cache right
@@ -1046,6 +1239,13 @@ guard message.name == "highlights",
                     // exist remotely (and would otherwise get resurrected).
                     OfflineHighlightQueue.shared.cancelPendingCreate(tempId: rawId, articleId: aid)
                 }
+
+            case "openComments":
+                // Noch nicht gespeicherte Markierung (tmp_…): keine id, an
+                // der ein Kommentar hängen könnte.
+                guard let rawId = body["id"] as? String, let highlightId = Int(rawId) else { return }
+                let text = body["text"] as? String ?? ""
+                DispatchQueue.main.async { [weak self] in self?.onOpenComments?(highlightId, text) }
 
             case "copy":
                 if let text = body["text"] as? String, !text.isEmpty {
@@ -1093,16 +1293,94 @@ guard message.name == "highlights",
                     // article content.
                     highlights = await HighlightCacheService.shared.highlights(for: aid)
                 }
-                guard !highlights.isEmpty,
-                      let jsonData = try? JSONEncoder().encode(highlights),
-                      let jsonStr  = String(data: jsonData, encoding: .utf8) else { return }
-                await MainActor.run {
-                    webView?.evaluateJavaScript(
-                        "if(typeof merlinApplyHighlights==='function'){merlinApplyHighlights(\(jsonStr))}",
-                        completionHandler: nil)
+                if !highlights.isEmpty,
+                   let jsonData = try? JSONEncoder().encode(highlights),
+                   let jsonStr  = String(data: jsonData, encoding: .utf8) {
+                    await MainActor.run {
+                        webView?.evaluateJavaScript(
+                            "if(typeof merlinApplyHighlights==='function'){merlinApplyHighlights(\(jsonStr))}",
+                            completionHandler: nil)
+                    }
+                }
+                // Danach den (meist neueren) Stand aus dem Kommentar-Kanal
+                // inkl. Gast-Markierungen und Zählern drüberlegen.
+                DispatchQueue.main.async { [weak self, weak webView] in
+                    guard let script = self?.commentStateScript else { return }
+                    webView?.evaluateJavaScript(script, completionHandler: nil)
                 }
             }
         }
+    }
+}
+
+// MARK: – Kommentare im Reader
+
+/// Was der Kommentar-Dialog beim Öffnen zeigt: die Threads einer Markierung
+/// (`highlightId`) oder alle (nil).
+struct CommentFocus: Identifiable {
+    let id = UUID()
+    let highlightId: Int?
+    let quote: String?
+}
+
+/// Kommentar-Dialog, Push-Kanal-Lebenszyklus und die Rückfrage vor dem
+/// Entfernen einer kommentierten Markierung. Als eigener Modifier, damit der
+/// ohnehin lange Modifier-Stapel von ArticleReaderView.body für den
+/// Type-Checker nicht weiter wächst.
+private struct ReaderCommentsModifier: ViewModifier {
+    @Environment(\.scenePhase) private var scenePhase
+
+    let articleId: Int
+    let store: CommentStore
+    @Binding var focus: CommentFocus?
+    @Binding var highlightToDelete: String?
+    let actions: HighlightActionHandler
+
+    func body(content: Content) -> some View {
+        content
+            .sheet(item: $focus) { focus in
+                CommentsSheet(
+                    store: store,
+                    initialHighlightId: focus.highlightId,
+                    initialQuote: focus.quote,
+                    onShowInText: { highlightId in
+                        self.focus = nil
+                        Task {
+                            // Erst nach dem Zuklappen scrollen, sonst greift
+                            // der Offset nicht (Sheet-Animation).
+                            try? await Task.sleep(for: .milliseconds(450))
+                            await actions.reveal(highlightId: highlightId)
+                        }
+                    })
+            }
+            .task(id: articleId) {
+                store.start(articleId: articleId)
+            }
+            .onDisappear {
+                store.stop()
+            }
+            .onChange(of: scenePhase) { old, new in
+                // Im Hintergrund keine Verbindung halten; beim Zurückkommen
+                // holt das erste Ereignis alles Verpasste nach.
+                if new == .background {
+                    store.stop()
+                } else if new == .active, old == .background {
+                    store.reconnect()
+                }
+            }
+            .confirmationDialog(
+                L("articleReader.comments.deleteHighlightTitle"),
+                isPresented: .init(get: { highlightToDelete != nil }, set: { if !$0 { highlightToDelete = nil } }),
+                titleVisibility: .visible
+            ) {
+                Button(L("articleReader.comments.removeHighlight"), role: .destructive) {
+                    if let id = highlightToDelete { actions.deleteHighlight(id: id) }
+                    highlightToDelete = nil
+                }
+                Button(L("common.cancel"), role: .cancel) { highlightToDelete = nil }
+            } message: {
+                Text(L("articleReader.comments.deleteHighlightMessage"))
+            }
     }
 }
 
@@ -1252,6 +1530,12 @@ struct ArticleReaderView: View {
     @State private var showTagSheet        = false
     @State private var showReportSheet     = false
     @State private var showShareLinkSheet  = false
+    /// Kommentare und Markierungen des Artikels, live per Push (nur Nextcloud).
+    @State private var comments = CommentStore()
+    /// Offener Kommentar-Dialog (nil = zu).
+    @State private var commentFocus: CommentFocus? = nil
+    /// Rückfrage vor dem Entfernen einer Markierung, an der Kommentare hängen.
+    @State private var highlightToDelete: String? = nil
     @State private var reportComment       = ""
     @State private var reportSending       = false
     @State private var reportFeedback: ReportFeedback? = nil
@@ -1410,7 +1694,7 @@ struct ArticleReaderView: View {
                             onYouTubeRectChanged: { rect in
                                 youtubePlayerState?.rect = rect
                             },
-                            onSelectionChanged: { rect, hasHighlight in
+                            onSelectionChanged: { rect, highlightId in
                                 let screenRect = CGRect(
                                     x: webViewScreenFrame.minX + rect.minX,
                                     y: webViewScreenFrame.minY + rect.minY,
@@ -1418,7 +1702,7 @@ struct ArticleReaderView: View {
                                     height: rect.height)
                                 toolbarScrollBaseline = scrollOffset
                                 showHighlightToolbar(
-                                    SelectionToolbarState(screenRect: screenRect, hasHighlight: hasHighlight),
+                                    SelectionToolbarState(screenRect: screenRect, highlightId: highlightId),
                                     animation: .spring(response: 0.35, dampingFraction: 0.82))
                             },
                             onSelectionCleared: {
@@ -1427,7 +1711,16 @@ struct ArticleReaderView: View {
                             },
                             actionHandler: highlightActions,
                             scrollOffset: scrollOffset,
-                            supportBoxScript: supportBox.flatMap { Self.supportBoxScript(for: $0, seed: current.id) }
+                            supportBoxScript: supportBox.flatMap { Self.supportBoxScript(for: $0, seed: current.id) },
+                            onOpenComments: { highlightId, text in
+                                hideHighlightToolbar()
+                                commentFocus = CommentFocus(highlightId: highlightId, quote: text)
+                            },
+                            onHighlightsChanged: {
+                                Task { await comments.refresh() }
+                            },
+                            commentRevision: comments.revision,
+                            commentScript: { [comments] in comments.webViewScript() }
                         )
                         .frame(height: max(300, webViewHeight))
                         // Inline-Player exakt über der angetippten Vorschaukarte. Der WebView
@@ -1633,6 +1926,7 @@ struct ArticleReaderView: View {
                 let dockTop = toolbar.screenRect.midY > viewportHeight / 2
                 let toolbarView = HighlightToolbarView(
                     hasHighlight: toolbar.hasHighlight,
+                    showComment: comments.isAvailable,
                     dockTop: dockTop,
                     edgeInset: dockTop ? safeAreaTop : safeAreaBottom,
                     availableWidth: viewportWidth,
@@ -1641,8 +1935,20 @@ struct ArticleReaderView: View {
                         highlightActions.applyColor(colorId)
                         hideHighlightToolbar()
                     },
+                    onComment: {
+                        highlightActions.comment()
+                        hideHighlightToolbar()
+                    },
                     onDelete: {
-                        highlightActions.deleteSelected()
+                        // Hängen Kommentare an der Markierung, erst nachfragen:
+                        // die Threads bleiben mit dem zitierten Text erhalten,
+                        // die Stelle im Text ist aber weg.
+                        if let id = toolbar.highlightId, let numeric = Int(id),
+                           comments.count(forHighlight: numeric) > 0 {
+                            highlightToDelete = id
+                        } else {
+                            highlightActions.deleteSelected()
+                        }
                         hideHighlightToolbar()
                     })
                     // Only matters for the initial mount (a genuine
@@ -1837,9 +2143,20 @@ struct ArticleReaderView: View {
             ReminderSheet(article: current, currentReminder: $articleReminder)
         }
         // ── Öffentlicher Share-Link ──────────────────────────────────────────
-        .sheet(isPresented: $showShareLinkSheet) {
-            ShareLinkSheet(articleId: current.id)
+        .sheet(isPresented: $showShareLinkSheet, onDismiss: {
+            // Link angelegt/widerrufen: der Push-Kanal endet ohne Link
+            // (`.closed`) und muss danach neu verbunden werden.
+            comments.reconnect()
+        }) {
+            ShareLinkSheet(articleId: current.id, commentsAvailable: comments.isAvailable)
         }
+        // ── Kommentare ─────────────────────────────────────────────────────
+        .modifier(ReaderCommentsModifier(
+            articleId: current.id,
+            store: comments,
+            focus: $commentFocus,
+            highlightToDelete: $highlightToDelete,
+            actions: highlightActions))
         // ── Shake-to-undo ──────────────────────────────────────────────────
         .onShake {
             guard viewModel.canUndo else { return }
@@ -2429,6 +2746,17 @@ struct ArticleReaderView: View {
                     menuRow(icon: "link.badge.plus", label: L("articleReader.sideMenu.publicLink")) {
                         showSideMenu = false
                         showShareLinkSheet = true
+                    }
+
+                    if comments.isAvailable {
+                        let count = comments.totalCount
+                        menuRow(icon: "text.bubble",
+                                label: count > 0
+                                    ? String(format: L("articleReader.comments.countLabel"), count)
+                                    : L("articleReader.comments.title")) {
+                            showSideMenu = false
+                            commentFocus = CommentFocus(highlightId: nil, quote: nil)
+                        }
                     }
                 }
 

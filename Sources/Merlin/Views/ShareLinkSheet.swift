@@ -1,12 +1,16 @@
 import SwiftUI
 
 /// Verwaltung des öffentlichen Share-Links eines Artikels: anlegen,
-/// Passwort/Ablaufdatum setzen, Link kopieren/teilen, regenerieren, widerrufen.
+/// Passwort/Ablaufdatum setzen, Kommentare für Besucher öffnen/schließen,
+/// Link kopieren/teilen, regenerieren, widerrufen.
 /// Ein Artikel hat höchstens einen Link (siehe ArticleShare/MerlinAPI).
 struct ShareLinkSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     let articleId: Int
+    /// Server kann Kommentare (Nextcloud) – dann gibt es den Schalter
+    /// "Besucher dürfen markieren und kommentieren".
+    var commentsAvailable = false
 
     @State private var share: ArticleShare = .disabled
     @State private var isLoading  = true
@@ -18,6 +22,7 @@ struct ShareLinkSheet: View {
     @State private var createPassword = ""
     @State private var createExpiryEnabled = false
     @State private var createExpiryDate = Date().addingTimeInterval(30 * 86_400)
+    @State private var createAllowComments = true
 
     // Bestehenden Link ändern
     @State private var editingPassword = false
@@ -87,6 +92,14 @@ struct ShareLinkSheet: View {
             }
         }
 
+        if commentsAvailable {
+            Section {
+                Toggle(L("articleReader.comments.visitorsCanComment"), isOn: $createAllowComments)
+            } footer: {
+                Text(L("articleReader.comments.nameExplainer"))
+            }
+        }
+
         Section {
             Button {
                 Task { await create() }
@@ -153,6 +166,15 @@ struct ShareLinkSheet: View {
             }
         }
 
+        if share.allowComments != nil {
+            Section {
+                Toggle(L("articleReader.comments.visitorsCanComment"), isOn: allowCommentsBinding)
+                    .disabled(isBusy)
+            } footer: {
+                Text(L("articleReader.comments.nameExplainer"))
+            }
+        }
+
         Section {
             Button {
                 Task { await regenerate() }
@@ -184,6 +206,13 @@ struct ShareLinkSheet: View {
                     Task { await removePassword() }
                 }
             }
+        )
+    }
+
+    private var allowCommentsBinding: Binding<Bool> {
+        Binding(
+            get: { share.allowComments ?? true },
+            set: { isOn in Task { await setAllowComments(isOn) } }
         )
     }
 
@@ -221,7 +250,8 @@ struct ShareLinkSheet: View {
             share = try await MerlinAPI.shared.createShare(
                 articleId,
                 password: createPasswordEnabled ? createPassword : nil,
-                expiresAt: createExpiryEnabled ? ISO8601DateFormatter().string(from: createExpiryDate) : nil
+                expiresAt: createExpiryEnabled ? ISO8601DateFormatter().string(from: createExpiryDate) : nil,
+                allowComments: commentsAvailable ? createAllowComments : nil
             )
         } catch {
             errorMessage = error.localizedDescription
@@ -269,6 +299,17 @@ struct ShareLinkSheet: View {
         isBusy = true
         do {
             share = try await MerlinAPI.shared.updateShare(articleId, expiresAt: .some(nil))
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        isBusy = false
+    }
+
+    private func setAllowComments(_ allow: Bool) async {
+        isBusy = true
+        errorMessage = nil
+        do {
+            share = try await MerlinAPI.shared.updateShare(articleId, allowComments: allow)
         } catch {
             errorMessage = error.localizedDescription
         }

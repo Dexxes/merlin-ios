@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Comments: highlighted passages and the whole article can be commented on,
+  with threaded replies. The highlight toolbar has a new "Comment" button
+  (highlights the selection and opens the comment dialog, or opens the
+  comments of a tapped highlight); highlights with comments show a count
+  badge. All comments are reachable from the side menu. Comments and
+  highlights from visitors of the public share link (and from other devices)
+  appear right away: the reader keeps a push connection to the server
+  (Server-Sent Events) instead of polling. Your own comments can be edited,
+  any comment can be deleted. Removing a highlight that has comments asks
+  first; its threads are kept with the quoted text. The share link sheet has
+  a switch "Visitors can highlight and comment". Requires Merlin for
+  Nextcloud with comments; with merlin-server nothing changes.
 - Side menu: the "Audio" category (Continue listening, Not listened,
   Favorites, Archive with counts) is now shown alongside Pages and Videos, as
   in Merlin for Nextcloud. Audio articles (server category `Audio`) no longer
