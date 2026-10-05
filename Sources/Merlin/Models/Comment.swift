@@ -41,6 +41,10 @@ struct Comment: Codable, Identifiable, Equatable, Sendable {
 /// alle Threads und Markierungen des Artikels plus Änderungsmarke.
 struct CommentsPayload: Codable, Sendable {
     let signature: String
+    /// Zeitpunkt des Stands auf dem Server (Mikrosekunden). Ordnet Antworten
+    /// und Push-Ereignisse, die sich überholen können. Fehlt bei älteren
+    /// Servern.
+    let generatedAt: Int64?
     let comments: [Comment]
     let highlights: [Highlight]
 }

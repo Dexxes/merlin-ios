@@ -28,6 +28,8 @@ final class CommentStore {
     private(set) var revision = 0
 
     @ObservationIgnored private var signature = ""
+    /// `generatedAt` des gezeigten Stands; ältere Stände werden verworfen.
+    @ObservationIgnored private var generatedAt: Int64 = 0
     @ObservationIgnored private var articleId: Int?
     @ObservationIgnored private var streamTask: Task<Void, Never>?
 
@@ -65,6 +67,7 @@ final class CommentStore {
             threads = []
             highlights = []
             signature = ""
+            generatedAt = 0
             isAvailable = false
             revision += 1
         }
@@ -129,6 +132,12 @@ final class CommentStore {
     }
 
     private func apply(_ payload: CommentsPayload) {
+        // Älter als der gezeigte Stand (überholte Antwort oder verspätetes
+        // Push-Ereignis): verwerfen, sonst taucht Gelöschtes kurz wieder auf.
+        if let at = payload.generatedAt {
+            guard at >= generatedAt else { return }
+            generatedAt = at
+        }
         guard payload.signature != signature else { return }
         signature = payload.signature
         threads = payload.comments
