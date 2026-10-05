@@ -10,6 +10,12 @@ struct Highlight: Codable, Identifiable {
     let endOffset: Int
     let color: String
     let createdAt: String
+    /// "owner" oder "guest" (Gäste markieren hinter dem Share-Link). Fehlt bei
+    /// älteren Servern und im Offline-Cache von früher – dann Besitzer.
+    var authorType: String? = nil
+    var authorName: String? = nil
+
+    var isGuest: Bool { authorType == "guest" }
 }
 
 struct HighlightCreate: Codable {

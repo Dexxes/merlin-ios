@@ -14,6 +14,9 @@ struct ArticleShare: Codable {
     let createdAt: String?
     let updatedAt: String?
     let url: String?
+    /// Dürfen Gäste hinter dem Link markieren und kommentieren? nil (ältere
+    /// Server ohne Kommentare) zählt wie true, ist dann aber bedeutungslos.
+    var allowComments: Bool? = nil
 
     static let disabled = ArticleShare(
         enabled: false, articleId: nil, token: nil, hasPassword: nil,

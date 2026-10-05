@@ -375,6 +375,76 @@ actor MerlinAPI {
         _ = try await performRaw(req)
     }
 
+    // MARK: – Comments
+
+    /// Alle Threads und Markierungen eines Artikels samt Änderungsmarke.
+    /// merlin-server kennt keine Kommentare – dort kommt `.notFound`.
+    func getComments(_ articleId: Int) async throws -> CommentsPayload {
+        let req = try makeRequest("/articles/\(articleId)/comments")
+        return try await performComment(req)
+    }
+
+    /// Neuer Kommentar: an einer Markierung (`highlightId`), am ganzen Artikel
+    /// (beides nil) oder als Antwort (`parentId`; der Server hängt Antworten
+    /// auf Antworten an die Thread-Wurzel).
+    func createComment(_ articleId: Int, body: String, highlightId: Int? = nil, parentId: Int? = nil,
+                       anchor: CommentAnchor? = nil) async throws -> Comment {
+        var payload: [String: Any] = ["body": body]
+        if let highlightId { payload["highlightId"] = highlightId }
+        if let parentId { payload["parentId"] = parentId }
+        if let anchor { payload["anchor"] = anchor.payload }
+        var req = try makeRequest("/articles/\(articleId)/comments", method: "POST")
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        return try await performComment(req)
+    }
+
+    /// Nur eigene Kommentare (Besitzer) – Gast-Kommentare lehnt der Server ab.
+    func updateComment(_ id: Int, body: String) async throws -> Comment {
+        var req = try makeRequest("/comments/\(id)", method: "PUT")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["body": body])
+        return try await performComment(req)
+    }
+
+    /// Der Besitzer darf jeden Kommentar seines Artikels löschen.
+    func deleteComment(_ id: Int) async throws {
+        let req = try makeRequest("/comments/\(id)", method: "DELETE")
+        _ = try await performCommentRaw(req)
+    }
+
+    /// Wie `performRaw`, wertet bei Fehlern aber `{error: code}` aus, damit die
+    /// Oberfläche z. B. "zu lang" statt "HTTP 400" zeigen kann.
+    private func performCommentRaw(_ request: URLRequest) async throws -> Data {
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            throw MerlinAPIError.networkError(error)
+        }
+        guard let http = response as? HTTPURLResponse else { throw MerlinAPIError.unknown }
+        switch http.statusCode {
+        case 200...299:
+            return data
+        case 401:
+            throw MerlinAPIError.unauthorized
+        default:
+            if let body = try? JSONDecoder().decode(CommentErrorBody.self, from: data) {
+                throw CommentAPIError(code: body.error, status: http.statusCode)
+            }
+            if http.statusCode == 404 { throw MerlinAPIError.notFound }
+            throw MerlinAPIError.serverError(http.statusCode)
+        }
+    }
+
+    private func performComment<T: Decodable>(_ request: URLRequest) async throws -> T {
+        let data = try await performCommentRaw(request)
+        do {
+            return try JSONDecoder().decode(T.self, from: data)
+        } catch {
+            let raw = String(data: data.prefix(300), encoding: .utf8) ?? "<\(data.count) Bytes, kein UTF-8>"
+            throw MerlinAPIError.decodingError(error, body: raw.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+    }
+
     // MARK: – Public Share
 
     /// Aktueller Share-Status ({ enabled: false }, falls noch kein Link existiert).
@@ -388,10 +458,11 @@ actor MerlinAPI {
     /// Legt einen Share-Link an (idempotent – existiert bereits einer, wird
     /// dieser unverändert zurückgegeben). password/expiresAt (ISO-8601-Datum)
     /// sind optional.
-    func createShare(_ articleId: Int, password: String? = nil, expiresAt: String? = nil) async throws -> ArticleShare {
+    func createShare(_ articleId: Int, password: String? = nil, expiresAt: String? = nil, allowComments: Bool? = nil) async throws -> ArticleShare {
         var body: [String: Any] = [:]
         if let password { body["password"] = password }
         if let expiresAt { body["expiresAt"] = expiresAt }
+        if let allowComments { body["allowComments"] = allowComments }
 
         var req = try makeRequest("/articles/\(articleId)/share", method: "POST")
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -407,10 +478,12 @@ actor MerlinAPI {
     ///   updateShare(id, password: .some("neu"))  → Passwort setzen/ändern
     ///   updateShare(id, password: .some(nil))     → Passwortschutz entfernen
     ///   updateShare(id)                           → Passwort unverändert lassen
-    func updateShare(_ articleId: Int, password: String?? = nil, expiresAt: String?? = nil) async throws -> ArticleShare {
+    ///   updateShare(id, allowComments: false)    → Kommentare für Gäste schließen
+    func updateShare(_ articleId: Int, password: String?? = nil, expiresAt: String?? = nil, allowComments: Bool? = nil) async throws -> ArticleShare {
         var body: [String: Any] = [:]
         if let password { body["password"] = password ?? NSNull() }
         if let expiresAt { body["expiresAt"] = expiresAt ?? NSNull() }
+        if let allowComments { body["allowComments"] = allowComments }
 
         var req = try makeRequest("/articles/\(articleId)/share", method: "PUT")
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -680,4 +753,90 @@ actor MerlinAPI {
             }
         }
     }
+    /// Push-Kanal für Kommentare und Markierungen eines Artikels (Server-Sent
+    /// Events). Liefert sofort ein `.update`, sobald sich auf dem Server etwas
+    /// gegenüber `since` ändert – egal ob der Besitzer selbst (auf einem
+    /// anderen Gerät) oder ein Gast hinter dem Share-Link schreibt.
+    ///
+    /// Der Server hält die Verbindung ~50 s und beendet sie dann; der Stream
+    /// endet dann ohne Fehler und der Aufrufer verbindet mit der zuletzt
+    /// gesehenen Marke neu (siehe CommentStore). `.closed` heißt: gar nicht
+    /// mehr verbinden, bis sich am Share-Link etwas ändert.
+    nonisolated func commentStream(articleId: Int, since: String) -> AsyncThrowingStream<CommentStreamEvent, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                let encoded = since.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+                guard var req = try? await makeRequest("/articles/\(articleId)/comments/stream?since=\(encoded)") else {
+                    continuation.finish(throwing: MerlinAPIError.notConfigured)
+                    return
+                }
+                req.timeoutInterval = 120
+                req.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+
+                do {
+                    let (bytes, response) = try await URLSession.shared.bytes(for: req)
+                    guard let http = response as? HTTPURLResponse else {
+                        continuation.finish(throwing: MerlinAPIError.unknown)
+                        return
+                    }
+                    guard (200...299).contains(http.statusCode) else {
+                        continuation.finish(throwing: http.statusCode == 404
+                            ? MerlinAPIError.notFound
+                            : MerlinAPIError.serverError(http.statusCode))
+                        return
+                    }
+
+                    // Der Server schreibt je Ereignis `id:`, `event:` und genau
+                    // eine `data:`-Zeile. Ausgewertet wird direkt an der
+                    // data-Zeile – `bytes.lines` liefert Leerzeilen (das
+                    // eigentliche SSE-Ende eines Blocks) nicht zuverlässig.
+                    var eventType = ""
+                    for try await line in bytes.lines {
+                        if line.hasPrefix("event:") {
+                            eventType = String(line.dropFirst(6)).trimmingCharacters(in: .whitespaces)
+                        } else if line.hasPrefix("data:") {
+                            let payload = String(line.dropFirst(5)).trimmingCharacters(in: .whitespaces)
+                            if eventType == "closed" {
+                                continuation.yield(.closed)
+                                continuation.finish()
+                                return
+                            }
+                            if eventType == "comments",
+                               let data = payload.data(using: .utf8),
+                               let decoded = try? JSONDecoder().decode(CommentsPayload.self, from: data) {
+                                continuation.yield(.update(decoded))
+                            }
+                            eventType = ""
+                        }
+                        // `:`-Zeilen (Padding, Heartbeat), `id:` und `retry:` ignorieren.
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+}
+
+// MARK: – Comment errors
+
+/// Fehler mit Code aus `{error: code}` der Kommentar-Endpunkte, z. B.
+/// `body_too_long`, `comment_deleted`, `not_found`.
+struct CommentAPIError: LocalizedError, Sendable {
+    let code: String
+    let status: Int
+
+    var errorDescription: String? {
+        switch code {
+        case "body_too_long": return L("articleReader.comments.error.bodyTooLong")
+        case "body_empty":    return L("articleReader.comments.error.bodyEmpty")
+        default:              return L("articleReader.comments.error.generic")
+        }
+    }
+}
+
+private struct CommentErrorBody: Decodable {
+    let error: String
 }
