@@ -30,6 +30,7 @@ struct CommentsSheet: View {
     @State private var isSending = false
     @State private var errorMessage: String?
     @FocusState private var inputFocused: Bool
+    @AppStorage("merlinCommentSortOrder") private var sortOrderRaw: String = CommentSortOrder.text.rawValue
 
     init(store: CommentStore, initialHighlightId: Int?, initialQuote: String?,
          initialAnchor: CommentAnchor? = nil, onShowInText: ((Int) -> Void)? = nil) {
@@ -48,8 +49,28 @@ struct CommentsSheet: View {
 
     private var visibleThreads: [Comment] {
         if pendingAnchor != nil { return [] }
-        guard let hid = focusedHighlightId else { return store.threads }
+        guard let hid = focusedHighlightId else { return sortedThreads }
         return store.threads.filter { $0.highlightId == hid }
+    }
+
+    /// „Alle Kommentare“: Reihenfolge im Text oder nach der neuesten Antwort.
+    private var sortedThreads: [Comment] {
+        let order = CommentSortOrder(rawValue: sortOrderRaw) ?? .text
+        guard order != .text else { return store.threads }
+        return store.threads.sorted { a, b in
+            let ta = Self.lastActivity(a), tb = Self.lastActivity(b)
+            if ta == tb { return a.id < b.id }
+            return order == .newest ? ta > tb : ta < tb
+        }
+    }
+
+    /// Zeitpunkt der neuesten Antwort (ohne Antworten: der Kommentar selbst).
+    private static func lastActivity(_ thread: Comment) -> Date {
+        var latest = thread.createdDate ?? .distantPast
+        for reply in thread.replies ?? [] where !reply.deleted {
+            if let date = reply.createdDate, date > latest { latest = date }
+        }
+        return latest
     }
 
     private var focusedQuote: String? {
@@ -91,6 +112,20 @@ struct CommentsSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(L("common.close")) { dismiss() }
+                }
+                if !isPassageFocused && store.threads.count > 1 {
+                    ToolbarItem(placement: .primaryAction) {
+                        Menu {
+                            Picker(L("articleReader.comments.sort"), selection: $sortOrderRaw) {
+                                ForEach(CommentSortOrder.allCases) { order in
+                                    Text(order.label).tag(order.rawValue)
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "arrow.up.arrow.down")
+                        }
+                        .accessibilityLabel(L("articleReader.comments.sort"))
+                    }
                 }
                 if isPassageFocused {
                     ToolbarItem(placement: .primaryAction) {
@@ -402,5 +437,20 @@ private struct CommentRow: View {
     /// Verfasser-Farbe vom Server (Besitzer orange, Gäste je eigene).
     private var authorColor: Color {
         comment.authorColor.flatMap { Color(hexString: $0) } ?? Color(.systemGray)
+    }
+}
+
+/// Sortierung von „Alle Kommentare“.
+enum CommentSortOrder: String, CaseIterable, Identifiable {
+    case text, newest, oldest
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .text: return L("articleReader.comments.sortText")
+        case .newest: return L("articleReader.comments.sortNewest")
+        case .oldest: return L("articleReader.comments.sortOldest")
+        }
     }
 }

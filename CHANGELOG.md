@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Comments: under "All comments" a sort button orders the threads by their
+  newest reply, newest or oldest first, or by their order in the text. The
+  choice is remembered.
+
 ### Changed
 - Comments: every author has a color (you are always orange, visitors of the
   share link pick their own). It colors the underline of commented passages,
