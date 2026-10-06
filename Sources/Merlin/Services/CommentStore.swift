@@ -91,11 +91,16 @@ final class CommentStore {
 
     private func run(articleId: Int) async {
         var backoff = 1.0
+        // Beim Öffnen (und nach jedem Verbindungsabbruch) einmal direkt
+        // abfragen, statt sich darauf zu verlassen, dass der Kanal den
+        // verpassten Stand sofort schickt.
+        var needsFetch = true
         while !Task.isCancelled {
-            if signature.isEmpty {
+            if needsFetch || signature.isEmpty {
                 do {
                     apply(try await MerlinAPI.shared.getComments(articleId))
                     isAvailable = true
+                    needsFetch = false
                 } catch {
                     if Task.isCancelled || Self.isUnsupported(error) { return }
                     try? await Task.sleep(for: .seconds(backoff))
@@ -121,6 +126,7 @@ final class CommentStore {
                 // ersten Ereignis nachkommt.
                 try? await Task.sleep(for: .seconds(backoff))
                 backoff = min(backoff * 2, 30)
+                needsFetch = true
             }
         }
     }

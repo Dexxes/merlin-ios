@@ -1384,6 +1384,7 @@ struct CommentFocus: Identifiable {
 /// Type-Checker nicht weiter wächst.
 private struct ReaderCommentsModifier: ViewModifier {
     @Environment(\.scenePhase) private var scenePhase
+    @State private var wasInBackground = false
 
     let articleId: Int
     let store: CommentStore
@@ -1415,12 +1416,15 @@ private struct ReaderCommentsModifier: ViewModifier {
             .onDisappear {
                 store.stop()
             }
-            .onChange(of: scenePhase) { old, new in
+            .onChange(of: scenePhase) { _, new in
                 // Im Hintergrund keine Verbindung halten; beim Zurückkommen
-                // holt das erste Ereignis alles Verpasste nach.
+                // neu abfragen und verbinden. (Der Weg zurück führt über
+                // .inactive, ein Vergleich mit `old == .background` griffe nie.)
                 if new == .background {
                     store.stop()
-                } else if new == .active, old == .background {
+                    wasInBackground = true
+                } else if new == .active, wasInBackground {
+                    wasInBackground = false
                     store.reconnect()
                 }
             }

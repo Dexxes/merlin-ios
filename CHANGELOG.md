@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comments: web addresses in comments are tappable links.
 
 ### Fixed
+- Comments: opening an article always asks the server for the current
+  comments first, and coming back from the background reconnects the live
+  channel again (it stayed closed before), so new comments show up.
 - Comments: several threads on the same passage now sit together under a
   single quote instead of repeating the quote above each thread.
 
