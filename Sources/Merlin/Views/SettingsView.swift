@@ -27,10 +27,7 @@ struct SettingsView: View {
     @State private var retentionDays          = 0
     @State private var retentionFavoritesDays = 0
     @State private var retentionError: String? = nil
-    /// Freie Eingabe der Tage (Text, damit ein leeres Feld „keine eigene Frist“ heißt).
-    @State private var retentionDaysText          = ""
-    @State private var retentionFavoritesDaysText = ""
-    @State private var retentionNotice: String? = nil
+    @State private var retentionSaveTask: Task<Void, Never>? = nil
     @State private var isTesting              = false
     @State private var showClearCacheConfirm  = false
     @State private var showLogoutConfirm      = false
@@ -50,7 +47,7 @@ struct SettingsView: View {
     @State private var safariLoginURL: IdentifiableURL? = nil
     @State private var showSiteCredentials = false
 
-    enum Field { case url, username, password, retentionDays, retentionFavoritesDays }
+    enum Field { case url, username, password }
     enum TestResult { case success(String), failure(String) }
 
     var body: some View {
@@ -235,24 +232,11 @@ struct SettingsView: View {
                         retentionPicker(L("settings.retention.articlesLabel"),
                                         selection: $retentionDays,
                                         maxDays: RetentionStore.shared.maxDays)
-                            .onChange(of: retentionDays) { _, new in
-                                retentionDaysText = new == 0 ? "" : String(new)
-                                saveRetention(days: new)
-                            }
-                        retentionCustomField(text: $retentionDaysText, field: .retentionDays)
+                            .onChange(of: retentionDays) { _, _ in scheduleRetentionSave() }
                         retentionPicker(L("settings.retention.favoritesLabel"),
                                         selection: $retentionFavoritesDays,
                                         maxDays: RetentionStore.shared.favoritesMaxDays)
-                            .onChange(of: retentionFavoritesDays) { _, new in
-                                retentionFavoritesDaysText = new == 0 ? "" : String(new)
-                                saveRetention(favoritesDays: new)
-                            }
-                        retentionCustomField(text: $retentionFavoritesDaysText, field: .retentionFavoritesDays)
-                        if let notice = retentionNotice {
-                            Text(notice)
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
+                            .onChange(of: retentionFavoritesDays) { _, _ in scheduleRetentionSave() }
                         if let err = retentionError {
                             Label(err, systemImage: "xmark.circle.fill")
                                 .foregroundStyle(.red)
@@ -386,12 +370,6 @@ struct SettingsView: View {
                     .ignoresSafeArea()
             }
             .task { await loadStorageUsage() }
-            // Ziffernblock hat keine Eingabetaste: Eingabe beim Verlassen des Feldes übernehmen.
-            .onChange(of: focusedField) { old, _ in
-                if old == .retentionDays || old == .retentionFavoritesDays {
-                    commitRetentionText(old)
-                }
-            }
             .task {
                 syncRetentionState()
                 await RetentionStore.shared.refresh()
@@ -400,12 +378,6 @@ struct SettingsView: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button(L("common.done")) { dismiss() }
-                }
-                ToolbarItemGroup(placement: .keyboard) {
-                    if focusedField == .retentionDays || focusedField == .retentionFavoritesDays {
-                        Spacer()
-                        Button(L("common.done")) { focusedField = nil }
-                    }
                 }
             }
         }
@@ -436,16 +408,28 @@ struct SettingsView: View {
 
     // MARK: - Löschfrist
 
-    /// Auswahl: 0 („Nie“ bzw. „Maximum“ bei Admin-Vorgabe) plus die Vorgaben
-    /// bis zum Admin-Maximum. Ein gespeicherter Sonderwert (z. B. aus der
-    /// Web-App) bleibt sichtbar, damit der Picker eine passende Option hat.
+    /// Zahlenrad je Frist, tageweise einstellbar: 0 („Nie“ bzw. „Maximum“
+    /// bei Admin-Vorgabe) und 1 Tag bis knapp unter das Admin-Maximum (das
+    /// Maximum selbst ist die 0). Ohne Vorgabe reicht das Rad bis
+    /// `RetentionStore.unlimitedPickerDays`. Ein anderswo gespeicherter Wert
+    /// außerhalb des Bereichs bleibt sichtbar, damit das Rad eine Position hat.
     private func retentionPicker(_ title: String, selection: Binding<Int>, maxDays: Int) -> some View {
-        var options = [0] + RetentionStore.presetDays.filter { maxDays == 0 || $0 < maxDays }
-        if !options.contains(selection.wrappedValue) { options.append(selection.wrappedValue) }
-        return Picker(title, selection: selection) {
-            ForEach(options.sorted(), id: \.self) { days in
-                Text(retentionLabel(days, maxDays: maxDays)).tag(days)
+        var options = [0] + (maxDays > 0 ? Array(1..<maxDays) : Array(1...RetentionStore.unlimitedPickerDays))
+        if !options.contains(selection.wrappedValue) {
+            options.append(selection.wrappedValue)
+            options.sort()
+        }
+        return VStack(alignment: .leading, spacing: 0) {
+            Text(title)
+            Picker(title, selection: selection) {
+                ForEach(options, id: \.self) { days in
+                    Text(retentionLabel(days, maxDays: maxDays)).tag(days)
+                }
             }
+            .pickerStyle(.wheel)
+            .labelsHidden()
+            .frame(height: 120)
+            .clipped()
         }
     }
 
@@ -461,67 +445,27 @@ struct SettingsView: View {
     private func syncRetentionState() {
         retentionDays          = RetentionStore.shared.userDays
         retentionFavoritesDays = RetentionStore.shared.favoritesUserDays
-        retentionDaysText          = retentionDays == 0 ? "" : String(retentionDays)
-        retentionFavoritesDaysText = retentionFavoritesDays == 0 ? "" : String(retentionFavoritesDays)
     }
 
-    private func retentionCustomField(text: Binding<String>, field: Field) -> some View {
-        LabeledContent(L("settings.retention.customLabel")) {
-            TextField(L("settings.retention.customPlaceholder"), text: text)
-                .keyboardType(.numberPad)
-                .multilineTextAlignment(.trailing)
-                .focused($focusedField, equals: field)
-                .onSubmit { commitRetentionText(field) }
-        }
-    }
-
-    /// Übernimmt die freie Eingabe: leer = keine eigene Frist, Werte über dem
-    /// Admin-Maximum werden auf das Maximum gesetzt, Ungültiges wird verworfen.
-    /// Gespeichert wird über den Picker-State (onChange → saveRetention).
-    private func commitRetentionText(_ field: Field?) {
-        let favorites = field == .retentionFavoritesDays
-        let text = (favorites ? retentionFavoritesDaysText : retentionDaysText)
-            .trimmingCharacters(in: .whitespaces)
-        let current = favorites ? retentionFavoritesDays : retentionDays
-        retentionNotice = nil
-
-        guard var days = text.isEmpty ? 0 : Int(text), days >= 0 else {
-            retentionNotice = L("settings.retention.invalidDays")
-            let reset = current == 0 ? "" : String(current)
-            if favorites { retentionFavoritesDaysText = reset } else { retentionDaysText = reset }
-            return
-        }
-        let maxDays = favorites ? RetentionStore.shared.favoritesMaxDays : RetentionStore.shared.maxDays
-        if maxDays > 0, days > maxDays {
-            days = maxDays
-            retentionNotice = String(format: L("settings.retention.clampedToMax"), maxDays)
-        }
-        days = min(days, RetentionStore.maxDaysLimit)
-
-        let normalized = days == 0 ? "" : String(days)
-        if favorites {
-            retentionFavoritesDaysText = normalized
-            retentionFavoritesDays = days
-        } else {
-            retentionDaysText = normalized
-            retentionDays = days
-        }
-    }
-
-    /// Speichert direkt (nicht über SettingsSyncQueue, siehe RetentionStore).
-    /// Bei einem Fehler springt die Auswahl auf den Serverstand zurück.
-    private func saveRetention(days: Int? = nil, favoritesDays: Int? = nil) {
-        let store = RetentionStore.shared
-        if days == store.userDays, favoritesDays == nil { return }
-        if favoritesDays == store.favoritesUserDays, days == nil { return }
-        retentionError = nil
-        Task {
+    /// Speichert direkt (nicht über SettingsSyncQueue, siehe RetentionStore),
+    /// kurz verzögert, damit beim Drehen am Rad nicht jeder Zwischenwert
+    /// gespeichert wird. Bei einem Fehler springt das Rad auf den Serverstand.
+    private func scheduleRetentionSave() {
+        retentionSaveTask?.cancel()
+        retentionSaveTask = Task {
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            guard !Task.isCancelled else { return }
+            let store = RetentionStore.shared
+            let days          = retentionDays == store.userDays ? nil : retentionDays
+            let favoritesDays = retentionFavoritesDays == store.favoritesUserDays ? nil : retentionFavoritesDays
+            guard days != nil || favoritesDays != nil else { return }
+            retentionError = nil
             do {
                 try await store.save(days: days, favoritesDays: favoritesDays)
             } catch {
                 retentionError = L("settings.retention.saveFailed")
+                syncRetentionState()
             }
-            syncRetentionState()
         }
     }
 

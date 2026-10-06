@@ -21,10 +21,9 @@ final class RetentionStore {
     static let shared = RetentionStore()
     private init() {}
 
-    /// Optionen der Auswahl (zusätzlich 0 = „Nie“ bzw. „Maximum“).
-    static let presetDays = [7, 30, 90, 180, 365]
-    /// Obergrenze wie `RetentionPolicy::MAX_DAYS` auf dem Server.
-    static let maxDaysLimit = 36500
+    /// Obergrenze des Zahlenrads, wenn der Admin kein Maximum vorgibt (10 Jahre).
+    /// Mit Admin-Maximum reicht das Rad genau bis dorthin.
+    static let unlimitedPickerDays = 3650
 
     /// Server kennt die Löschfrist (Felder in `GET /api/settings` vorhanden).
     private(set) var isSupported = false

@@ -82,21 +82,5 @@
             <string>Maximum (%lld days)</string>
         </dict>
     </dict>
-    <key>settings.retention.clampedToMax</key>
-    <dict>
-        <key>NSStringLocalizedFormatKey</key>
-        <string>%#@count@</string>
-        <key>count</key>
-        <dict>
-            <key>NSStringFormatSpecTypeKey</key>
-            <string>NSStringPluralRuleType</string>
-            <key>NSStringFormatValueTypeKey</key>
-            <string>lld</string>
-            <key>one</key>
-            <string>Your server allows at most %lld day. That value was saved.</string>
-            <key>other</key>
-            <string>Your server allows at most %lld days. That value was saved.</string>
-        </dict>
-    </dict>
 </dict>
 </plist>

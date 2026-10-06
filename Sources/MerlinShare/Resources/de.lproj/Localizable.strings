@@ -457,11 +457,8 @@
 "settings.preferences.saveProgressLabel" = "Leseposition speichern";
 "settings.preferences.sectionHeader" = "Einstellungen";
 "settings.retention.articlesLabel" = "Archivierte Artikel";
-"settings.retention.customLabel" = "Eigener Wert (Tage)";
-"settings.retention.customPlaceholder" = "z. B. 45";
 "settings.retention.favoritesLabel" = "Archivierte Favoriten";
 "settings.retention.footer" = "Archivierte Artikel werden nach Ablauf der Frist endgültig vom Server gelöscht, gezählt ab dem Archivieren. Gilt für alle Geräte und die Nextcloud-Web-App.";
-"settings.retention.invalidDays" = "Bitte eine ganze Zahl von Tagen eingeben. Ein leeres Feld entfernt die eigene Frist.";
 "settings.retention.never" = "Nie löschen";
 "settings.retention.saveFailed" = "Löschfrist konnte nicht gespeichert werden.";
 "settings.retention.sectionHeader" = "Löschfrist";
