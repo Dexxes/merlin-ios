@@ -70,9 +70,11 @@ private let merlinHighlightJS: String = #"""
       const s=document.createElement('mark');
       s.className='merlin-highlight';s.dataset.highlightId=String(hlId);s.dataset.highlightColor=color;
       // Kommentierte Stelle: nur unterstrichen (in der Farbe des Verfassers),
-      // Text und Hintergrund bleiben.
+      // Text und Hintergrund bleiben. Nur Einzel-Eigenschaften: die Kurzform
+      // -webkit-text-decoration setzte in WebKit Farbe und Dicke zurück
+      // (schwarze, dünne Linie).
       if(color===COMMENT_COLOR){
-        s.style.cssText='background-color:transparent;color:inherit;text-decoration:underline;text-decoration-color:var(--mh-author,#c2410c);text-decoration-thickness:2px;text-underline-offset:3px;-webkit-text-decoration:underline;box-decoration-break:clone;-webkit-box-decoration-break:clone;cursor:pointer;';
+        s.style.cssText='background-color:transparent;color:inherit;text-decoration-line:underline;-webkit-text-decoration-line:underline;text-decoration-color:var(--mh-author,#c2410c);-webkit-text-decoration-color:var(--mh-author,#c2410c);text-decoration-thickness:2px;text-underline-offset:3px;box-decoration-break:clone;-webkit-box-decoration-break:clone;cursor:pointer;';
         if(author)s.style.setProperty('--mh-author',author);
         return s;
       }

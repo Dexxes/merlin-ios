@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comments: web addresses in comments are tappable links.
 
 ### Fixed
+- Comments: the underline of commented passages was black and thin on
+  iOS. A trailing `-webkit-text-decoration` shorthand reset its color and
+  thickness in WebKit, so it now uses the author color.
 - Comments: opening an article always asks the server for the current
   comments first, and coming back from the background reconnects the live
   channel again (it stayed closed before), so new comments show up.
