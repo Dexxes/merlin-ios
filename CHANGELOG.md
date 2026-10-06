@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   newest reply, newest or oldest first, or by their order in the text. The
   choice is remembered.
 
+### Fixed
+- Comments: several threads on the same passage now sit together under a
+  single quote instead of repeating the quote above each thread.
+
 ### Changed
 - Comments: every author has a color (you are always orange, visitors of the
   share link pick their own). It colors the underline of commented passages,

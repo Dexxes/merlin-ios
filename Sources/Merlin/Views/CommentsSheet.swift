@@ -54,14 +54,41 @@ struct CommentsSheet: View {
     }
 
     /// „Alle Kommentare“: Reihenfolge im Text oder nach der neuesten Antwort.
+    /// Threads zur selben Stelle bleiben beieinander, damit das Zitat nur
+    /// einmal über ihnen steht.
     private var sortedThreads: [Comment] {
-        let order = CommentSortOrder(rawValue: sortOrderRaw) ?? .text
-        guard order != .text else { return store.threads }
-        return store.threads.sorted { a, b in
-            let ta = Self.lastActivity(a), tb = Self.lastActivity(b)
-            if ta == tb { return a.id < b.id }
-            return order == .newest ? ta > tb : ta < tb
+        var groups: [[Comment]] = []
+        var indexByHighlight: [Int: Int] = [:]
+        for thread in store.threads {
+            if let hid = thread.highlightId, let index = indexByHighlight[hid] {
+                groups[index].append(thread)
+            } else {
+                if let hid = thread.highlightId { indexByHighlight[hid] = groups.count }
+                groups.append([thread])
+            }
         }
+        let order = CommentSortOrder(rawValue: sortOrderRaw) ?? .text
+        if order != .text {
+            let activity: ([Comment]) -> Date = { $0.map(Self.lastActivity).max() ?? .distantPast }
+            groups.sort { a, b in
+                let ta = activity(a), tb = activity(b)
+                if ta == tb { return a[0].id < b[0].id }
+                return order == .newest ? ta > tb : ta < tb
+            }
+        }
+        return groups.flatMap { $0 }
+    }
+
+    /// Threads, über denen das Zitat steht: der erste zu jeder Stelle.
+    private var quotedThreadIds: Set<Int> {
+        guard focusedHighlightId == nil else { return [] }
+        var seen = Set<Int>()
+        var ids = Set<Int>()
+        for thread in visibleThreads {
+            guard let hid = thread.highlightId else { ids.insert(thread.id); continue }
+            if seen.insert(hid).inserted { ids.insert(thread.id) }
+        }
+        return ids
     }
 
     /// Zeitpunkt der neuesten Antwort (ohne Antworten: der Kommentar selbst).
@@ -98,8 +125,9 @@ struct CommentsSheet: View {
                             .padding(.vertical, 24)
                     }
 
+                    let quoted = quotedThreadIds
                     ForEach(visibleThreads) { thread in
-                        threadView(thread)
+                        threadView(thread, showsQuote: quoted.contains(thread.id))
                     }
                 }
                 .padding(16)
@@ -160,9 +188,9 @@ struct CommentsSheet: View {
     // MARK: – Thread
 
     @ViewBuilder
-    private func threadView(_ thread: Comment) -> some View {
+    private func threadView(_ thread: Comment, showsQuote: Bool) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            if focusedHighlightId == nil, let quote = thread.quotedText, !quote.isEmpty {
+            if showsQuote, let quote = thread.quotedText, !quote.isEmpty {
                 Button {
                     if let hid = thread.highlightId { onShowInText?(hid) }
                 } label: {
