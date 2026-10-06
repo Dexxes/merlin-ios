@@ -30,6 +30,7 @@ struct CommentsSheet: View {
     @State private var isSending = false
     @State private var errorMessage: String?
     @FocusState private var inputFocused: Bool
+    @AppStorage("merlinCommentSortOrder") private var sortOrderRaw: String = CommentSortOrder.text.rawValue
 
     init(store: CommentStore, initialHighlightId: Int?, initialQuote: String?,
          initialAnchor: CommentAnchor? = nil, onShowInText: ((Int) -> Void)? = nil) {
@@ -48,8 +49,55 @@ struct CommentsSheet: View {
 
     private var visibleThreads: [Comment] {
         if pendingAnchor != nil { return [] }
-        guard let hid = focusedHighlightId else { return store.threads }
+        guard let hid = focusedHighlightId else { return sortedThreads }
         return store.threads.filter { $0.highlightId == hid }
+    }
+
+    /// „Alle Kommentare“: Reihenfolge im Text oder nach der neuesten Antwort.
+    /// Threads zur selben Stelle bleiben beieinander, damit das Zitat nur
+    /// einmal über ihnen steht.
+    private var sortedThreads: [Comment] {
+        var groups: [[Comment]] = []
+        var indexByHighlight: [Int: Int] = [:]
+        for thread in store.threads {
+            if let hid = thread.highlightId, let index = indexByHighlight[hid] {
+                groups[index].append(thread)
+            } else {
+                if let hid = thread.highlightId { indexByHighlight[hid] = groups.count }
+                groups.append([thread])
+            }
+        }
+        let order = CommentSortOrder(rawValue: sortOrderRaw) ?? .text
+        if order != .text {
+            let activity: ([Comment]) -> Date = { $0.map(Self.lastActivity).max() ?? .distantPast }
+            groups.sort { a, b in
+                let ta = activity(a), tb = activity(b)
+                if ta == tb { return a[0].id < b[0].id }
+                return order == .newest ? ta > tb : ta < tb
+            }
+        }
+        return groups.flatMap { $0 }
+    }
+
+    /// Threads, über denen das Zitat steht: der erste zu jeder Stelle.
+    private var quotedThreadIds: Set<Int> {
+        guard focusedHighlightId == nil else { return [] }
+        var seen = Set<Int>()
+        var ids = Set<Int>()
+        for thread in visibleThreads {
+            guard let hid = thread.highlightId else { ids.insert(thread.id); continue }
+            if seen.insert(hid).inserted { ids.insert(thread.id) }
+        }
+        return ids
+    }
+
+    /// Zeitpunkt der neuesten Antwort (ohne Antworten: der Kommentar selbst).
+    private static func lastActivity(_ thread: Comment) -> Date {
+        var latest = thread.createdDate ?? .distantPast
+        for reply in thread.replies ?? [] where !reply.deleted {
+            if let date = reply.createdDate, date > latest { latest = date }
+        }
+        return latest
     }
 
     private var focusedQuote: String? {
@@ -77,21 +125,35 @@ struct CommentsSheet: View {
                             .padding(.vertical, 24)
                     }
 
+                    let quoted = quotedThreadIds
                     ForEach(visibleThreads) { thread in
-                        threadView(thread)
+                        threadView(thread, showsQuote: quoted.contains(thread.id))
                     }
                 }
                 .padding(16)
             }
             .scrollDismissesKeyboard(.interactively)
             .safeAreaInset(edge: .bottom) { composer }
-            .navigationTitle(isPassageFocused
-                             ? L("articleReader.comments.onPassageTitle")
-                             : L("articleReader.comments.title"))
+            // An einer Stelle keine Überschrift: das Zitat oben sagt genug.
+            .navigationTitle(isPassageFocused ? "" : L("articleReader.comments.title"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(L("common.close")) { dismiss() }
+                }
+                if !isPassageFocused && store.threads.count > 1 {
+                    ToolbarItem(placement: .primaryAction) {
+                        Menu {
+                            Picker(L("articleReader.comments.sort"), selection: $sortOrderRaw) {
+                                ForEach(CommentSortOrder.allCases) { order in
+                                    Text(order.label).tag(order.rawValue)
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "arrow.up.arrow.down")
+                        }
+                        .accessibilityLabel(L("articleReader.comments.sort"))
+                    }
                 }
                 if isPassageFocused {
                     ToolbarItem(placement: .primaryAction) {
@@ -126,9 +188,9 @@ struct CommentsSheet: View {
     // MARK: – Thread
 
     @ViewBuilder
-    private func threadView(_ thread: Comment) -> some View {
+    private func threadView(_ thread: Comment, showsQuote: Bool) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            if focusedHighlightId == nil, let quote = thread.quotedText, !quote.isEmpty {
+            if showsQuote, let quote = thread.quotedText, !quote.isEmpty {
                 Button {
                     if let hid = thread.highlightId { onShowInText?(hid) }
                 } label: {
@@ -338,6 +400,10 @@ private struct CommentRow: View {
         } else {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
+                    Circle()
+                        .fill(authorColor)
+                        .frame(width: 8, height: 8)
+                        .accessibilityHidden(true)
                     Text(comment.authorName)
                         .font(.subheadline.weight(.semibold))
                     if comment.isOwner {
@@ -362,8 +428,18 @@ private struct CommentRow: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+                    Spacer(minLength: 0)
+                    Button(role: .destructive, action: onDelete) {
+                        Image(systemName: "trash")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel(L("articleReader.comments.delete"))
                 }
-                Text(comment.body)
+                Text(CommentLinks.attributed(comment.body))
                     .font(.body)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -372,12 +448,63 @@ private struct CommentRow: View {
                     if canEdit {
                         Button(L("articleReader.comments.edit"), action: onEdit)
                     }
-                    Button(L("articleReader.comments.delete"), role: .destructive, action: onDelete)
                 }
                 .font(.caption.weight(.medium))
                 .buttonStyle(.borderless)
                 .padding(.top, 2)
             }
+            .padding(.leading, 10)
+            .overlay(alignment: .leading) {
+                Rectangle()
+                    .fill(authorColor)
+                    .frame(width: 3)
+            }
         }
+    }
+
+    /// Verfasser-Farbe vom Server (Besitzer orange, Gäste je eigene).
+    private var authorColor: Color {
+        comment.authorColor.flatMap { Color(hexString: $0) } ?? Color(.systemGray)
+    }
+}
+
+/// Sortierung von „Alle Kommentare“.
+enum CommentSortOrder: String, CaseIterable, Identifiable {
+    case text, newest, oldest
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .text: return L("articleReader.comments.sortText")
+        case .newest: return L("articleReader.comments.sortNewest")
+        case .oldest: return L("articleReader.comments.sortOldest")
+        }
+    }
+}
+
+/// Web-Adressen in Kommentaren als antippbare Links (nur http und https;
+/// „www.heise.de“ erkennt der Detector als http-Link).
+enum CommentLinks {
+    private static let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+
+    static func attributed(_ text: String) -> AttributedString {
+        guard let detector else { return AttributedString(text) }
+        var result = AttributedString()
+        var last = text.startIndex
+        let matches = detector.matches(in: text, range: NSRange(text.startIndex..., in: text))
+        for match in matches {
+            guard let url = match.url,
+                  let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https",
+                  let range = Range(match.range, in: text), range.lowerBound >= last
+            else { continue }
+            result += AttributedString(text[last..<range.lowerBound])
+            var link = AttributedString(text[range])
+            link.link = url
+            result += link
+            last = range.upperBound
+        }
+        result += AttributedString(text[last...])
+        return result
     }
 }

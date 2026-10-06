@@ -58,15 +58,24 @@ private let merlinHighlightJS: String = #"""
     return node||null;
   }
 
-  function wrapRange(range,color,hlId){
+  // Verfasser-Farbe vom Server (#rrggbb); alles andere wird ignoriert.
+  function authorColorOf(h){
+    return h&&typeof h.authorColor==='string'&&/^#[0-9a-f]{6}$/i.test(h.authorColor)?h.authorColor:null;
+  }
+
+  function wrapRange(range,color,hlId,author){
     if(range.collapsed)return;
     const colorDef=COLORS.find(c=>c.id===color)||COLORS[0];
     const makeSpan=()=>{
       const s=document.createElement('mark');
       s.className='merlin-highlight';s.dataset.highlightId=String(hlId);s.dataset.highlightColor=color;
-      // Kommentierte Stelle: nur unterstrichen, Text und Hintergrund bleiben.
+      // Kommentierte Stelle: nur unterstrichen (in der Farbe des Verfassers),
+      // Text und Hintergrund bleiben. Nur Einzel-Eigenschaften: die Kurzform
+      // -webkit-text-decoration setzte in WebKit Farbe und Dicke zurück
+      // (schwarze, dünne Linie).
       if(color===COMMENT_COLOR){
-        s.style.cssText='background-color:transparent;color:inherit;text-decoration:underline;text-decoration-color:#f59e0b;text-decoration-thickness:2px;text-underline-offset:3px;-webkit-text-decoration:underline;box-decoration-break:clone;-webkit-box-decoration-break:clone;cursor:pointer;';
+        s.style.cssText='background-color:transparent;color:inherit;text-decoration-line:underline;-webkit-text-decoration-line:underline;text-decoration-color:var(--mh-author,#c2410c);-webkit-text-decoration-color:var(--mh-author,#c2410c);text-decoration-thickness:2px;text-underline-offset:3px;box-decoration-break:clone;-webkit-box-decoration-break:clone;cursor:pointer;';
+        if(author)s.style.setProperty('--mh-author',author);
         return s;
       }
       // All five highlight swatches are light pastels, so the text needs a
@@ -75,6 +84,7 @@ private let merlinHighlightJS: String = #"""
       // highlight background. #1c1c1e matches the app's own light-theme
       // text colour (see textColor(for:) below).
       s.style.cssText='background-color:'+colorDef.hex+';color:#1c1c1e;border-radius:2px;padding:0 1px;box-decoration-break:clone;-webkit-box-decoration-break:clone;cursor:pointer;';
+      if(author)s.style.setProperty('--mh-author',author);
       return s;
     };
     const root=range.commonAncestorContainer.nodeType===3?range.commonAncestorContainer.parentNode:range.commonAncestorContainer;
@@ -99,7 +109,7 @@ private let merlinHighlightJS: String = #"""
     if(!sn||!en)return;
     try{
       const r=document.createRange();r.setStart(sn,h.startOffset);r.setEnd(en,h.endOffset);
-      if(!r.collapsed)wrapRange(r,h.color,h.id);
+      if(!r.collapsed)wrapRange(r,h.color,h.id,authorColorOf(h));
     }catch{}
   }
 
@@ -369,7 +379,7 @@ private let merlinHighlightJS: String = #"""
 
   (function(){
     const st=document.createElement('style');
-    st.textContent='mark.merlin-highlight[data-comment-count]::after{content:attr(data-comment-count);display:inline-block;margin-left:3px;padding:0 5px;min-width:8px;border-radius:8px;background:#f59e0b;color:#fff;font-size:0.68em;font-weight:700;line-height:1.5;text-align:center;vertical-align:super;}';
+    st.textContent='mark.merlin-highlight[data-comment-count]::after{content:attr(data-comment-count);display:inline-block;margin-left:3px;padding:0 5px;min-width:8px;border-radius:8px;background:var(--mh-author,#1c1c1e);color:#fff;font-size:0.68em;font-weight:700;line-height:1.5;text-align:center;vertical-align:super;}';
     (document.head||document.documentElement).appendChild(st);
   })();
 
@@ -1376,6 +1386,7 @@ struct CommentFocus: Identifiable {
 /// Type-Checker nicht weiter wächst.
 private struct ReaderCommentsModifier: ViewModifier {
     @Environment(\.scenePhase) private var scenePhase
+    @State private var wasInBackground = false
 
     let articleId: Int
     let store: CommentStore
@@ -1407,12 +1418,15 @@ private struct ReaderCommentsModifier: ViewModifier {
             .onDisappear {
                 store.stop()
             }
-            .onChange(of: scenePhase) { old, new in
+            .onChange(of: scenePhase) { _, new in
                 // Im Hintergrund keine Verbindung halten; beim Zurückkommen
-                // holt das erste Ereignis alles Verpasste nach.
+                // neu abfragen und verbinden. (Der Weg zurück führt über
+                // .inactive, ein Vergleich mit `old == .background` griffe nie.)
                 if new == .background {
                     store.stop()
-                } else if new == .active, old == .background {
+                    wasInBackground = true
+                } else if new == .active, wasInBackground {
+                    wasInBackground = false
                     store.reconnect()
                 }
             }

@@ -60,6 +60,10 @@
 "articleReader.appearance.progressAndHighlights" = "Progress bar & highlights";
 "articleReader.appearance.theme" = "Theme";
 "articleReader.comments.allComments" = "All comments";
+"articleReader.comments.sort" = "Sort";
+"articleReader.comments.sortText" = "Order in text";
+"articleReader.comments.sortNewest" = "Newest reply first";
+"articleReader.comments.sortOldest" = "Oldest reply first";
 "articleReader.comments.comment" = "Comment";
 "articleReader.comments.confirmDelete" = "Delete this comment?";
 "articleReader.comments.countLabel" = "Comments (%lld)";

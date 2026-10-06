@@ -14,6 +14,10 @@ struct Highlight: Codable, Identifiable {
     /// älteren Servern und im Offline-Cache von früher – dann Besitzer.
     var authorType: String? = nil
     var authorName: String? = nil
+    /// Farbe des Verfassers (#rrggbb): Besitzer orange, Gäste je eigene. Färbt
+    /// die Unterstreichung kommentierter Stellen und den Zähler daran. Nur in
+    /// den Kommentar-Daten von merlin-nextcloud.
+    var authorColor: String? = nil
 
     var isGuest: Bool { authorType == "guest" }
 }

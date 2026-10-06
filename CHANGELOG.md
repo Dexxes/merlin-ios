@@ -8,6 +8,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Comments: under "All comments" a sort button orders the threads by their
+  newest reply, newest or oldest first, or by their order in the text. The
+  choice is remembered.
+- Comments: web addresses in comments are tappable links.
+
+### Fixed
+- Comments: the underline of commented passages was black and thin on
+  iOS. A trailing `-webkit-text-decoration` shorthand reset its color and
+  thickness in WebKit, so it now uses the author color.
+- Comments: opening an article always asks the server for the current
+  comments first, and coming back from the background reconnects the live
+  channel again (it stayed closed before), so new comments show up.
+- Comments: several threads on the same passage now sit together under a
+  single quote instead of repeating the quote above each thread.
+
+### Changed
+- Comments: every author has a color (you are always orange, visitors of the
+  share link pick their own). It colors the underline of commented passages,
+  the count badge on them and the dot and bar next to each comment. The count
+  badge is no longer white on light orange. Deleting is a trash icon at the
+  top right of a comment, and the comments sheet has no "Comments on this
+  passage" title any more. Needs merlin-nextcloud 1.0.16 for the colors.
+
+### Added
 - Comments: highlighted passages and the whole article can be commented on,
   with threaded replies. The highlight toolbar has a new "Comment" button: on
   a fresh selection it opens the comment field with the quoted passage

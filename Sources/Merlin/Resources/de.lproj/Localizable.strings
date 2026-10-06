@@ -60,6 +60,10 @@
 "articleReader.appearance.progressAndHighlights" = "Fortschrittsbalken & Hervorhebungen";
 "articleReader.appearance.theme" = "Design";
 "articleReader.comments.allComments" = "Alle Kommentare";
+"articleReader.comments.sort" = "Sortieren";
+"articleReader.comments.sortText" = "Reihenfolge im Text";
+"articleReader.comments.sortNewest" = "Neueste Antwort zuerst";
+"articleReader.comments.sortOldest" = "Älteste Antwort zuerst";
 "articleReader.comments.comment" = "Kommentieren";
 "articleReader.comments.confirmDelete" = "Diesen Kommentar löschen?";
 "articleReader.comments.countLabel" = "Kommentare (%lld)";
