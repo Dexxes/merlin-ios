@@ -1,0 +1,83 @@
+import Foundation
+
+/// Kommentar zu einem Artikel – vom Besitzer oder von einem Gast hinter dem
+/// öffentlichen Share-Link (siehe merlin-nextcloud `Comment::jsonSerialize()`).
+///
+/// Threads sind eine Ebene tief: Wurzeln hängen an einer Markierung
+/// (`highlightId`) oder am ganzen Artikel, alle Antworten liegen in
+/// `replies` der Wurzel; `replyToId` nennt die Antwort, auf die geantwortet
+/// wurde. Ein gelöschter Kommentar mit Antworten bleibt als Platzhalter
+/// (`deleted == true`, leerer Name/Text) stehen.
+struct Comment: Codable, Identifiable, Equatable, Sendable {
+    let id: Int
+    let articleId: Int
+    let highlightId: Int?
+    /// Text der Markierung beim Anlegen – bleibt erhalten, wenn die
+    /// Markierung später entfernt wird.
+    let quotedText: String?
+    let parentId: Int?
+    let replyToId: Int?
+    /// "owner" oder "guest".
+    let authorType: String
+    let authorName: String
+    let body: String
+    let deleted: Bool
+    let createdAt: String
+    let updatedAt: String
+    let edited: Bool
+    /// Nur bei Thread-Wurzeln gefüllt.
+    let replies: [Comment]?
+    /// Farbe des Verfassers (#rrggbb), siehe `Highlight.authorColor`.
+    let authorColor: String?
+
+    var isOwner: Bool { authorType == "owner" }
+
+    var createdDate: Date? { Self.parseDate(createdAt) }
+
+    static func parseDate(_ iso: String) -> Date? {
+        ISO8601DateFormatter().date(from: iso)
+    }
+}
+
+/// Antwort von `GET /articles/{id}/comments` und Inhalt jedes Push-Ereignisses:
+/// alle Threads und Markierungen des Artikels plus Änderungsmarke.
+struct CommentsPayload: Codable, Sendable {
+    let signature: String
+    /// Zeitpunkt des Stands auf dem Server (Mikrosekunden). Ordnet Antworten
+    /// und Push-Ereignisse, die sich überholen können. Fehlt bei älteren
+    /// Servern.
+    let generatedAt: Int64?
+    let comments: [Comment]
+    let highlights: [Highlight]
+}
+
+/// Ereignis aus dem Push-Kanal (`/articles/{id}/comments/stream`).
+enum CommentStreamEvent: Sendable {
+    /// Kommentare oder Markierungen haben sich geändert.
+    case update(CommentsPayload)
+    /// Der Server beendet den Kanal dauerhaft (z. B. kein Share-Link mehr) –
+    /// erst nach einer Änderung am Link neu verbinden.
+    case closed
+}
+
+/// Textstelle für den ersten Kommentar an einer Auswahl. Wird mit dem
+/// Kommentar mitgeschickt (`anchor`); der Server legt daraus eine
+/// unterstrichene Stelle (Farbe `comment`) an und entfernt sie wieder, wenn
+/// ihr letzter Kommentar gelöscht wird.
+struct CommentAnchor: Equatable, Sendable {
+    let highlightedText: String
+    let startXpath: String
+    let startOffset: Int
+    let endXpath: String
+    let endOffset: Int
+
+    var payload: [String: Any] {
+        [
+            "highlightedText": highlightedText,
+            "startXpath": startXpath,
+            "startOffset": startOffset,
+            "endXpath": endXpath,
+            "endOffset": endOffset,
+        ]
+    }
+}

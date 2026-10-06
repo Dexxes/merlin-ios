@@ -8,17 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Retention period (Löschfrist): Merlin for Nextcloud can now delete archived
-  articles automatically after a period counted from archiving, with a
-  separate period for favorites. Settings has a new "Retention Period"
-  section with a slider per type, like the cache slider: 1 day up to the
-  maximum set by the server admin, day by day; the right end means "as long
-  as allowed" ("Maximum" with an admin limit, otherwise "Never", with the
-  slider reaching 365 days). The onboarding tour has a new step
-  explaining the periods that apply, and users who already finished the tour
-  see a one-time notice when a period is set or shortened (shared with the
-  Nextcloud web app, so it is shown only once per change). Standalone servers
-  without retention support are unaffected.
+- Comments: highlighted passages and the whole article can be commented on,
+  with threaded replies. The highlight toolbar has a new "Comment" button: on
+  a fresh selection it opens the comment field with the quoted passage
+  without marking anything; only once the comment is sent is the passage
+  underlined (not colored). Tapping an underlined passage opens its comments,
+  and deleting its last comment removes the underline. On an existing
+  highlight the button opens its comments. Highlights with comments show a
+  count badge. All comments are reachable from the side menu. Comments and
+  highlights from visitors of the public share link (and from other devices)
+  appear right away: the reader keeps a push connection to the server
+  (Server-Sent Events) instead of polling. Your own comments can be edited,
+  any comment can be deleted. Removing a highlight that has comments asks
+  first; its threads are kept with the quoted text. The share link sheet has
+  a switch "Visitors can highlight and comment". Requires Merlin for
+  Nextcloud with comments; with merlin-server nothing changes.
 - Side menu: the "Audio" category (Continue listening, Not listened,
   Favorites, Archive with counts) is now shown alongside Pages and Videos, as
   in Merlin for Nextcloud. Audio articles (server category `Audio`) no longer
@@ -78,6 +82,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `apple-touch-icon` / `<link rel="icon">`). An icon that fails to load is
   simply left out. It is not treated as an article image: no lightbox on tap
   and no "image unavailable" placeholder.
+  - Retention period (Löschfrist): Merlin for Nextcloud can now delete archived
+  articles automatically after a period counted from archiving, with a
+  separate period for favorites. Settings has a new "Retention Period"
+  section with a slider per type, like the cache slider: 1 day up to the
+  maximum set by the server admin, day by day; the right end means "as long
+  as allowed" ("Maximum" with an admin limit, otherwise "Never", with the
+  slider reaching 365 days). The onboarding tour has a new step
+  explaining the periods that apply, and users who already finished the tour
+  see a one-time notice when a period is set or shortened (shared with the
+  Nextcloud web app, so it is shown only once per change). Standalone servers
+  without retention support are unaffected.
+- Comments: under "All comments" a sort button orders the threads by their
+  newest reply, newest or oldest first, or by their order in the text. The
+  choice is remembered.
+- Comments: web addresses in comments are tappable links.
 
 ### Changed
 - Side menu: Pages, Videos and Audio are no longer three stacked groups.
@@ -91,10 +110,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "Bild nicht abrufbar" / "Image unavailable" (previously the hard-coded
   German text "Webseite verhindert Bilddownload") and comes from the
   localization key `articleReader.imagePlaceholder.unavailable`.
+- Comments: every author has a color (you are always orange, visitors of the
+  share link pick their own). It colors the underline of commented passages,
+  the count badge on them and the dot and bar next to each comment. The count
+  badge is no longer white on light orange. Deleting is a trash icon at the
+  top right of a comment, and the comments sheet has no "Comments on this
+  passage" title any more. Needs merlin-nextcloud 1.0.16 for the colors.
 
 ### Fixed
 - Quotes: a normal paragraph following a blockquote is no longer styled as the
   quote attribution; only a paragraph consisting solely of a `<cite>` is.
+- Comments: the underline of commented passages was black and thin on
+  iOS. A trailing `-webkit-text-decoration` shorthand reset its color and
+  thickness in WebKit, so it now uses the author color.
+- Comments: opening an article always asks the server for the current
+  comments first, and coming back from the background reconnects the live
+  channel again (it stayed closed before), so new comments show up.
+- Comments: several threads on the same passage now sit together under a
+  single quote instead of repeating the quote above each thread.
 
 ## [0.1.0] - 2026-08-25
 
