@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Comments: every author has a color (you are always orange, visitors of the
+  share link pick their own). It colors the underline of commented passages,
+  the count badge on them and the dot and bar next to each comment. The count
+  badge is no longer white on light orange. Deleting is a trash icon at the
+  top right of a comment, and the comments sheet has no "Comments on this
+  passage" title any more. Needs merlin-nextcloud 1.0.16 for the colors.
+
 ### Added
 - Comments: highlighted passages and the whole article can be commented on,
   with threaded replies. The highlight toolbar has a new "Comment" button: on

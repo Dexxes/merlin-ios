@@ -85,9 +85,8 @@ struct CommentsSheet: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .safeAreaInset(edge: .bottom) { composer }
-            .navigationTitle(isPassageFocused
-                             ? L("articleReader.comments.onPassageTitle")
-                             : L("articleReader.comments.title"))
+            // An einer Stelle keine Überschrift: das Zitat oben sagt genug.
+            .navigationTitle(isPassageFocused ? "" : L("articleReader.comments.title"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -338,6 +337,10 @@ private struct CommentRow: View {
         } else {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
+                    Circle()
+                        .fill(authorColor)
+                        .frame(width: 8, height: 8)
+                        .accessibilityHidden(true)
                     Text(comment.authorName)
                         .font(.subheadline.weight(.semibold))
                     if comment.isOwner {
@@ -362,6 +365,16 @@ private struct CommentRow: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+                    Spacer(minLength: 0)
+                    Button(role: .destructive, action: onDelete) {
+                        Image(systemName: "trash")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel(L("articleReader.comments.delete"))
                 }
                 Text(comment.body)
                     .font(.body)
@@ -372,12 +385,22 @@ private struct CommentRow: View {
                     if canEdit {
                         Button(L("articleReader.comments.edit"), action: onEdit)
                     }
-                    Button(L("articleReader.comments.delete"), role: .destructive, action: onDelete)
                 }
                 .font(.caption.weight(.medium))
                 .buttonStyle(.borderless)
                 .padding(.top, 2)
             }
+            .padding(.leading, 10)
+            .overlay(alignment: .leading) {
+                Rectangle()
+                    .fill(authorColor)
+                    .frame(width: 3)
+            }
         }
+    }
+
+    /// Verfasser-Farbe vom Server (Besitzer orange, Gäste je eigene).
+    private var authorColor: Color {
+        comment.authorColor.flatMap { Color(hexString: $0) } ?? Color(.systemGray)
     }
 }

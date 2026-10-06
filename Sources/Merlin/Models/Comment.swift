@@ -27,6 +27,8 @@ struct Comment: Codable, Identifiable, Equatable, Sendable {
     let edited: Bool
     /// Nur bei Thread-Wurzeln gefüllt.
     let replies: [Comment]?
+    /// Farbe des Verfassers (#rrggbb), siehe `Highlight.authorColor`.
+    let authorColor: String?
 
     var isOwner: Bool { authorType == "owner" }
 
