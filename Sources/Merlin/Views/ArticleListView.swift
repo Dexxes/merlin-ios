@@ -22,6 +22,8 @@ struct ArticleListView: View {
     @AppStorage("merlin_tour_done") private var tourDone: Bool = false
     @AppStorage("merlin_developer_mode") private var developerMode: Bool = false
     @State private var showTour = false
+    /// Einmaliger Löschfrist-Hinweis für Nutzer, die die Tour schon kennen.
+    @State private var showRetentionNotice = false
 
     var body: some View {
         NavigationStack {
@@ -231,9 +233,32 @@ struct ArticleListView: View {
         }
         .onAppear {
             if !tourDone || developerMode { showTour = true }
+            updateRetentionNotice()
         }
         .onChange(of: tourDone) { _, done in
             if !done { showTour = true }
+        }
+        .onChange(of: RetentionStore.shared.noticeRequired) { _, _ in updateRetentionNotice() }
+        .onChange(of: showTour) { _, _ in updateRetentionNotice() }
+        .alert(L("onboarding.retention.title"), isPresented: $showRetentionNotice) {
+            Button(L("onboarding.retention.openSettings")) {
+                Task { await RetentionStore.shared.acknowledgeNotice() }
+                showSettings = true
+            }
+            Button(L("onboarding.retention.gotIt"), role: .cancel) {
+                Task { await RetentionStore.shared.acknowledgeNotice() }
+            }
+        } message: {
+            Text(RetentionStore.shared.summaryText)
+        }
+    }
+
+    /// Der Server meldet eine neue oder kürzere Löschfrist: Hinweis zeigen,
+    /// sofern nicht gerade die Tour läuft (die enthält den Schritt selbst und
+    /// bestätigt den Hinweis beim Abschluss).
+    private func updateRetentionNotice() {
+        if RetentionStore.shared.noticeRequired, tourDone, !showTour {
+            showRetentionNotice = true
         }
     }
 

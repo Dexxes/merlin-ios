@@ -163,6 +163,7 @@ struct MerlinApp: App {
                 if CredentialsStore.shared.isConfigured,
                    let serverSettings = try? await MerlinAPI.shared.getSettings() {
                     PreferencesStore.shared.loadFromServer(serverSettings)
+                    RetentionStore.shared.apply(serverSettings)
 
                     // `sharedViewModel.selectedFilter` wurde oben beim App-Start synchron aus dem
                     // lokalen Cache initialisiert (siehe `ArticlesViewModel.selectedFilter`-Property),

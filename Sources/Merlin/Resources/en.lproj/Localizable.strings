@@ -423,6 +423,13 @@
 "onboarding.demo.sampleArticle.meta" = "rbb|24 · 8 min";
 "onboarding.demo.sampleArticle.title" = "Otters could become native to Berlin again";
 "onboarding.demo.sampleHighlight" = "In an era of endless scrolling, slow reading feels almost radical. But a growing body of research suggests that deep, intentional reading may be one of the most valuable skills we can cultivate.";
+"onboarding.retention.articlesKept" = "Archived articles are not deleted automatically.";
+"onboarding.retention.bodyUnknown" = "Archived articles can be deleted from the server automatically after a set period, counted from when you archive them. You choose the period in Settings, and your server can set a maximum.";
+"onboarding.retention.favoritesKept" = "Archived favorites are kept.";
+"onboarding.retention.gotIt" = "Got it";
+"onboarding.retention.openSettings" = "Open Settings";
+"onboarding.retention.settingsHint" = "You can choose a shorter period in Settings.";
+"onboarding.retention.title" = "Retention period";
 "onboarding.step1.body" = "A quick tour of the most important features.";
 "onboarding.step1.title" = "Welcome to Merlin!";
 "onboarding.step10.body" = "Set a reminder so you don't forget to read an article. Find all reminders in the navigation menu.";
@@ -497,6 +504,12 @@
 "settings.preferences.resumeOnOpenLabel" = "Resume where I left off";
 "settings.preferences.saveProgressLabel" = "Save reading position";
 "settings.preferences.sectionHeader" = "Preferences";
+"settings.retention.articlesLabel" = "Archived Articles";
+"settings.retention.favoritesLabel" = "Archived Favorites";
+"settings.retention.footer" = "Archived articles are permanently deleted from the server once the period ends, counted from when you archive them. Applies to all devices and the Nextcloud web app.";
+"settings.retention.never" = "Never delete";
+"settings.retention.saveFailed" = "Could not save the retention period.";
+"settings.retention.sectionHeader" = "Retention Period";
 "settings.storage.footer" = "Shows how much storage your articles and highlights use on the server and in the local cache.";
 "settings.storage.loadError" = "Couldn't load";
 "settings.storage.localLabel" = "Local Cache";

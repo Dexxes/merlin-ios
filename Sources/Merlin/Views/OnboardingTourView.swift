@@ -41,7 +41,9 @@ private struct TourStep {
     let anchorKey: String?
 }
 
-private let tourSteps: [TourStep] = [
+/// Text des Löschfrist-Schritts hängt von den Fristen des Servers ab
+/// (`RetentionStore.summaryText`), deshalb werden die Schritte pro Anzeige gebaut.
+private func makeTourSteps(retentionBody: String) -> [TourStep] { [
     TourStep(systemImage: "hand.wave",
              title: L("onboarding.step1.title"),
              body: L("onboarding.step1.body"),
@@ -102,11 +104,16 @@ private let tourSteps: [TourStep] = [
              body: L("onboarding.step12.body"),
              phase: .highlights, anchorKey: "highlightToolbar"),
 
+    TourStep(systemImage: "clock.arrow.circlepath",
+             title: L("onboarding.retention.title"),
+             body: retentionBody,
+             phase: .list, anchorKey: nil),
+
     TourStep(systemImage: "arrow.uturn.backward",
              title: L("onboarding.step13.title"),
              body: L("onboarding.step13.body"),
              phase: .list, anchorKey: nil),
-]
+] }
 
 // MARK: - Spotlight cutout shape
 
@@ -700,6 +707,7 @@ struct OnboardingTourView: View {
     /// against an already-dark background.
     private var dimOpacity: Double { colorScheme == .dark ? 0.55 : 0.72 }
 
+    private var tourSteps: [TourStep] { makeTourSteps(retentionBody: RetentionStore.shared.summaryText) }
     private var step: TourStep { tourSteps[stepIndex] }
     private var isLast: Bool   { stepIndex == tourSteps.count - 1 }
 
@@ -1025,6 +1033,8 @@ struct OnboardingTourView: View {
 
     private func finish() {
         UserDefaults.standard.set(true, forKey: "merlin_tour_done")
+        // Die Tour enthält den Löschfrist-Schritt: ein offener Hinweis ist damit erledigt.
+        Task { await RetentionStore.shared.acknowledgeNotice() }
         withAnimation(.easeInOut(duration: 0.25)) { isPresented = false }
     }
 }

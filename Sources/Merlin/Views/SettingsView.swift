@@ -23,6 +23,11 @@ struct SettingsView: View {
     /// Slider braucht Double; Persistenz erfolgt als Int (siehe PreferencesStore.cacheRetentionDays).
     @State private var cacheRetentionDays    = Double(PreferencesStore.shared.cacheRetentionDays)
     @AppStorage("merlin_developer_mode") private var developerMode: Bool = false
+    /// Löschfrist (serverseitig, siehe RetentionStore); 0 = keine eigene Frist.
+    @State private var retentionDays          = 0
+    @State private var retentionFavoritesDays = 0
+    @State private var retentionError: String? = nil
+    @State private var retentionSaveTask: Task<Void, Never>? = nil
     @State private var isTesting              = false
     @State private var showClearCacheConfirm  = false
     @State private var showLogoutConfirm      = false
@@ -221,6 +226,29 @@ struct SettingsView: View {
                     Text(L("settings.preferences.footer"))
                 }
 
+                // MARK: - Löschfrist
+                if RetentionStore.shared.isSupported {
+                    Section {
+                        RetentionSlider(title: L("settings.retention.articlesLabel"),
+                                        maxDays: RetentionStore.shared.maxDays,
+                                        days: $retentionDays)
+                            .onChange(of: retentionDays) { _, _ in scheduleRetentionSave() }
+                        RetentionSlider(title: L("settings.retention.favoritesLabel"),
+                                        maxDays: RetentionStore.shared.favoritesMaxDays,
+                                        days: $retentionFavoritesDays)
+                            .onChange(of: retentionFavoritesDays) { _, _ in scheduleRetentionSave() }
+                        if let err = retentionError {
+                            Label(err, systemImage: "xmark.circle.fill")
+                                .foregroundStyle(.red)
+                                .font(.footnote)
+                        }
+                    } header: {
+                        Text(L("settings.retention.sectionHeader"))
+                    } footer: {
+                        Text(L("settings.retention.footer"))
+                    }
+                }
+
                 // MARK: - Cache
                 Section {
                     Toggle(L("settings.cache.wifiOnlyToggle"), isOn: $prefetchWifiOnly)
@@ -342,6 +370,11 @@ struct SettingsView: View {
                     .ignoresSafeArea()
             }
             .task { await loadStorageUsage() }
+            .task {
+                syncRetentionState()
+                await RetentionStore.shared.refresh()
+                syncRetentionState()
+            }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button(L("common.done")) { dismiss() }
@@ -369,6 +402,35 @@ struct SettingsView: View {
                     // isn't silently lost for other devices.
                     SettingsSyncQueue.shared.markDirty()
                 }
+            }
+        }
+    }
+
+    // MARK: - Löschfrist
+
+    private func syncRetentionState() {
+        retentionDays          = RetentionStore.shared.userDays
+        retentionFavoritesDays = RetentionStore.shared.favoritesUserDays
+    }
+
+    /// Speichert direkt (nicht über SettingsSyncQueue, siehe RetentionStore),
+    /// kurz verzögert, falls beide Slider direkt nacheinander bewegt werden.
+    /// Bei einem Fehler springt der Slider auf den Serverstand zurück.
+    private func scheduleRetentionSave() {
+        retentionSaveTask?.cancel()
+        retentionSaveTask = Task {
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            guard !Task.isCancelled else { return }
+            let store = RetentionStore.shared
+            let days          = retentionDays == store.userDays ? nil : retentionDays
+            let favoritesDays = retentionFavoritesDays == store.favoritesUserDays ? nil : retentionFavoritesDays
+            guard days != nil || favoritesDays != nil else { return }
+            retentionError = nil
+            do {
+                try await store.save(days: days, favoritesDays: favoritesDays)
+            } catch {
+                retentionError = L("settings.retention.saveFailed")
+                syncRetentionState()
             }
         }
     }
@@ -402,6 +464,8 @@ struct SettingsView: View {
                     saveProgress     = PreferencesStore.shared.saveProgress
                     resumeOnOpen     = PreferencesStore.shared.resumeOnOpen
                     prefetchWifiOnly = PreferencesStore.shared.prefetchImagesOnWifiOnly
+                    RetentionStore.shared.apply(serverSettings)
+                    syncRetentionState()
                 }
 
                 // Debug: direkt nach dem Speichern prüfen ob Keychain lesbar ist
@@ -519,6 +583,65 @@ struct SettingsView: View {
     private struct IdentifiableURL: Identifiable {
         let id = UUID()
         let url: URL
+    }
+}
+
+// MARK: - Löschfrist-Slider
+
+/// Slider für eine Löschfrist, tageweise wie der Zwischenspeicher-Slider.
+/// Ganz rechts steht „so lange wie erlaubt“ (gespeichert als 0): „Maximum
+/// (N Tage)“ bei Admin-Vorgabe, sonst „Nie löschen“. 0 statt N, damit eine
+/// spätere Änderung der Admin-Vorgabe weiter gilt. Ohne Vorgabe reicht der
+/// Slider bis `RetentionStore.sliderDaysWithoutMax` (bzw. bis zu einem
+/// anderswo gespeicherten größeren Wert). `days` ändert sich erst beim
+/// Loslassen, damit nicht jeder Zwischenwert gespeichert wird.
+private struct RetentionSlider: View {
+    let title: String
+    /// Admin-Maximum, 0 = keine Vorgabe.
+    let maxDays: Int
+    /// Nutzerwahl, 0 = keine eigene Frist.
+    @Binding var days: Int
+
+    @State private var value: Double = 1
+
+    /// Rechter Anschlag des Sliders, steht für 0.
+    private var end: Int {
+        maxDays > 0 ? maxDays : max(RetentionStore.sliderDaysWithoutMax, days) + 1
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+            if end > 1 {
+                Slider(value: $value, in: 1...Double(end), step: 1) { editing in
+                    if !editing { days = toDays(value) }
+                }
+            }
+            Text(label(toDays(value)))
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        .onAppear { value = toValue(days) }
+        .onChange(of: days) { _, new in value = toValue(new) }
+        .onChange(of: maxDays) { _, _ in value = toValue(days) }
+    }
+
+    private func toValue(_ d: Int) -> Double {
+        Double(d == 0 ? end : min(d, end))
+    }
+
+    private func toDays(_ v: Double) -> Int {
+        let d = Int(v.rounded())
+        return d >= end ? 0 : d
+    }
+
+    private func label(_ d: Int) -> String {
+        if d == 0 {
+            return maxDays > 0
+                ? String(format: L("settings.retention.maximum"), maxDays)
+                : L("settings.retention.never")
+        }
+        return String(format: L("settings.retention.afterDays"), d)
     }
 }
 
