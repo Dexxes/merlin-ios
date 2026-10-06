@@ -229,13 +229,13 @@ struct SettingsView: View {
                 // MARK: - Löschfrist
                 if RetentionStore.shared.isSupported {
                     Section {
-                        retentionPicker(L("settings.retention.articlesLabel"),
-                                        selection: $retentionDays,
-                                        maxDays: RetentionStore.shared.maxDays)
+                        RetentionSlider(title: L("settings.retention.articlesLabel"),
+                                        maxDays: RetentionStore.shared.maxDays,
+                                        days: $retentionDays)
                             .onChange(of: retentionDays) { _, _ in scheduleRetentionSave() }
-                        retentionPicker(L("settings.retention.favoritesLabel"),
-                                        selection: $retentionFavoritesDays,
-                                        maxDays: RetentionStore.shared.favoritesMaxDays)
+                        RetentionSlider(title: L("settings.retention.favoritesLabel"),
+                                        maxDays: RetentionStore.shared.favoritesMaxDays,
+                                        days: $retentionFavoritesDays)
                             .onChange(of: retentionFavoritesDays) { _, _ in scheduleRetentionSave() }
                         if let err = retentionError {
                             Label(err, systemImage: "xmark.circle.fill")
@@ -408,48 +408,14 @@ struct SettingsView: View {
 
     // MARK: - Löschfrist
 
-    /// Zahlenrad je Frist, tageweise einstellbar: 0 („Nie“ bzw. „Maximum“
-    /// bei Admin-Vorgabe) und 1 Tag bis knapp unter das Admin-Maximum (das
-    /// Maximum selbst ist die 0). Ohne Vorgabe reicht das Rad bis
-    /// `RetentionStore.unlimitedPickerDays`. Ein anderswo gespeicherter Wert
-    /// außerhalb des Bereichs bleibt sichtbar, damit das Rad eine Position hat.
-    private func retentionPicker(_ title: String, selection: Binding<Int>, maxDays: Int) -> some View {
-        var options = [0] + (maxDays > 0 ? Array(1..<maxDays) : Array(1...RetentionStore.unlimitedPickerDays))
-        if !options.contains(selection.wrappedValue) {
-            options.append(selection.wrappedValue)
-            options.sort()
-        }
-        return VStack(alignment: .leading, spacing: 0) {
-            Text(title)
-            Picker(title, selection: selection) {
-                ForEach(options, id: \.self) { days in
-                    Text(retentionLabel(days, maxDays: maxDays)).tag(days)
-                }
-            }
-            .pickerStyle(.wheel)
-            .labelsHidden()
-            .frame(height: 120)
-            .clipped()
-        }
-    }
-
-    private func retentionLabel(_ days: Int, maxDays: Int) -> String {
-        if days == 0 {
-            return maxDays > 0
-                ? String(format: L("settings.retention.maximum"), maxDays)
-                : L("settings.retention.never")
-        }
-        return String(format: L("settings.retention.afterDays"), days)
-    }
-
     private func syncRetentionState() {
         retentionDays          = RetentionStore.shared.userDays
         retentionFavoritesDays = RetentionStore.shared.favoritesUserDays
     }
 
     /// Speichert direkt (nicht über SettingsSyncQueue, siehe RetentionStore),
-    /// kurz verzögert, damit beim Drehen am Rad nicht jeder Zwischenwert
-    /// gespeichert wird. Bei einem Fehler springt das Rad auf den Serverstand.
+    /// kurz verzögert, falls beide Slider direkt nacheinander bewegt werden.
+    /// Bei einem Fehler springt der Slider auf den Serverstand zurück.
     private func scheduleRetentionSave() {
         retentionSaveTask?.cancel()
         retentionSaveTask = Task {
@@ -617,6 +583,65 @@ struct SettingsView: View {
     private struct IdentifiableURL: Identifiable {
         let id = UUID()
         let url: URL
+    }
+}
+
+// MARK: - Löschfrist-Slider
+
+/// Slider für eine Löschfrist, tageweise wie der Zwischenspeicher-Slider.
+/// Ganz rechts steht „so lange wie erlaubt“ (gespeichert als 0): „Maximum
+/// (N Tage)“ bei Admin-Vorgabe, sonst „Nie löschen“. 0 statt N, damit eine
+/// spätere Änderung der Admin-Vorgabe weiter gilt. Ohne Vorgabe reicht der
+/// Slider bis `RetentionStore.sliderDaysWithoutMax` (bzw. bis zu einem
+/// anderswo gespeicherten größeren Wert). `days` ändert sich erst beim
+/// Loslassen, damit nicht jeder Zwischenwert gespeichert wird.
+private struct RetentionSlider: View {
+    let title: String
+    /// Admin-Maximum, 0 = keine Vorgabe.
+    let maxDays: Int
+    /// Nutzerwahl, 0 = keine eigene Frist.
+    @Binding var days: Int
+
+    @State private var value: Double = 1
+
+    /// Rechter Anschlag des Sliders, steht für 0.
+    private var end: Int {
+        maxDays > 0 ? maxDays : max(RetentionStore.sliderDaysWithoutMax, days) + 1
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+            if end > 1 {
+                Slider(value: $value, in: 1...Double(end), step: 1) { editing in
+                    if !editing { days = toDays(value) }
+                }
+            }
+            Text(label(toDays(value)))
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        .onAppear { value = toValue(days) }
+        .onChange(of: days) { _, new in value = toValue(new) }
+        .onChange(of: maxDays) { _, _ in value = toValue(days) }
+    }
+
+    private func toValue(_ d: Int) -> Double {
+        Double(d == 0 ? end : min(d, end))
+    }
+
+    private func toDays(_ v: Double) -> Int {
+        let d = Int(v.rounded())
+        return d >= end ? 0 : d
+    }
+
+    private func label(_ d: Int) -> String {
+        if d == 0 {
+            return maxDays > 0
+                ? String(format: L("settings.retention.maximum"), maxDays)
+                : L("settings.retention.never")
+        }
+        return String(format: L("settings.retention.afterDays"), d)
     }
 }
 

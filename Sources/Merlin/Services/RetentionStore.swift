@@ -21,9 +21,9 @@ final class RetentionStore {
     static let shared = RetentionStore()
     private init() {}
 
-    /// Obergrenze des Zahlenrads, wenn der Admin kein Maximum vorgibt (10 Jahre).
-    /// Mit Admin-Maximum reicht das Rad genau bis dorthin.
-    static let unlimitedPickerDays = 3650
+    /// Reichweite des Sliders in Tagen, wenn der Admin kein Maximum vorgibt
+    /// (wie der Zwischenspeicher-Slider). Mit Admin-Maximum reicht er bis dorthin.
+    static let sliderDaysWithoutMax = 365
 
     /// Server kennt die Löschfrist (Felder in `GET /api/settings` vorhanden).
     private(set) var isSupported = false
