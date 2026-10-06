@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comments: under "All comments" a sort button orders the threads by their
   newest reply, newest or oldest first, or by their order in the text. The
   choice is remembered.
+- Comments: web addresses in comments are tappable links.
 
 ### Fixed
 - Comments: several threads on the same passage now sit together under a

@@ -439,7 +439,7 @@ private struct CommentRow: View {
                     .buttonStyle(.borderless)
                     .accessibilityLabel(L("articleReader.comments.delete"))
                 }
-                Text(comment.body)
+                Text(CommentLinks.attributed(comment.body))
                     .font(.body)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -480,5 +480,31 @@ enum CommentSortOrder: String, CaseIterable, Identifiable {
         case .newest: return L("articleReader.comments.sortNewest")
         case .oldest: return L("articleReader.comments.sortOldest")
         }
+    }
+}
+
+/// Web-Adressen in Kommentaren als antippbare Links (nur http und https;
+/// „www.heise.de“ erkennt der Detector als http-Link).
+enum CommentLinks {
+    private static let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+
+    static func attributed(_ text: String) -> AttributedString {
+        guard let detector else { return AttributedString(text) }
+        var result = AttributedString()
+        var last = text.startIndex
+        let matches = detector.matches(in: text, range: NSRange(text.startIndex..., in: text))
+        for match in matches {
+            guard let url = match.url,
+                  let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https",
+                  let range = Range(match.range, in: text), range.lowerBound >= last
+            else { continue }
+            result += AttributedString(text[last..<range.lowerBound])
+            var link = AttributedString(text[range])
+            link.link = url
+            result += link
+            last = range.upperBound
+        }
+        result += AttributedString(text[last...])
+        return result
     }
 }
