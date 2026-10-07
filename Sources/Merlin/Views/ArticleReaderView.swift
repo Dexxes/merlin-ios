@@ -351,12 +351,13 @@ private let merlinHighlightJS: String = #"""
 
   function renderHighlights(highlights){
     unwrapAllMarks();
-    // Resolve start nodes first so we can sort without repeated XPath lookups
-    const items=highlights.map(h=>({h,n:resolveXPath(h.startXpath)})).filter(x=>x.n);
-    // Process in reverse document order (last → first) so splitText calls
-    // from later highlights don't invalidate XPaths of earlier ones
-    items.sort((a,b)=>{const p=a.n.compareDocumentPosition(b.n);return(p&4)?1:(p&2)?-1:0;});
-    items.forEach(x=>restoreHighlight(x.h));
+    // In Erstellungsreihenfolge setzen (wie der Web-Reader): die XPaths einer
+    // Markierung wurden im DOM berechnet, in dem alle älteren Markierungen
+    // schon als <mark> standen. Liegt im selben Absatz davor schon eine,
+    // zeigt der Pfad z. B. auf text()[3] – im unmarkierten DOM gibt es den
+    // nicht, die Markierung verschwand beim nächsten Neuzeichnen.
+    const order=h=>{const n=Number(h.id);return Number.isFinite(n)?n:Infinity;};
+    highlights.slice().sort((a,b)=>order(a)-order(b)).forEach(restoreHighlight);
     applyCommentCounts();
   }
 
