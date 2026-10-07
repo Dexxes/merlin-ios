@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- App tour: the last step now lets you pick your accent color (progress bar
+  and highlights) from a few suggestions or any custom color. It is the same
+  setting as "Accent color" under Appearance in the reader menu and is synced
+  to the server when the tour ends.
 - Comments: highlighted passages and the whole article can be commented on,
   with threaded replies. The highlight toolbar has a new "Comment" button: on
   a fresh selection it opens the comment field with the quoted passage
