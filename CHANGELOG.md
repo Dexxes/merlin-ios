@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Comments: with "Newest reply first", the thread with the newest reply
+  now also comes first among several threads on the same passage (they kept
+  the server order before).
+
 ### Added
 - Comments: highlighted passages and the whole article can be commented on,
   with threaded replies. The highlight toolbar has a new "Comment" button: on
