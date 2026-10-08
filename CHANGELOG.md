@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Tags: tags can be nested like on Nextcloud. The side menu shows the tag
+  tree with an arrow to expand or collapse sub-tags (remembered across
+  launches); long-press a tag and choose "Move to…" to put it below another
+  tag or back on the top level. Opening a tag also lists the articles of all
+  its sub-tags, and hiding a tag hides its sub-tags too. When creating a new
+  tag while adding or tagging an article, "Below" picks its parent tag.
+
 ### Fixed
 - Tags: archiving, restoring or (un)favoriting an article inside a tag view
   no longer makes it vanish from the list (or stay when it should go); the

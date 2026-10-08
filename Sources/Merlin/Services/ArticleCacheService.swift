@@ -41,14 +41,15 @@ actor ArticleCacheService {
 
     // MARK: – Public API
 
-    /// Returns cached articles that match `filter` / `tagId`, evicting stale
-    /// entries first.  Returns an empty array when no cache exists yet.
-    func loadFiltered(filter: ArticleFilter, tagId: Int?, showArchivedForTag: Bool = false) -> [Article] {
+    /// Returns cached articles that match `filter` / `tagIds` (a tag plus its
+    /// sub-tags), evicting stale entries first.  Returns an empty array when
+    /// no cache exists yet.
+    func loadFiltered(filter: ArticleFilter, tagIds: Set<Int>?, showArchivedForTag: Bool = false) -> [Article] {
         loadFromDiskIfNeeded()
         evictExpiredInternal()
         let matching = cache.values
             .map(\.article)
-            .filter { matches(article: $0, filter: filter, tagId: tagId, showArchivedForTag: showArchivedForTag) }
+            .filter { matches(article: $0, filter: filter, tagIds: tagIds, showArchivedForTag: showArchivedForTag) }
         if filter == .pagesFavorites || filter == .videosFavorites {
             return matching.sorted { ($0.favoritedAt ?? "") > ($1.favoritedAt ?? "") }
         }
@@ -124,11 +125,11 @@ actor ArticleCacheService {
 
     // MARK: – Filter replication (mirrors ArticlesViewModel.fetchForFilter)
 
-    private func matches(article: Article, filter: ArticleFilter, tagId: Int?, showArchivedForTag: Bool = false) -> Bool {
+    private func matches(article: Article, filter: ArticleFilter, tagIds: Set<Int>?, showArchivedForTag: Bool = false) -> Bool {
         // Einzel-Tag-Ansicht ignoriert den aktiven Filter komplett (siehe
         // `ArticlesViewModel.fetchForFilter`) – stattdessen entscheidet
         // `showArchivedForTag`, ob archivierte Artikel mitgezählt werden.
-        filter.matches(article, tagId: tagId, showArchivedForTag: showArchivedForTag)
+        filter.matches(article, tagIds: tagIds, showArchivedForTag: showArchivedForTag)
     }
 
     // MARK: – Persistence

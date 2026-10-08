@@ -106,6 +106,10 @@ struct ListFlyoutModifier: ViewModifier {
     @State private var safeAreaBottom: CGFloat = 0
     @State private var showSettings:   Bool    = false
     @State private var showReminders:  Bool    = false
+    /// Tag, dessen „Verschieben nach…“-Sheet offen ist (Kontextmenü am Tag).
+    @State private var tagToMove:      Tag?    = nil
+    /// Aufgeklappte Eltern-Tags (verschachtelte Tags), kommagetrennte Ids.
+    @AppStorage("merlinExpandedTagIds") private var expandedTagIdsRaw: String = ""
     @AppStorage("merlinIsCardView") private var isCardView: Bool = true
 
     func body(content: Content) -> some View {
@@ -120,6 +124,14 @@ struct ListFlyoutModifier: ViewModifier {
             }
             .sheet(isPresented: $showSettings)  { SettingsView() }
             .sheet(isPresented: $showReminders) { RemindersView() }
+            .sheet(item: $tagToMove) { tag in
+                MoveTagSheet(tag: tag, tree: viewModel.tagTree) { parentId in
+                    Task { await viewModel.moveTag(tag.id, under: parentId) }
+                    if let parentId { setExpanded(parentId, true) }
+                }
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+            }
             .overlay {
                 ZStack {
                     // ── UIKit-Wischzone (linker Rand) ──────────────────────────
@@ -159,7 +171,10 @@ struct ListFlyoutModifier: ViewModifier {
             }
             .animation(.spring(response: 0.32, dampingFraction: 0.88), value: showSideMenu)
             .onChange(of: showSideMenu) { _, isShown in
-                if isShown { menuGroup = viewModel.selectedFilter.group }
+                if isShown {
+                    menuGroup = viewModel.selectedFilter.group
+                    expandAncestorsOfSelectedTag()
+                }
             }
     }
 
@@ -218,18 +233,13 @@ struct ListFlyoutModifier: ViewModifier {
                     }
                     .buttonStyle(.plain)
 
-                    // Ausgeklappte Tag-Liste
+                    // Ausgeklappte Tag-Liste als Baum: Unter-Tags eingerückt,
+                    // Eltern-Tags mit eigenem Pfeil zum Auf-/Zuklappen. Ein
+                    // Tag zeigt auch die Artikel seiner Unter-Tags. Lange
+                    // drücken → „Verschieben nach…“.
                     if tagsExpanded {
-                        ForEach(viewModel.allTags) { tag in
-                            menuRow(
-                                icon: viewModel.selectedTagId == tag.id ? "tag.fill" : "tag",
-                                label: tag.name,
-                                tint: viewModel.selectedTagId == tag.id ? .accentColor : nil,
-                                indented: true
-                            ) {
-                                Task { await viewModel.selectTag(tag.id) }
-                                close(then: onNavigate)
-                            }
+                        ForEach(visibleTagRows) { row in
+                            tagRow(row)
                         }
                         if viewModel.selectedTagId != nil {
                             menuRow(
@@ -328,6 +338,95 @@ struct ListFlyoutModifier: ViewModifier {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: – Tag-Baum
+
+    private var expandedTagIds: Set<Int> {
+        Set(expandedTagIdsRaw.split(separator: ",").compactMap { Int($0) })
+    }
+
+    private func setExpanded(_ tagId: Int, _ expanded: Bool) {
+        var ids = expandedTagIds
+        if expanded { ids.insert(tagId) } else { ids.remove(tagId) }
+        expandedTagIdsRaw = ids.sorted().map(String.init).joined(separator: ",")
+    }
+
+    /// Der gewählte Tag bleibt sichtbar: seine Eltern-Tags aufklappen.
+    private func expandAncestorsOfSelectedTag() {
+        guard let selected = viewModel.selectedTagId else { return }
+        let byId = Dictionary(viewModel.allTags.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        var seen: Set<Int> = [selected]
+        var parent = byId[selected]?.parentId
+        while let id = parent, seen.insert(id).inserted {
+            if !expandedTagIds.contains(id) { setExpanded(id, true) }
+            parent = byId[id]?.parentId
+        }
+    }
+
+    private var visibleTagRows: [TagTree.Row] {
+        let tree = viewModel.tagTree
+        let expanded = expandedTagIds
+        let collapsed = Set(viewModel.allTags.map(\.id).filter { !expanded.contains($0) })
+        return tree.rows(collapsed: collapsed)
+    }
+
+    private func tagRow(_ row: TagTree.Row) -> some View {
+        let tag = row.tag
+        let isSelected = viewModel.selectedTagId == tag.id
+        let isExpanded = expandedTagIds.contains(tag.id)
+        let tint: Color? = isSelected ? .accentColor : nil
+        return HStack(spacing: 0) {
+            // Pfeil zum Auf-/Zuklappen; bei Tags ohne Kinder nur Platzhalter,
+            // damit Symbole und Namen untereinander stehen.
+            Group {
+                if row.hasChildren {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) { setExpanded(tag.id, !isExpanded) }
+                    } label: {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                            .frame(width: 28, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(isExpanded ? L("navigationMenu.collapseSubTags") : L("navigationMenu.expandSubTags"))
+                } else {
+                    Color.clear.frame(width: 28, height: 1)
+                }
+            }
+            .padding(.leading, 12 + CGFloat(row.depth) * 20)
+
+            Button {
+                Task { await viewModel.selectTag(tag.id) }
+                close(then: onNavigate)
+            } label: {
+                HStack(spacing: 14) {
+                    Image(systemName: isSelected ? "tag.fill" : "tag")
+                        .font(.system(size: 18, weight: .regular))
+                        .foregroundStyle(tint ?? .primary)
+                        .frame(width: 24, alignment: .center)
+                    Text(tag.name)
+                        .font(.body)
+                        .foregroundStyle(tint ?? .primary)
+                        .lineLimit(1)
+                    Spacer()
+                }
+                .padding(.trailing, 20)
+                .padding(.vertical, 14)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+        .contextMenu {
+            Button {
+                tagToMove = tag
+            } label: {
+                Label(L("navigationMenu.moveTag"), systemImage: "folder")
+            }
+        }
     }
 
     private var menuDivider: some View {

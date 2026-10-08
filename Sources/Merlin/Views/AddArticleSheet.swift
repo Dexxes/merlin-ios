@@ -9,6 +9,8 @@ struct AddArticleSheet: View {
     @State private var newTagInput    = ""
     @State private var selectedTagIds: Set<Int> = []
     @State private var pendingTags:   [String]  = []
+    /// Eltern-Tag für neu angelegte Tags; `nil` = oberste Ebene.
+    @State private var newTagParentId: Int?     = nil
     @State private var isSaving       = false
     @State private var errorMessage: String? = nil
     @FocusState private var isUrlFocused: Bool
@@ -52,6 +54,10 @@ struct AddArticleSheet: View {
                     }
                     if !pendingTags.isEmpty {
                         pendingTagsRow
+                    }
+                    if !viewModel.allTags.isEmpty,
+                       !pendingTags.isEmpty || !newTagInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        TagParentPicker(tree: viewModel.tagTree, selection: $newTagParentId)
                     }
                 } header: {
                     Text(L("addArticle.tagsSectionHeader"))
@@ -101,10 +107,13 @@ struct AddArticleSheet: View {
 
     @ViewBuilder
     private var tagChipGrid: some View {
+        // Baumreihenfolge; Unter-Tags zeigen ihren Pfad ("Reisen › Japan").
+        let tree = viewModel.tagTree
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 90))], spacing: 8) {
-            ForEach(viewModel.allTags) { tag in
+            ForEach(tree.rows()) { row in
+                let tag = row.tag
                 let sel = selectedTagIds.contains(tag.id)
-                AddSheetTagChip(name: tag.name, color: tag.color, isSelected: sel) {
+                AddSheetTagChip(name: row.depth > 0 ? tree.path(of: tag) : tag.name, color: tag.color, isSelected: sel) {
                     if sel { selectedTagIds.remove(tag.id) }
                     else   { selectedTagIds.insert(tag.id) }
                 }
@@ -186,7 +195,7 @@ struct AddArticleSheet: View {
             do {
                 var tagIds = Array(selectedTagIds)
                 if !pendingTags.isEmpty {
-                    let created = try await MerlinAPI.shared.resolveTagIds(for: pendingTags)
+                    let created = try await MerlinAPI.shared.resolveTagIds(for: pendingTags, parentId: newTagParentId)
                     tagIds.append(contentsOf: created)
                 }
                 try await viewModel.addArticle(url: url, tagIds: tagIds)

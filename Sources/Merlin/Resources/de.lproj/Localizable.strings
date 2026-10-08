@@ -400,12 +400,20 @@
 "merlinServer.register.usernameTaken" = "Dieser Benutzername ist bereits vergeben.";
 "merlinServer.siteCredentialsApi.cipherNotConfigured" = "Der Server ist für Abo-Logins noch nicht eingerichtet (credential_cipher_key fehlt in config.php). Bitte den Administrator kontaktieren.";
 "merlinServer.siteCredentialsApi.usernamePasswordRequired" = "Benutzername und Passwort sind erforderlich.";
+"moveTagSheet.intro" = "„%@“ verschieben unter:";
+"moveTagSheet.introWithSubTags" = "„%@“ mit seinen Unter-Tags verschieben unter:";
+"moveTagSheet.move" = "Verschieben";
+"moveTagSheet.title" = "Tag verschieben";
+"moveTagSheet.topLevel" = "Oberste Ebene";
 "navigationMenu.appTour" = "App Tour";
 "navigationMenu.cardView" = "Kartenansicht";
 "navigationMenu.clearTagFilter" = "Tag-Filter aufheben";
+"navigationMenu.collapseSubTags" = "Unter-Tags einklappen";
+"navigationMenu.expandSubTags" = "Unter-Tags ausklappen";
 "navigationMenu.filterWithCount" = "%@ (%lld)";
 "navigationMenu.listView" = "Listenansicht";
 "navigationMenu.mediaTypePicker" = "Medienart";
+"navigationMenu.moveTag" = "Verschieben nach…";
 "navigationMenu.tab.audio" = "Audio";
 "navigationMenu.tab.text" = "Text";
 "navigationMenu.tab.video" = "Video";
@@ -562,3 +570,5 @@
 "tagFilterSheet.title" = "Tag-Filter";
 "splash.slowConnection.message" = "Verbindungsaufbau dauert... Im Offlinemodus starten?";
 "splash.slowConnection.offline" = "Offline starten";
+"tagParentPicker.label" = "Unter";
+"tagParentPicker.topLevel" = "Oberste Ebene";

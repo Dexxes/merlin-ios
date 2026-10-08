@@ -4322,6 +4322,10 @@ struct ArticleTagSheet: View {
     @State private var newTagInput:    String   = ""
     @State private var pendingTags:    [String] = []
     @State private var isSaving:       Bool     = false
+    /// Eltern-Tag für neu angelegte Tags; `nil` = oberste Ebene.
+    @State private var newTagParentId: Int?     = nil
+
+    private var tree: TagTree { TagTree(allTags) }
 
     init(article: Article, allTags: [Tag], onSave: @escaping (Set<Int>) -> Void) {
         self.article = article
@@ -4346,8 +4350,11 @@ struct ArticleTagSheet: View {
 
                     // Existing tags grid
                     if !allTags.isEmpty {
+                        // Baumreihenfolge; Unter-Tags zeigen ihren Pfad ("Reisen › Japan").
+                        let tree = self.tree
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 100))], spacing: 10) {
-                            ForEach(allTags) { tag in
+                            ForEach(tree.rows()) { row in
+                                let tag = row.tag
                                 let isSelected = selectedTagIds.contains(tag.id)
                                 let chipColor: Color = tag.color.flatMap { Color(hexString: $0) } ?? .accentColor
                                 Button {
@@ -4359,7 +4366,7 @@ struct ArticleTagSheet: View {
                                             Image(systemName: "checkmark")
                                                 .font(.caption2.weight(.bold))
                                         }
-                                        Text(tag.name)
+                                        Text(row.depth > 0 ? tree.path(of: tag) : tag.name)
                                             .font(.subheadline)
                                             .lineLimit(1)
                                     }
@@ -4443,6 +4450,12 @@ struct ArticleTagSheet: View {
                             .padding(.vertical, 2)
                         }
                     }
+
+                    // Eltern-Tag für die neuen Tags (verschachtelte Tags)
+                    if !allTags.isEmpty,
+                       !pendingTags.isEmpty || !newTagInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        TagParentPicker(tree: tree, selection: $newTagParentId)
+                    }
                 }
                 .padding()
             }
@@ -4480,7 +4493,7 @@ struct ArticleTagSheet: View {
         Task {
             var finalIds = selectedTagIds
             if !pendingTags.isEmpty {
-                let created = (try? await MerlinAPI.shared.resolveTagIds(for: pendingTags)) ?? []
+                let created = (try? await MerlinAPI.shared.resolveTagIds(for: pendingTags, parentId: newTagParentId)) ?? []
                 created.forEach { finalIds.insert($0) }
             }
             onSave(finalIds)

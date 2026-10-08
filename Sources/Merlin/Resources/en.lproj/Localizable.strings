@@ -400,12 +400,20 @@
 "merlinServer.register.usernameTaken" = "This username is already taken.";
 "merlinServer.siteCredentialsApi.cipherNotConfigured" = "The server is not yet set up for subscription logins (credential_cipher_key is missing in config.php). Please contact the administrator.";
 "merlinServer.siteCredentialsApi.usernamePasswordRequired" = "Username and password are required.";
+"moveTagSheet.intro" = "Move “%@” below:";
+"moveTagSheet.introWithSubTags" = "Move “%@” with its sub-tags below:";
+"moveTagSheet.move" = "Move";
+"moveTagSheet.title" = "Move Tag";
+"moveTagSheet.topLevel" = "Top level";
 "navigationMenu.appTour" = "App Tour";
 "navigationMenu.cardView" = "Card View";
 "navigationMenu.clearTagFilter" = "Clear tag filter";
+"navigationMenu.collapseSubTags" = "Collapse sub-tags";
+"navigationMenu.expandSubTags" = "Expand sub-tags";
 "navigationMenu.filterWithCount" = "%@ (%lld)";
 "navigationMenu.listView" = "List View";
 "navigationMenu.mediaTypePicker" = "Media type";
+"navigationMenu.moveTag" = "Move to…";
 "navigationMenu.tab.audio" = "Audio";
 "navigationMenu.tab.text" = "Text";
 "navigationMenu.tab.video" = "Video";
@@ -562,3 +570,5 @@
 "tagFilterSheet.title" = "Tag Filter";
 "splash.slowConnection.message" = "Connecting is taking a while... Start in offline mode?";
 "splash.slowConnection.offline" = "Start offline";
+"tagParentPicker.label" = "Below";
+"tagParentPicker.topLevel" = "Top level";
