@@ -4348,38 +4348,9 @@ struct ArticleTagSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
 
-                    // Existing tags grid
+                    // Existing tags as an indented tree (sub-tags below their parent)
                     if !allTags.isEmpty {
-                        // Baumreihenfolge; Unter-Tags zeigen ihren Pfad ("Reisen › Japan").
-                        let tree = self.tree
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 100))], spacing: 10) {
-                            ForEach(tree.rows()) { row in
-                                let tag = row.tag
-                                let isSelected = selectedTagIds.contains(tag.id)
-                                let chipColor: Color = tag.color.flatMap { Color(hexString: $0) } ?? .accentColor
-                                Button {
-                                    selectedTagIds = tree.toggling(tag.id, in: selectedTagIds)
-                                } label: {
-                                    HStack(spacing: 6) {
-                                        if isSelected {
-                                            Image(systemName: "checkmark")
-                                                .font(.caption2.weight(.bold))
-                                        }
-                                        Text(row.depth > 0 ? tree.path(of: tag) : tag.name)
-                                            .font(.subheadline)
-                                            .lineLimit(1)
-                                    }
-                                    .frame(maxWidth: .infinity, minHeight: 38)
-                                    .background(isSelected ? chipColor.opacity(0.15) : Color(.secondarySystemGroupedBackground))
-                                    .foregroundStyle(isSelected ? chipColor : Color.secondary)
-                                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(
-                                        isSelected ? chipColor : Color(.separator),
-                                        lineWidth: isSelected ? 1.0 : 0.5))
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
+                        TagTreeSelectionList(tree: tree, selection: $selectedTagIds)
                     }
 
                     // New tag input

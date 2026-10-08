@@ -15,8 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its sub-tags, and hiding a tag hides its sub-tags too. When creating a new
   tag while adding or tagging an article, "Below" picks its parent tag.
   Selecting a sub-tag (in the app or the share sheet) also selects its parent
-  tags; deselecting a tag also deselects its sub-tags. The share sheet lists
-  the tags as an indented tree instead of a single scrolling row.
+  tags; deselecting a tag also deselects its sub-tags. The share sheet and
+  "Edit tags" list the tags as an indented tree instead of chips.
 
 ### Fixed
 - Tags: archiving, restoring or (un)favoriting an article inside a tag view
