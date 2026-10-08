@@ -118,6 +118,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   passage" title any more. Needs merlin-nextcloud 1.0.16 for the colors.
 
 ### Fixed
+- Highlights: a new highlight in a paragraph that already had one before it
+  disappeared a moment after it was made (and on every reopen). The reader
+  now redraws highlights in the order they were created, like the web
+  reader, because each one's position was recorded with the older ones in
+  place.
 - Reader: 3sat videos play in the native player like ARD, ZDF and Arte
   (needs Merlin for Nextcloud with 3sat support).
 - Reader: ARD/ZDF/Arte articles whose stream cannot be loaded (e.g. a film
