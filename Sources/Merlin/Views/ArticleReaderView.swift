@@ -684,7 +684,9 @@ private struct ReaderBarGlassBackground: ViewModifier {
 
     @available(iOS 26.0, *)
     private var glass: Glass {
-        if let tint { return .regular.tint(tint).interactive() }
+        // Volle Deckkraft würde das Glas komplett einfärben und die
+        // Transparenz schlucken – daher nur teilweise tönen.
+        if let tint { return .regular.tint(tint.opacity(0.45)).interactive() }
         return .regular.interactive()
     }
 }
