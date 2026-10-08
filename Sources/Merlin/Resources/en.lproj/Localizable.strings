@@ -403,6 +403,9 @@
 "navigationMenu.appTour" = "App Tour";
 "navigationMenu.cardView" = "Card View";
 "navigationMenu.clearTagFilter" = "Clear tag filter";
+"navigationMenu.deleteTag" = "Delete tag";
+"navigationMenu.deleteTag.message" = "“%@” will be removed from all articles, including its sub-tags. The articles themselves are kept.";
+"navigationMenu.deleteTag.title" = "Delete tag?";
 "navigationMenu.filterWithCount" = "%@ (%lld)";
 "navigationMenu.listView" = "List View";
 "navigationMenu.mediaTypePicker" = "Media type";

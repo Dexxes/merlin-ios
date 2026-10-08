@@ -419,6 +419,36 @@ final class ArticlesViewModel {
         allTags = (try? await MerlinAPI.shared.getTags()) ?? []
     }
 
+    /// Löscht einen Tag (samt Unter-Tags) auf dem Server und entfernt ihn
+    /// anschließend lokal: aus der Tag-Liste, dem Tag-Filter und von allen
+    /// geladenen Artikeln. War der Tag gerade geöffnet, geht es zurück zur
+    /// normalen Liste. Kein Offline-Queueing: ohne Verbindung gibt es eine
+    /// Fehlermeldung und nichts ändert sich.
+    func deleteTag(_ tag: Tag) async {
+        let deletedIds: Set<Int>
+        do {
+            deletedIds = Set(try await MerlinAPI.shared.deleteTag(id: tag.id))
+        } catch {
+            self.error = error.localizedDescription
+            return
+        }
+
+        allTags.removeAll { deletedIds.contains($0.id) }
+        excludedTagIds.subtract(deletedIds)
+        var changed: [Article] = []
+        for index in articles.indices where articles[index].tags.contains(where: { deletedIds.contains($0.id) }) {
+            articles[index].tags.removeAll { deletedIds.contains($0.id) }
+            changed.append(articles[index])
+        }
+        if !changed.isEmpty {
+            await ArticleCacheService.shared.upsert(changed)
+        }
+
+        if let selected = selectedTagId, deletedIds.contains(selected) {
+            await selectTag(nil)
+        }
+    }
+
     func selectTag(_ tagId: Int?) async {
         selectedTagId = tagId
         showArchivedInTagView = true // frischer Start pro Tag/Tag-Wechsel

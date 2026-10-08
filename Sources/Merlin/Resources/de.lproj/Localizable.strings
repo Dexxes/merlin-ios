@@ -403,6 +403,9 @@
 "navigationMenu.appTour" = "App Tour";
 "navigationMenu.cardView" = "Kartenansicht";
 "navigationMenu.clearTagFilter" = "Tag-Filter aufheben";
+"navigationMenu.deleteTag" = "Tag löschen";
+"navigationMenu.deleteTag.message" = "„%@“ wird von allen Artikeln entfernt, Unter-Tags werden mitgelöscht. Die Artikel selbst bleiben erhalten.";
+"navigationMenu.deleteTag.title" = "Tag löschen?";
 "navigationMenu.filterWithCount" = "%@ (%lld)";
 "navigationMenu.listView" = "Listenansicht";
 "navigationMenu.mediaTypePicker" = "Medienart";

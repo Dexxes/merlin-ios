@@ -106,6 +106,8 @@ struct ListFlyoutModifier: ViewModifier {
     @State private var safeAreaBottom: CGFloat = 0
     @State private var showSettings:   Bool    = false
     @State private var showReminders:  Bool    = false
+    /// Tag, dessen Löschen gerade bestätigt werden soll (Kontextmenü in der Tag-Liste).
+    @State private var tagToDelete:    Tag?    = nil
     @AppStorage("merlinIsCardView") private var isCardView: Bool = true
 
     func body(content: Content) -> some View {
@@ -230,6 +232,13 @@ struct ListFlyoutModifier: ViewModifier {
                                 Task { await viewModel.selectTag(tag.id) }
                                 close(then: onNavigate)
                             }
+                            .contextMenu {
+                                Button(role: .destructive) {
+                                    tagToDelete = tag
+                                } label: {
+                                    Label(L("navigationMenu.deleteTag"), systemImage: "trash")
+                                }
+                            }
                         }
                         if viewModel.selectedTagId != nil {
                             menuRow(
@@ -274,6 +283,22 @@ struct ListFlyoutModifier: ViewModifier {
 
             }
             .padding(.top, 8)
+        }
+        .confirmationDialog(
+            L("navigationMenu.deleteTag.title"),
+            isPresented: Binding(
+                get: { tagToDelete != nil },
+                set: { if !$0 { tagToDelete = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: tagToDelete
+        ) { tag in
+            Button(L("common.delete"), role: .destructive) {
+                Task { await viewModel.deleteTag(tag) }
+            }
+            Button(L("common.cancel"), role: .cancel) {}
+        } message: { tag in
+            Text(String(format: L("navigationMenu.deleteTag.message"), tag.name))
         }
 
         // ── Merlin-Logo – immer an der Bildschirmkante sichtbar ───────────

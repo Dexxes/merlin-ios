@@ -324,6 +324,15 @@ actor MerlinAPI {
         return try await perform(req)
     }
 
+    /// Löscht einen Tag samt Unter-Tags; die Artikel bleiben, nur ihre
+    /// Tag-Zuordnungen fallen weg. Liefert die IDs aller gelöschten Tags.
+    func deleteTag(id: Int) async throws -> [Int] {
+        struct Response: Decodable { let deletedIds: [Int]? }
+        let req = try makeRequest("/tags/\(id)", method: "DELETE")
+        let response: Response = try await perform(req)
+        return response.deletedIds ?? [id]
+    }
+
     /// Resolves a list of tag names: matches existing ones by name (case-insensitive),
     /// creates any that don't exist yet, and returns all IDs.
     func resolveTagIds(for names: [String]) async throws -> [Int] {

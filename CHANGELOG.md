@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the server order before).
 
 ### Added
+- Tags: a tag can now be deleted. Long-press it in the side menu's tag list
+  and choose "Delete tag"; after confirming, the tag and its sub-tags are
+  removed from all articles (the articles stay). If the deleted tag was
+  open, the list goes back to the normal view.
 - Tags: a tag view now shows archived articles by default, like Nextcloud.
   In lists that mix active and archived articles (a tag, Favorites) archived
   ones carry an "Archived" label and are slightly faded. The eye button still
