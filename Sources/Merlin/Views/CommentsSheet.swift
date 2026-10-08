@@ -69,6 +69,15 @@ struct CommentsSheet: View {
         }
         let order = CommentSortOrder(rawValue: sortOrderRaw) ?? .text
         if order != .text {
+            // Erst innerhalb einer Stelle (Thread mit der jüngsten Antwort
+            // zuerst bzw. zuletzt), dann die Stellen untereinander.
+            groups = groups.map { group in
+                group.sorted { a, b in
+                    let ta = Self.lastActivity(a), tb = Self.lastActivity(b)
+                    if ta == tb { return a.id < b.id }
+                    return order == .newest ? ta > tb : ta < tb
+                }
+            }
             let activity: ([Comment]) -> Date = { $0.map(Self.lastActivity).max() ?? .distantPast }
             groups.sort { a, b in
                 let ta = activity(a), tb = activity(b)
