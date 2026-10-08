@@ -167,13 +167,14 @@ enum ArticleFilter: String, CaseIterable, Identifiable {
     }
 
     /// Wie `matches(_:)`, berücksichtigt aber zusätzlich die Einzel-Tag-Ansicht:
-    /// Ist `tagId` gesetzt, zählt der Filter selbst nicht (siehe
-    /// `ArticlesViewModel.fetchForFilter`), sondern nur, ob der Artikel den Tag
-    /// trägt und ob archivierte Artikel eingeblendet sind. Einzige Regel für
-    /// Listenpflege im ViewModel und den Offline-Cache.
-    func matches(_ article: Article, tagId: Int?, showArchivedForTag: Bool) -> Bool {
-        guard let tagId else { return matches(article) }
-        guard article.tags.contains(where: { $0.id == tagId }) else { return false }
+    /// Ist `tagIds` gesetzt (der gewählte Tag plus seine Unter-Tags, siehe
+    /// `TagTree.scope(of:)`), zählt der Filter selbst nicht (siehe
+    /// `ArticlesViewModel.fetchForFilter`), sondern nur, ob der Artikel einen
+    /// dieser Tags trägt und ob archivierte Artikel eingeblendet sind. Einzige
+    /// Regel für Listenpflege im ViewModel und den Offline-Cache.
+    func matches(_ article: Article, tagIds: Set<Int>?, showArchivedForTag: Bool) -> Bool {
+        guard let tagIds else { return matches(article) }
+        guard article.tags.contains(where: { tagIds.contains($0.id) }) else { return false }
         return showArchivedForTag || !article.isArchived
     }
 }
@@ -285,9 +286,11 @@ final class ArticlesViewModel {
         // Artikel mit ausgeblendeten Tags entfernen – aber nicht in der
         // Einzel-Tag-Ansicht: wer explizit einen Tag öffnet, will dessen
         // Artikel sehen, auch wenn der Tag im Tag-Filter ausgeblendet ist.
+        // Ein ausgeblendeter Tag blendet auch seine Unter-Tags aus.
         if selectedTagId == nil, !excludedTagIds.isEmpty {
+            let hidden = hiddenTagIds
             result = result.filter { article in
-                article.tags.allSatisfy { !excludedTagIds.contains($0.id) }
+                article.tags.allSatisfy { !hidden.contains($0.id) }
             }
         }
 
@@ -346,7 +349,7 @@ final class ArticlesViewModel {
         } catch {
             // Network failed – serve from the local cache if available.
             let cached = await ArticleCacheService.shared.loadFiltered(
-                filter: selectedFilter, tagId: selectedTagId, showArchivedForTag: showArchivedInTagView)
+                filter: selectedFilter, tagIds: selectedTagScope, showArchivedForTag: showArchivedInTagView)
             if !cached.isEmpty {
                 articles  = cached
                 isOffline = true
@@ -415,8 +418,39 @@ final class ArticlesViewModel {
         return allTags.first(where: { $0.id == id })?.name
     }
 
+    /// Baumansicht der Tags (verschachtelte Tags, `Tag.parentId`).
+    var tagTree: TagTree { TagTree(allTags) }
+
+    /// Was die Einzel-Tag-Ansicht umfasst: der gewählte Tag plus seine
+    /// Unter-Tags (der Server filtert `tagId` genauso). `nil` = keine Tag-Ansicht.
+    var selectedTagScope: Set<Int>? {
+        selectedTagId.map { tagTree.scope(of: $0) }
+    }
+
+    /// Ausgeblendete Tags samt ihren Unter-Tags.
+    var hiddenTagIds: Set<Int> {
+        guard !excludedTagIds.isEmpty else { return [] }
+        let tree = tagTree
+        return excludedTagIds.reduce(into: Set<Int>()) { $0.formUnion(tree.scope(of: $1)) }
+    }
+
     func loadTags() async {
         allTags = (try? await MerlinAPI.shared.getTags()) ?? []
+    }
+
+    /// Hängt einen Tag samt Unter-Tags unter `parentId` (`nil` = oberste
+    /// Ebene) und lädt danach Tags und Liste neu, weil sich der Umfang einer
+    /// gerade geöffneten Tag-Ansicht ändern kann.
+    func moveTag(_ tagId: Int, under parentId: Int?) async {
+        guard tagTree.canMove(tagId, under: parentId) else { return }
+        do {
+            _ = try await MerlinAPI.shared.moveTag(id: tagId, parentId: parentId)
+        } catch {
+            self.error = error.localizedDescription
+            return
+        }
+        await loadTags()
+        if selectedTagId != nil { await load() }
     }
 
     func selectTag(_ tagId: Int?) async {
@@ -606,7 +640,7 @@ final class ArticlesViewModel {
     /// `reinsertIfMissing` (to decide whether a rolled-back row needs
     /// restoring).
     private func shouldHide(_ article: Article) -> Bool {
-        !selectedFilter.matches(article, tagId: selectedTagId, showArchivedForTag: showArchivedInTagView)
+        !selectedFilter.matches(article, tagIds: selectedTagScope, showArchivedForTag: showArchivedInTagView)
     }
 
     /// Restores `article` to the list — in roughly sorted position — if the

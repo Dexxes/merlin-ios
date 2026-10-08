@@ -149,23 +149,28 @@ class ShareViewController: UIViewController {
         return l
     }()
 
-    // Horizontal scroll view that holds existing-tag chips
+    // Vertical scroll view that holds the existing tags as an indented tree
+    // (sub-tags below their parent tag)
     private let tagChipsScrollView: UIScrollView = {
         let sv = UIScrollView()
         sv.showsHorizontalScrollIndicator = false
-        sv.showsVerticalScrollIndicator = false
+        sv.alwaysBounceVertical = false
         sv.translatesAutoresizingMaskIntoConstraints = false
-        sv.heightAnchor.constraint(equalToConstant: 36).isActive = true
         return sv
     }()
     private let tagChipsStack: UIStackView = {
         let s = UIStackView()
-        s.axis = .horizontal
-        s.spacing = 8
-        s.alignment = .center
+        s.axis = .vertical
+        s.spacing = 2
+        s.alignment = .fill
         s.translatesAutoresizingMaskIntoConstraints = false
         return s
     }()
+    private static let tagRowHeight: CGFloat = 36
+    /// Visible rows before the tag list scrolls.
+    private static let maxVisibleTagRows = 5
+    private lazy var tagListHeightConstraint =
+        tagChipsScrollView.heightAnchor.constraint(equalToConstant: Self.tagRowHeight)
     private let tagsLoadingLabel: UILabel = {
         let l = UILabel()
         l.text = L("share.staging.loadingTags")
@@ -215,9 +220,10 @@ class ShareViewController: UIViewController {
     }()
 
     // Available tags fetched from server; selected ones tracked separately
-    private struct ShareTag { let id: Int; let name: String }
+    private struct ShareTag { let id: Int; let name: String; let parentId: Int? }
     private var availableTags: [ShareTag] = []
     private var selectedTagIds: Set<Int> = []
+    private var tagButtons: [Int: UIButton] = [:]
 
     private var pendingURL: String = ""
     private var isDone = false
@@ -381,7 +387,8 @@ class ShareViewController: UIViewController {
             tagChipsStack.trailingAnchor.constraint(equalTo: tagChipsScrollView.contentLayoutGuide.trailingAnchor),
             tagChipsStack.topAnchor.constraint(equalTo: tagChipsScrollView.contentLayoutGuide.topAnchor),
             tagChipsStack.bottomAnchor.constraint(equalTo: tagChipsScrollView.contentLayoutGuide.bottomAnchor),
-            tagChipsStack.heightAnchor.constraint(equalTo: tagChipsScrollView.frameLayoutGuide.heightAnchor),
+            tagChipsStack.widthAnchor.constraint(equalTo: tagChipsScrollView.frameLayoutGuide.widthAnchor),
+            tagListHeightConstraint,
         ])
 
         // Show loading placeholder until tags arrive
@@ -442,7 +449,7 @@ class ShareViewController: UIViewController {
         activityIndicator.stopAnimating()
         activityIndicator.isHidden = true
         statusLabel.isHidden   = true
-        containerHeightConstraint?.constant = 340
+        containerHeightConstraint?.constant = stagingHeight
 
         // Load existing tags in the background and populate the chips row
         Task { await loadTagChips() }
@@ -611,7 +618,60 @@ class ShareViewController: UIViewController {
         }
     }
 
-    // MARK: – Tag chips (staging mode)
+    // MARK: – Tag tree (staging mode)
+
+    /// Sheet height in staging mode: the base layout (sized for one row of
+    /// tags) plus the extra rows of the tag list.
+    private var stagingHeight: CGFloat {
+        340 + tagListHeightConstraint.constant - Self.tagRowHeight
+    }
+
+    /// Tags in tree order (parents before children, siblings by name) with
+    /// their depth. A tag whose parent is missing counts as top level.
+    private func tagTreeRows() -> [(tag: ShareTag, depth: Int)] {
+        let ids = Set(availableTags.map(\.id))
+        var children: [Int?: [ShareTag]] = [:]
+        for tag in availableTags {
+            let parent = tag.parentId.flatMap { ids.contains($0) ? $0 : nil }
+            children[parent, default: []].append(tag)
+        }
+        var rows: [(tag: ShareTag, depth: Int)] = []
+        var seen = Set<Int>()
+        func walk(_ parent: Int?, _ depth: Int) {
+            let sorted = (children[parent] ?? []).sorted {
+                $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+            }
+            for tag in sorted where seen.insert(tag.id).inserted {
+                rows.append((tag: tag, depth: depth))
+                walk(tag.id, depth + 1)
+            }
+        }
+        walk(nil, 0)
+        return rows
+    }
+
+    /// Parent tag, its parent, … of `id`.
+    private func ancestorIds(of id: Int) -> Set<Int> {
+        let byId = Dictionary(availableTags.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        var result = Set<Int>()
+        var parent = byId[id]?.parentId.flatMap { byId[$0] }
+        while let p = parent, p.id != id, result.insert(p.id).inserted {
+            parent = p.parentId.flatMap { byId[$0] }
+        }
+        return result
+    }
+
+    /// Sub-tags of `id` at any depth.
+    private func descendantIds(of id: Int) -> Set<Int> {
+        var result = Set<Int>()
+        var queue = availableTags.filter { $0.parentId == id }
+        while !queue.isEmpty {
+            let tag = queue.removeFirst()
+            guard tag.id != id, result.insert(tag.id).inserted else { continue }
+            queue.append(contentsOf: availableTags.filter { $0.parentId == tag.id })
+        }
+        return result
+    }
 
     /// Fetches all tags from the server and builds the horizontal chip row.
     @MainActor
@@ -623,7 +683,7 @@ class ShareViewController: UIViewController {
         var req = URLRequest(url: tagsURL, timeoutInterval: 10)
         req.setValue("Basic \(token)", forHTTPHeaderField: "Authorization")
 
-        struct TagDTO: Decodable { let id: Int; let name: String }
+        struct TagDTO: Decodable { let id: Int; let name: String; let parentId: Int? }
         let fetched: [TagDTO]
         do {
             let (data, _) = try await URLSession.shared.data(for: req)
@@ -632,10 +692,11 @@ class ShareViewController: UIViewController {
             fetched = []
         }
 
-        availableTags = fetched.map { ShareTag(id: $0.id, name: $0.name) }
+        availableTags = fetched.map { ShareTag(id: $0.id, name: $0.name, parentId: $0.parentId) }
 
-        // Rebuild the chips stack on the main thread
+        // Rebuild the tag list on the main thread
         for view in tagChipsStack.arrangedSubviews { tagChipsStack.removeArrangedSubview(view); view.removeFromSuperview() }
+        tagButtons = [:]
 
         if availableTags.isEmpty {
             let none = UILabel()
@@ -644,43 +705,60 @@ class ShareViewController: UIViewController {
             none.textColor = .secondaryLabel
             tagChipsStack.addArrangedSubview(none)
         } else {
-            for tag in availableTags {
-                let btn = makeChipButton(tag: tag)
+            for row in tagTreeRows() {
+                let btn = makeTagRowButton(tag: row.tag, depth: row.depth)
+                tagButtons[row.tag.id] = btn
                 tagChipsStack.addArrangedSubview(btn)
             }
         }
+
+        // Grow the sheet with the list, up to maxVisibleTagRows; beyond that it scrolls.
+        let rowCount = max(1, min(tagButtons.count, Self.maxVisibleTagRows))
+        tagListHeightConstraint.constant = CGFloat(rowCount) * Self.tagRowHeight
+            + CGFloat(rowCount - 1) * tagChipsStack.spacing
+        if !stagingStack.isHidden {
+            containerHeightConstraint?.constant = stagingHeight
+            UIView.animate(withDuration: 0.2) { self.view.layoutIfNeeded() }
+        }
     }
 
-    private func makeChipButton(tag: ShareTag) -> UIButton {
-        var config = UIButton.Configuration.bordered()
-        config.title          = tag.name
-        config.cornerStyle    = .capsule
-        config.baseForegroundColor = .secondaryLabel
-        config.baseBackgroundColor = .systemFill
+    /// One row of the tag tree: checkmark circle and name, indented by depth.
+    private func makeTagRowButton(tag: ShareTag, depth: Int) -> UIButton {
+        var config = UIButton.Configuration.plain()
+        config.title = tag.name
+        config.imagePadding = 8
+        config.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 4 + CGFloat(depth) * 22, bottom: 0, trailing: 4)
+        config.titleLineBreakMode = .byTruncatingTail
         let btn = UIButton(configuration: config)
         btn.tag = tag.id
+        btn.contentHorizontalAlignment = .leading
+        btn.heightAnchor.constraint(equalToConstant: Self.tagRowHeight).isActive = true
         btn.addTarget(self, action: #selector(chipTapped(_:)), for: .touchUpInside)
+        applySelectionStyle(to: btn, selected: selectedTagIds.contains(tag.id))
         return btn
     }
 
+    private func applySelectionStyle(to button: UIButton, selected: Bool) {
+        var config = button.configuration ?? .plain()
+        config.image = UIImage(systemName: selected ? "checkmark.circle.fill" : "circle")
+        config.baseForegroundColor = selected ? .systemBlue : .label
+        button.configuration = config
+        button.accessibilityTraits = selected ? [.button, .selected] : .button
+    }
+
+    /// Selecting a sub-tag also selects its parent tags; deselecting a tag
+    /// also deselects its sub-tags, so a sub-tag never stays selected without
+    /// its parent.
     @objc private func chipTapped(_ sender: UIButton) {
         let tagId = sender.tag
         if selectedTagIds.contains(tagId) {
-            selectedTagIds.remove(tagId)
+            selectedTagIds.subtract(descendantIds(of: tagId).union([tagId]))
         } else {
-            selectedTagIds.insert(tagId)
+            selectedTagIds.formUnion(ancestorIds(of: tagId).union([tagId]))
         }
-        // Update button appearance to reflect selected state
-        var config = sender.configuration ?? UIButton.Configuration.bordered()
-        if selectedTagIds.contains(tagId) {
-            config.baseForegroundColor = .white
-            config.baseBackgroundColor = .systemBlue
-        } else {
-            config.baseForegroundColor = .secondaryLabel
-            config.baseBackgroundColor = .systemFill
+        for (id, button) in tagButtons {
+            applySelectionStyle(to: button, selected: selectedTagIds.contains(id))
         }
-        config.cornerStyle = .capsule
-        sender.configuration = config
     }
 
     // MARK: – Tag resolution
@@ -817,7 +895,7 @@ class ShareViewController: UIViewController {
                                                              in: Bundle(for: ShareViewController.self),
                                                              compatibleWith: nil)
             self.iconView.tintColor                  = .label
-            self.containerHeightConstraint?.constant  = 340
+            self.containerHeightConstraint?.constant  = self.stagingHeight
         }
     }
 

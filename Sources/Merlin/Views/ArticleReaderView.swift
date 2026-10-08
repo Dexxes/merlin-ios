@@ -4322,6 +4322,10 @@ struct ArticleTagSheet: View {
     @State private var newTagInput:    String   = ""
     @State private var pendingTags:    [String] = []
     @State private var isSaving:       Bool     = false
+    /// Eltern-Tag für neu angelegte Tags; `nil` = oberste Ebene.
+    @State private var newTagParentId: Int?     = nil
+
+    private var tree: TagTree { TagTree(allTags) }
 
     init(article: Article, allTags: [Tag], onSave: @escaping (Set<Int>) -> Void) {
         self.article = article
@@ -4344,36 +4348,9 @@ struct ArticleTagSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
 
-                    // Existing tags grid
+                    // Existing tags as an indented tree (sub-tags below their parent)
                     if !allTags.isEmpty {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 100))], spacing: 10) {
-                            ForEach(allTags) { tag in
-                                let isSelected = selectedTagIds.contains(tag.id)
-                                let chipColor: Color = tag.color.flatMap { Color(hexString: $0) } ?? .accentColor
-                                Button {
-                                    if isSelected { selectedTagIds.remove(tag.id) }
-                                    else          { selectedTagIds.insert(tag.id) }
-                                } label: {
-                                    HStack(spacing: 6) {
-                                        if isSelected {
-                                            Image(systemName: "checkmark")
-                                                .font(.caption2.weight(.bold))
-                                        }
-                                        Text(tag.name)
-                                            .font(.subheadline)
-                                            .lineLimit(1)
-                                    }
-                                    .frame(maxWidth: .infinity, minHeight: 38)
-                                    .background(isSelected ? chipColor.opacity(0.15) : Color(.secondarySystemGroupedBackground))
-                                    .foregroundStyle(isSelected ? chipColor : Color.secondary)
-                                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(
-                                        isSelected ? chipColor : Color(.separator),
-                                        lineWidth: isSelected ? 1.0 : 0.5))
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
+                        TagTreeSelectionList(tree: tree, selection: $selectedTagIds)
                     }
 
                     // New tag input
@@ -4402,7 +4379,7 @@ struct ArticleTagSheet: View {
                                 ForEach(tagSuggestions) { tag in
                                     let chipColor: Color = tag.color.flatMap { Color(hexString: $0) } ?? .accentColor
                                     Button {
-                                        selectedTagIds.insert(tag.id)
+                                        selectedTagIds = tree.selecting(tag.id, in: selectedTagIds)
                                         newTagInput = ""
                                     } label: {
                                         HStack(spacing: 4) {
@@ -4443,6 +4420,12 @@ struct ArticleTagSheet: View {
                             .padding(.vertical, 2)
                         }
                     }
+
+                    // Eltern-Tag für die neuen Tags (verschachtelte Tags)
+                    if !allTags.isEmpty,
+                       !pendingTags.isEmpty || !newTagInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        TagParentPicker(tree: tree, selection: $newTagParentId)
+                    }
                 }
                 .padding()
             }
@@ -4480,8 +4463,12 @@ struct ArticleTagSheet: View {
         Task {
             var finalIds = selectedTagIds
             if !pendingTags.isEmpty {
-                let created = (try? await MerlinAPI.shared.resolveTagIds(for: pendingTags)) ?? []
+                let created = (try? await MerlinAPI.shared.resolveTagIds(for: pendingTags, parentId: newTagParentId)) ?? []
                 created.forEach { finalIds.insert($0) }
+                // Neue Unter-Tags ziehen ihren Eltern-Tag mit, wie beim Antippen.
+                if !created.isEmpty, let parent = newTagParentId {
+                    finalIds = tree.selecting(parent, in: finalIds)
+                }
             }
             onSave(finalIds)
             dismiss()

@@ -318,15 +318,27 @@ actor MerlinAPI {
         return try await perform(req)
     }
 
-    func createTag(name: String) async throws -> Tag {
+    /// Legt einen Tag an; mit `parentId` als Unter-Tag (verschachtelte Tags,
+    /// nur merlin-nextcloud – andere Server ignorieren das Feld).
+    func createTag(name: String, parentId: Int? = nil) async throws -> Tag {
         var req = try makeRequest("/tags", method: "POST")
-        req.httpBody = try JSONEncoder().encode(["name": name])
+        var body: [String: Any] = ["name": name]
+        if let parentId { body["parentId"] = parentId }
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        return try await perform(req)
+    }
+
+    /// Hängt einen Tag (samt Unter-Tags) unter `parentId`; `nil` = oberste
+    /// Ebene (der Server erwartet dafür `0`). Kreise lehnt der Server ab.
+    func moveTag(id: Int, parentId: Int?) async throws -> Tag {
+        var req = try makeRequest("/tags/\(id)", method: "PUT")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["parentId": parentId ?? 0])
         return try await perform(req)
     }
 
     /// Resolves a list of tag names: matches existing ones by name (case-insensitive),
-    /// creates any that don't exist yet, and returns all IDs.
-    func resolveTagIds(for names: [String]) async throws -> [Int] {
+    /// creates any that don't exist yet (below `parentId`, if given), and returns all IDs.
+    func resolveTagIds(for names: [String], parentId: Int? = nil) async throws -> [Int] {
         guard !names.isEmpty else { return [] }
         let existing = try await getTags()
         var ids: [Int] = []
@@ -334,7 +346,7 @@ actor MerlinAPI {
             if let found = existing.first(where: { $0.name.lowercased() == name.lowercased() }) {
                 ids.append(found.id)
             } else {
-                let created = try await createTag(name: name)
+                let created = try await createTag(name: name, parentId: parentId)
                 ids.append(created.id)
             }
         }
