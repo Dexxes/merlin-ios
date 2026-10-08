@@ -271,8 +271,10 @@ final class ArticlesViewModel {
     var filteredArticles: [Article] {
         var result = articles
 
-        // Artikel mit ausgeblendeten Tags entfernen
-        if !excludedTagIds.isEmpty {
+        // Artikel mit ausgeblendeten Tags entfernen – aber nicht in der
+        // Einzel-Tag-Ansicht: wer explizit einen Tag öffnet, will dessen
+        // Artikel sehen, auch wenn der Tag im Tag-Filter ausgeblendet ist.
+        if selectedTagId == nil, !excludedTagIds.isEmpty {
             result = result.filter { article in
                 article.tags.allSatisfy { !excludedTagIds.contains($0.id) }
             }
