@@ -656,27 +656,38 @@ private let merlinDebugJS: String = #"""
 // genau das "Apple Maps Zoom-Buttons"-Muster für vertikal gestapelte Controls.
 // Unterhalb von iOS 26 bleibt exakt die bisherige Optik (readerBgColor +
 // Trennlinie) erhalten, damit die App weiterhin ab iOS 18 läuft.
+// Mit `tint` wird das Glas in dieser Farbe getönt (z. B. Akzentfarbe des Users);
+// unterhalb von iOS 26 dient sie dann als Flächenfarbe.
 private struct ReaderBarGlassBackground: ViewModifier {
     let topSeparator:   Bool
     let unionID:        String
     let namespace:      Namespace.ID
     let bgColor:        Color
     let separatorColor: Color
+    let tint:           Color?
 
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
             content
-                .glassEffect(.regular.interactive(), in: Rectangle())
+                .glassEffect(glass, in: Rectangle())
                 .glassEffectUnion(id: unionID, namespace: namespace)
         } else {
             content
                 .background {
-                    bgColor.opacity(0.97)
+                    (tint ?? bgColor).opacity(0.97)
                         .overlay(alignment: .top) {
                             if topSeparator { separatorColor.frame(height: 0.5) }
                         }
                 }
         }
+    }
+
+    @available(iOS 26.0, *)
+    private var glass: Glass {
+        // Volle Deckkraft würde das Glas komplett einfärben und die
+        // Transparenz schlucken – daher nur teilweise tönen.
+        if let tint { return .regular.tint(tint.opacity(0.45)).interactive() }
+        return .regular.interactive()
     }
 }
 
@@ -689,11 +700,12 @@ private extension View {
         unionID: String,
         namespace: Namespace.ID,
         bgColor: Color,
-        separatorColor: Color
+        separatorColor: Color,
+        tint: Color? = nil
     ) -> some View {
         modifier(ReaderBarGlassBackground(
             topSeparator: topSeparator, unionID: unionID, namespace: namespace,
-            bgColor: bgColor, separatorColor: separatorColor))
+            bgColor: bgColor, separatorColor: separatorColor, tint: tint))
     }
 }
 
@@ -1981,6 +1993,10 @@ struct ArticleReaderView: View {
                     bottomAreaStack
                 }
             }
+            // Liquid Glass richtet sich nach dem colorScheme der Umgebung (System);
+            // hier stattdessen dem Reader-Theme folgen, damit die Bars beim
+            // Light/Dark-Wechsel im Reader mitgehen.
+            .environment(\.colorScheme, readerIsDark ? .dark : .light)
             .ignoresSafeArea(edges: .bottom)
 
             // MARK: Highlight toolbar – docks to whichever screen edge (top or
@@ -2392,6 +2408,11 @@ struct ArticleReaderView: View {
         case .light:  return .white
         case .auto:   return isDark ? Color(white: 0.13) : .white
         }
+    }
+
+    /// Effektives Hell/Dunkel des Readers (Theme-Override oder System).
+    private var readerIsDark: Bool {
+        (theme == .dark) || (theme == .auto && colorScheme == .dark)
     }
 
     /// Lesbare Vordergrundfarbe auf der Akzentfläche (weiß, bei sehr hellen Akzenten dunkel).
@@ -2972,7 +2993,11 @@ struct ArticleReaderView: View {
     // Button 3 is dimmed when no next article is available.
 
     private var bottomBar: some View {
-        HStack(spacing: 0) {
+        // Glas in der Akzentfarbe des Users getönt; Icons in der dazu
+        // lesbaren Vordergrundfarbe (wie Titelbereich/AudioPlayerCard).
+        let accent   = Color(hexString: accentColorHex) ?? .red
+        let onAccent = Color(hexString: onAccentHex) ?? .white
+        return HStack(spacing: 0) {
 
             // ── Button 1: Back ────────────────────────────────────────────────
             Button {
@@ -2980,11 +3005,11 @@ struct ArticleReaderView: View {
             } label: {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 20, weight: .medium))
-                    .foregroundStyle(readerFgColor)
+                    .foregroundStyle(onAccent)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
 
-            readerSeparatorColor.frame(width: 0.5)
+            onAccent.opacity(0.25).frame(width: 0.5)
 
             // ── Button 2: Archive + back ──────────────────────────────────────
             Button {
@@ -2996,11 +3021,11 @@ struct ArticleReaderView: View {
             } label: {
                 Image(systemName: "archivebox.fill")
                     .font(.system(size: 20, weight: .medium))
-                    .foregroundStyle(readerFgColor)
+                    .foregroundStyle(onAccent)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
 
-            readerSeparatorColor.frame(width: 0.5)
+            onAccent.opacity(0.25).frame(width: 0.5)
 
             // ── Button 3: Archive + next article ──────────────────────────────
             Button {
@@ -3016,7 +3041,7 @@ struct ArticleReaderView: View {
                         .font(.system(size: 14, weight: .bold))
                 }
                 .font(.system(size: 20, weight: .medium))
-                .foregroundStyle(onNavigateNext != nil ? readerFgColor : readerFgColor.opacity(0.25))
+                .foregroundStyle(onNavigateNext != nil ? onAccent : onAccent.opacity(0.35))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .disabled(onNavigateNext == nil)
@@ -3030,7 +3055,8 @@ struct ArticleReaderView: View {
         // Ab iOS 26: echtes Liquid Glass statt Flat-Color (siehe ReaderBarGlassBackground).
         .readerBarGlassBackground(
             unionID: "readerBottomGlass", namespace: bottomGlassNamespace,
-            bgColor: readerBgColor, separatorColor: readerSeparatorColor)
+            bgColor: readerBgColor, separatorColor: readerSeparatorColor,
+            tint: accent)
     }
 
     // MARK: – Piper TTS panel
