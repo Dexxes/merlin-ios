@@ -39,6 +39,8 @@ private struct TourStep {
     let phase: TourPhase
     /// Anchor key for spotlight cutout. "plusButton" uses computed geometry.
     let anchorKey: String?
+    /// Zeigt in der Karte die Auswahl der Akzentfarbe (letzter Schritt).
+    var showsAccentPicker: Bool = false
 }
 
 /// Text des Löschfrist-Schritts hängt von den Fristen des Servers ab
@@ -113,7 +115,17 @@ private func makeTourSteps(retentionBody: String) -> [TourStep] { [
              title: L("onboarding.step13.title"),
              body: L("onboarding.step13.body"),
              phase: .list, anchorKey: nil),
+
+    TourStep(systemImage: "paintpalette",
+             title: L("onboarding.accentColor.title"),
+             body: L("onboarding.accentColor.body"),
+             phase: .list, anchorKey: nil,
+             showsAccentPicker: true),
 ] }
+
+/// Vorschläge für die Akzentfarbe im letzten Tour-Schritt; der Standard
+/// (`#FF3B30`) steht vorn. Jede andere Farbe gibt es über den ColorPicker.
+private let accentColorPresets = ["#FF3B30", "#FF9500", "#34C759", "#007AFF", "#AF52DE", "#FF2D55"]
 
 // MARK: - Spotlight cutout shape
 
@@ -701,6 +713,9 @@ struct OnboardingTourView: View {
     @State private var shakeAngle: Double = 0
     @AppStorage("merlinIsCardView") private var isCardView: Bool = true
     @AppStorage("merlin_developer_mode") private var developerMode: Bool = false
+    /// Dieselbe Einstellung wie „Akzentfarbe“ im Erscheinungsbild des Lesemenüs.
+    @AppStorage("merlin_accent_progress_color") private var accentColorHex: String = "#FF3B30"
+    @State private var initialAccentColorHex: String? = nil
     @Environment(\.colorScheme) private var colorScheme
 
     /// Dim opacity: lighter in dark mode so the spotlight cutout stays visible
@@ -974,7 +989,7 @@ struct OnboardingTourView: View {
 
             Image(systemName: step.systemImage)
                 .font(.system(size: 36, weight: .medium))
-                .foregroundStyle(.white)
+                .foregroundStyle(step.showsAccentPicker ? (Color(hexString: accentColorHex) ?? .white) : .white)
                 .frame(height: 46)
                 .padding(.bottom, 12)
 
@@ -991,6 +1006,11 @@ struct OnboardingTourView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 4)
                 .padding(.bottom, 24)
+
+            if step.showsAccentPicker {
+                accentColorChooser
+                    .padding(.bottom, 24)
+            }
 
             HStack(spacing: 10) {
                 Button {
@@ -1029,9 +1049,61 @@ struct OnboardingTourView: View {
         )
     }
 
+    // MARK: Accent color
+
+    private var accentColorChooser: some View {
+        HStack(spacing: 10) {
+            ForEach(accentColorPresets, id: \.self) { hex in
+                let selected = accentColorHex.uppercased() == hex
+                Button {
+                    setAccentColor(hex)
+                } label: {
+                    Circle()
+                        .fill(Color(hexString: hex) ?? .red)
+                        .frame(width: 32, height: 32)
+                        .overlay(Circle().strokeBorder(Color.white, lineWidth: selected ? 3 : 0))
+                        .overlay(Circle().strokeBorder(Color(white: 0.11), lineWidth: selected ? 1.5 : 0)
+                            .padding(3))
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selected ? .isSelected : [])
+            }
+
+            ColorPicker(L("onboarding.accentColor.custom"), selection: Binding(
+                get: { Color(hexString: accentColorHex) ?? .red },
+                set: { setAccentColor($0.hexString) }
+            ), supportsOpacity: false)
+            .labelsHidden()
+            .frame(width: 32, height: 32)
+        }
+    }
+
+    private func setAccentColor(_ hex: String) {
+        if initialAccentColorHex == nil { initialAccentColorHex = accentColorHex }
+        accentColorHex = hex
+        PreferencesStore.shared.accentProgressColorHex = hex
+    }
+
+    /// Schickt eine in der Tour geänderte Akzentfarbe einmalig an den Server
+    /// (wie das Erscheinungsbild im Lesemenü), statt bei jeder Bewegung im ColorPicker.
+    private func pushAccentColorIfChanged() {
+        guard let initial = initialAccentColorHex, initial != accentColorHex else { return }
+        Task {
+            do {
+                try await MerlinAPI.shared.updateSettings(PreferencesStore.shared.toServerDict())
+            } catch {
+                if case MerlinAPIError.networkError = error {
+                    SettingsSyncQueue.shared.markDirty()
+                }
+            }
+        }
+    }
+
     // MARK: Finish
 
     private func finish() {
+        pushAccentColorIfChanged()
         UserDefaults.standard.set(true, forKey: "merlin_tour_done")
         // Die Tour enthält den Löschfrist-Schritt: ein offener Hinweis ist damit erledigt.
         Task { await RetentionStore.shared.acknowledgeNotice() }

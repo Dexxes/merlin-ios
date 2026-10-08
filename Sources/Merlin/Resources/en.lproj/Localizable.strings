@@ -409,6 +409,9 @@
 "navigationMenu.tab.text" = "Text";
 "navigationMenu.tab.video" = "Video";
 "navigationMenu.tagsHeader" = "Tags";
+"onboarding.accentColor.body" = "Finally, pick your accent color for the progress bar and highlights. You can change it anytime under Appearance in the reader menu.";
+"onboarding.accentColor.custom" = "Custom color";
+"onboarding.accentColor.title" = "Your Accent Color";
 "onboarding.buttons.getStarted" = "Get Started";
 "onboarding.demo.leftFlyout.archive" = "Archive (47)";
 "onboarding.demo.leftFlyout.cardView" = "Card View";

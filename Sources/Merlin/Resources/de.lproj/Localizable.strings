@@ -409,6 +409,9 @@
 "navigationMenu.tab.text" = "Text";
 "navigationMenu.tab.video" = "Video";
 "navigationMenu.tagsHeader" = "Tags";
+"onboarding.accentColor.body" = "Wähle zum Schluss deine Akzentfarbe für Fortschrittsbalken und Hervorhebungen. Ändern kannst du sie jederzeit im Lesemenü unter Erscheinungsbild.";
+"onboarding.accentColor.custom" = "Eigene Farbe";
+"onboarding.accentColor.title" = "Deine Akzentfarbe";
 "onboarding.buttons.getStarted" = "Los geht's";
 "onboarding.demo.leftFlyout.archive" = "Archiv (47)";
 "onboarding.demo.leftFlyout.cardView" = "Kartenansicht";
