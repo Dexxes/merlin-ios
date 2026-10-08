@@ -1993,6 +1993,10 @@ struct ArticleReaderView: View {
                     bottomAreaStack
                 }
             }
+            // Liquid Glass richtet sich nach dem colorScheme der Umgebung (System);
+            // hier stattdessen dem Reader-Theme folgen, damit die Bars beim
+            // Light/Dark-Wechsel im Reader mitgehen.
+            .environment(\.colorScheme, readerIsDark ? .dark : .light)
             .ignoresSafeArea(edges: .bottom)
 
             // MARK: Highlight toolbar – docks to whichever screen edge (top or
@@ -2404,6 +2408,11 @@ struct ArticleReaderView: View {
         case .light:  return .white
         case .auto:   return isDark ? Color(white: 0.13) : .white
         }
+    }
+
+    /// Effektives Hell/Dunkel des Readers (Theme-Override oder System).
+    private var readerIsDark: Bool {
+        (theme == .dark) || (theme == .auto && colorScheme == .dark)
     }
 
     /// Lesbare Vordergrundfarbe auf der Akzentfläche (weiß, bei sehr hellen Akzenten dunkel).
