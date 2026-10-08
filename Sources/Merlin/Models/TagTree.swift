@@ -54,6 +54,30 @@ struct TagTree {
         descendantIds(of: id).union([id])
     }
 
+    /// Ids aller Vorfahren von `id` (Eltern-Tag, dessen Eltern-Tag, …).
+    func ancestorIds(of id: Int) -> Set<Int> {
+        var result = Set<Int>()
+        var parent = byId[id]?.parentId.flatMap { byId[$0] }
+        while let p = parent, p.id != id, result.insert(p.id).inserted {
+            parent = p.parentId.flatMap { byId[$0] }
+        }
+        return result
+    }
+
+    /// Auswahl nach Antippen von `id`: Ein ausgewählter Unter-Tag wählt seine
+    /// Eltern-Tags mit aus, ein abgewählter Tag nimmt seine Unter-Tags mit,
+    /// damit nie ein Unter-Tag ohne seinen Eltern-Tag ausgewählt bleibt.
+    func toggling(_ id: Int, in selection: Set<Int>) -> Set<Int> {
+        selection.contains(id)
+            ? selection.subtracting(scope(of: id))
+            : selecting(id, in: selection)
+    }
+
+    /// `selection` plus `id` und alle seine Eltern-Tags.
+    func selecting(_ id: Int, in selection: Set<Int>) -> Set<Int> {
+        selection.union(ancestorIds(of: id)).union([id])
+    }
+
     /// Alle Tags in Baumreihenfolge (Eltern vor Kindern, Geschwister nach
     /// Name). Mit `collapsed` werden die Kinder dieser Tags ausgelassen.
     func rows(collapsed: Set<Int> = []) -> [Row] {

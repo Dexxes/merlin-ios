@@ -37,7 +37,7 @@ Reine Datenstrukturen ohne Logik, die die API-Antworten abbilden.
 | `Comment.swift` | Kommentar (Thread-Wurzel mit `replies` oder Antwort, an einer Markierung oder am Artikel, Besitzer oder Gast); `CommentsPayload` (Threads + Markierungen + Änderungsmarke) und `CommentStreamEvent` für den Push-Kanal |
 | `Reminder.swift` | Datenmodell für eine Artikel-Erinnerung (id, articleId, articleTitle, triggerAt, status `pending/fired/cancelled`, createdAt) |
 | `Tag.swift` | Datenmodell für einen Tag (id, name, optionale Hex-Farbe, `parentId` für verschachtelte Tags, nil = oberste Ebene); `Equatable` |
-| `TagTree.swift` | Baumsicht auf die Tag-Liste (Gegenstück zu `src/tag-tree.js` im Server): Zeilen in Baumreihenfolge mit Tiefe (eingeklappte Äste ausgelassen), Nachfahren und `scope` eines Tags (Tag + Unter-Tags für Filter/Ausblenden), Pfad „Reisen › Japan“, `canMove` gegen Kreise; Tags ohne vorhandenen Eltern-Tag gelten als oberste Ebene |
+| `TagTree.swift` | Baumsicht auf die Tag-Liste (Gegenstück zu `src/tag-tree.js` im Server): Zeilen in Baumreihenfolge mit Tiefe (eingeklappte Äste ausgelassen), Nachfahren und `scope` eines Tags (Tag + Unter-Tags für Filter/Ausblenden), Pfad „Reisen › Japan“, `canMove` gegen Kreise, Auswahl-Regeln `toggling`/`selecting` (Unter-Tag zieht Eltern-Tags mit, Abwählen nimmt Unter-Tags mit); Tags ohne vorhandenen Eltern-Tag gelten als oberste Ebene |
 
 ---
 
@@ -131,7 +131,7 @@ Eigenständiges Target, das im iOS-Teilen-Menü erscheint.
 
 | Datei | Zweck |
 |-------|-------|
-| `ShareViewController.swift` | Herzstück der Share-Extension; drei UI-Modi: *Settings* (Zugangsdaten einrichten), *Staging* (URL-Vorschau + Tag-Auswahl), *Saving* (Fortschrittsanzeige); extrahiert URLs aus `NSExtensionItem`; lädt Tag-Liste vom Server; erstellt Artikel via POST; teilt Credentials über den Schlüsselbund-Access-Group mit der Hauptapp |
+| `ShareViewController.swift` | Herzstück der Share-Extension; drei UI-Modi: *Settings* (Zugangsdaten einrichten), *Staging* (URL-Vorschau + Tag-Auswahl als eingerückter Baum; ein Unter-Tag wählt seine Eltern-Tags mit aus, ein abgewählter Tag seine Unter-Tags ab), *Saving* (Fortschrittsanzeige); extrahiert URLs aus `NSExtensionItem`; lädt Tag-Liste vom Server; erstellt Artikel via POST; teilt Credentials über den Schlüsselbund-Access-Group mit der Hauptapp |
 
 ---
 

@@ -114,8 +114,7 @@ struct AddArticleSheet: View {
                 let tag = row.tag
                 let sel = selectedTagIds.contains(tag.id)
                 AddSheetTagChip(name: row.depth > 0 ? tree.path(of: tag) : tag.name, color: tag.color, isSelected: sel) {
-                    if sel { selectedTagIds.remove(tag.id) }
-                    else   { selectedTagIds.insert(tag.id) }
+                    selectedTagIds = tree.toggling(tag.id, in: selectedTagIds)
                 }
             }
         }
@@ -132,7 +131,7 @@ struct AddArticleSheet: View {
                         return c
                     }()
                     Button {
-                        selectedTagIds.insert(tag.id)
+                        selectedTagIds = viewModel.tagTree.selecting(tag.id, in: selectedTagIds)
                         newTagInput = ""
                     } label: {
                         HStack(spacing: 4) {
@@ -193,12 +192,16 @@ struct AddArticleSheet: View {
         errorMessage = nil
         Task {
             do {
-                var tagIds = Array(selectedTagIds)
+                var tagIds = selectedTagIds
                 if !pendingTags.isEmpty {
                     let created = try await MerlinAPI.shared.resolveTagIds(for: pendingTags, parentId: newTagParentId)
-                    tagIds.append(contentsOf: created)
+                    tagIds.formUnion(created)
+                    // Neue Unter-Tags ziehen ihren Eltern-Tag mit, wie beim Antippen.
+                    if let parent = newTagParentId {
+                        tagIds = viewModel.tagTree.selecting(parent, in: tagIds)
+                    }
                 }
-                try await viewModel.addArticle(url: url, tagIds: tagIds)
+                try await viewModel.addArticle(url: url, tagIds: Array(tagIds))
                 dismiss()
             } catch {
                 errorMessage = error.localizedDescription

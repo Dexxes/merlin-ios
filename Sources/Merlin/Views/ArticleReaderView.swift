@@ -4358,8 +4358,7 @@ struct ArticleTagSheet: View {
                                 let isSelected = selectedTagIds.contains(tag.id)
                                 let chipColor: Color = tag.color.flatMap { Color(hexString: $0) } ?? .accentColor
                                 Button {
-                                    if isSelected { selectedTagIds.remove(tag.id) }
-                                    else          { selectedTagIds.insert(tag.id) }
+                                    selectedTagIds = tree.toggling(tag.id, in: selectedTagIds)
                                 } label: {
                                     HStack(spacing: 6) {
                                         if isSelected {
@@ -4409,7 +4408,7 @@ struct ArticleTagSheet: View {
                                 ForEach(tagSuggestions) { tag in
                                     let chipColor: Color = tag.color.flatMap { Color(hexString: $0) } ?? .accentColor
                                     Button {
-                                        selectedTagIds.insert(tag.id)
+                                        selectedTagIds = tree.selecting(tag.id, in: selectedTagIds)
                                         newTagInput = ""
                                     } label: {
                                         HStack(spacing: 4) {
@@ -4495,6 +4494,10 @@ struct ArticleTagSheet: View {
             if !pendingTags.isEmpty {
                 let created = (try? await MerlinAPI.shared.resolveTagIds(for: pendingTags, parentId: newTagParentId)) ?? []
                 created.forEach { finalIds.insert($0) }
+                // Neue Unter-Tags ziehen ihren Eltern-Tag mit, wie beim Antippen.
+                if !created.isEmpty, let parent = newTagParentId {
+                    finalIds = tree.selecting(parent, in: finalIds)
+                }
             }
             onSave(finalIds)
             dismiss()
