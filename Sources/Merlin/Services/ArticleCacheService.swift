@@ -125,14 +125,10 @@ actor ArticleCacheService {
     // MARK: – Filter replication (mirrors ArticlesViewModel.fetchForFilter)
 
     private func matches(article: Article, filter: ArticleFilter, tagId: Int?, showArchivedForTag: Bool = false) -> Bool {
-        if let tagId {
-            guard article.tags.contains(where: { $0.id == tagId }) else { return false }
-            // Einzel-Tag-Ansicht ignoriert den aktiven Filter komplett (siehe
-            // `ArticlesViewModel.fetchForFilter`) – stattdessen entscheidet
-            // `showArchivedForTag`, ob archivierte Artikel mitgezählt werden.
-            return showArchivedForTag || !article.isArchived
-        }
-        return filter.matches(article)
+        // Einzel-Tag-Ansicht ignoriert den aktiven Filter komplett (siehe
+        // `ArticlesViewModel.fetchForFilter`) – stattdessen entscheidet
+        // `showArchivedForTag`, ob archivierte Artikel mitgezählt werden.
+        filter.matches(article, tagId: tagId, showArchivedForTag: showArchivedForTag)
     }
 
     // MARK: – Persistence

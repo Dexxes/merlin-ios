@@ -8,11 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Tags: archiving, restoring or (un)favoriting an article inside a tag view
+  no longer makes it vanish from the list (or stay when it should go); the
+  list now follows the tag view and its archive toggle instead of the main
+  filter underneath.
 - Comments: with "Newest reply first", the thread with the newest reply
   now also comes first among several threads on the same passage (they kept
   the server order before).
 
 ### Added
+- Tags: a tag view now shows archived articles by default, like Nextcloud.
+  In lists that mix active and archived articles (a tag, Favorites) archived
+  ones carry an "Archived" label and are slightly faded. The eye button still
+  hides them.
 - App tour: the last step now lets you pick your accent color (progress bar
   and highlights) from a few suggestions or any custom color. It is the same
   setting as "Accent color" under Appearance in the reader menu and is synced
