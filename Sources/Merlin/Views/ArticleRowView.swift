@@ -12,6 +12,10 @@ struct ArticleRowView: View {
     var onEditTags: () -> Void = {}
     var showFavoriteAction: Bool = true
     var showArchiveAction: Bool = true
+    /// Archivierte Artikel markieren und abblenden (siehe ArticleCardView).
+    var showArchivedState: Bool = true
+
+    private var isMarkedArchived: Bool { showArchivedState && article.isArchived }
 
     @AppStorage("merlin_developer_mode")        private var developerMode:   Bool   = false
     @AppStorage("merlin_accent_progress_color") private var accentColorHex: String = "#FF3B30"
@@ -43,6 +47,7 @@ struct ArticleRowView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .opacity(isMarkedArchived ? 0.6 : 1)
 
                 HStack(spacing: 6) {
                     Text(article.displaySiteName)
@@ -79,6 +84,13 @@ struct ArticleRowView: View {
                         Image(systemName: "star.fill")
                             .font(.caption2)
                             .foregroundStyle(.yellow)
+                    }
+
+                    if isMarkedArchived {
+                        Label(L("articleList.archivedBadge"), systemImage: "archivebox.fill")
+                            .labelStyle(.titleAndIcon)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
                     }
                 }
 
@@ -125,6 +137,7 @@ struct ArticleRowView: View {
                 }
                 .frame(width: 72, height: 54)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
+                .opacity(isMarkedArchived ? 0.6 : 1)
             }
         }
         .contentShape(Rectangle())

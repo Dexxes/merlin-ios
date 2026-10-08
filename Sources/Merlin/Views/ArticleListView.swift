@@ -428,6 +428,12 @@ struct ArticleListView: View {
         }
     }
 
+    /// Echte Archiv-Ansicht (nicht die Tag-Ansicht, die über einem Archiv-Filter
+    /// liegen kann): dort keine Archiv-Aktion und keine Archiv-Markierung.
+    private var isArchiveView: Bool {
+        viewModel.selectedTagId == nil && viewModel.selectedFilter.kind == .archive
+    }
+
     private var articleGrid: some View {
         // Echte List-Zeilen statt eines einzelnen LazyVGrid als Row-Inhalt:
         // GridItem(.flexible()) ist ohnehin nur eine Spalte, das LazyVGrid
@@ -446,7 +452,8 @@ struct ArticleListView: View {
                 onEditTags:       { tagSheetArticle = article },
                 onTap:            { selectedArticle = article },
                 showFavoriteAction: viewModel.selectedFilter.kind != .favorites,
-                showArchiveAction:  viewModel.selectedFilter.kind != .archive
+                showArchiveAction:  !isArchiveView,
+                showArchivedState:  !isArchiveView
             )
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
@@ -513,7 +520,8 @@ struct ArticleListView: View {
                     onDelete:           { Task { await viewModel.delete(article) } },
                     onEditTags:         { tagSheetArticle = article },
                     showFavoriteAction: viewModel.selectedFilter.kind != .favorites,
-                    showArchiveAction:  viewModel.selectedFilter.kind != .archive
+                    showArchiveAction:  !isArchiveView,
+                    showArchivedState:  !isArchiveView
                 )
             }
             .buttonStyle(.plain)

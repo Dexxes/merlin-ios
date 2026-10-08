@@ -21,6 +21,7 @@
 "articleList.archiveToast.archived" = "Archived";
 "articleList.archiveToast.unarchived" = "Removed from archive";
 "articleList.archiveToast.undoButton" = "Undo";
+"articleList.archivedBadge" = "Archived";
 "articleList.emptyState.allMessage" = "No articles saved yet. Tap + to add one.";
 "articleList.emptyState.archiveMessage" = "Your archive is empty.";
 "articleList.emptyState.continueListeningMessage" = "Nothing to continue listening. Audio you've started appears here.";

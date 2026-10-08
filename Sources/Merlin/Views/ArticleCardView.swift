@@ -78,10 +78,15 @@ struct ArticleCardView: View {
     var onTap: () -> Void = {}
     var showFavoriteAction: Bool = true
     var showArchiveAction: Bool = true
+    /// Archivierte Artikel mit Plakette und abgeblendet zeigen (gemischte
+    /// Listen wie Tag-Ansicht und Favoriten); die Archiv-Ansicht schaltet es ab.
+    var showArchivedState: Bool = true
 
     @State private var readProgress: CGFloat = 0
     @AppStorage("merlin_accent_progress_color") private var accentColorHex: String = "#FF3B30"
     @AppStorage("merlin_developer_mode")        private var developerMode:   Bool   = false
+
+    private var isMarkedArchived: Bool { showArchivedState && article.isArchived }
 
     // Swipe state — custom pill/full-swipe UX that native .swipeActions can't
     // replicate, so it's tracked manually (see RowSwipeGesture above).
@@ -474,7 +479,14 @@ struct ArticleCardView: View {
                         }
                     }
                     .clipped()
+                    .opacity(isMarkedArchived ? 0.6 : 1)
                 )
+                .overlay(alignment: .topLeading) {
+                    if isMarkedArchived {
+                        ArchivedBadge()
+                            .padding(6)
+                    }
+                }
                 .overlay(alignment: .bottom) {
                     if readProgress > 0.01 && readProgress < 0.99 {
                         GeometryReader { geo in
@@ -496,6 +508,7 @@ struct ArticleCardView: View {
                         .fontWeight(.semibold)
                         .foregroundStyle(.primary)
                         .lineLimit(3)
+                        .opacity(isMarkedArchived ? 0.6 : 1)
                     if article.isProcessing {
                         ProgressView().scaleEffect(0.6).frame(width: 12, height: 12)
                     }
@@ -603,5 +616,21 @@ struct ArticleCardView: View {
 
     private var cardPlaceholder: some View {
         NoImageView(isPDF: article.isPDF)
+    }
+}
+
+// MARK: – Archived badge
+
+/// Kleine Plakette "Archiviert" auf dem Kartenbild. Bewusst dunkel und
+/// nicht abgeblendet, damit sie auf jedem Vorschaubild lesbar bleibt.
+struct ArchivedBadge: View {
+    var body: some View {
+        Label(L("articleList.archivedBadge"), systemImage: "archivebox.fill")
+            .labelStyle(.titleAndIcon)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(Color.black.opacity(0.65), in: Capsule())
     }
 }

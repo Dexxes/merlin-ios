@@ -165,6 +165,17 @@ enum ArticleFilter: String, CaseIterable, Identifiable {
         case .archive:   return article.isArchived
         }
     }
+
+    /// Wie `matches(_:)`, berücksichtigt aber zusätzlich die Einzel-Tag-Ansicht:
+    /// Ist `tagId` gesetzt, zählt der Filter selbst nicht (siehe
+    /// `ArticlesViewModel.fetchForFilter`), sondern nur, ob der Artikel den Tag
+    /// trägt und ob archivierte Artikel eingeblendet sind. Einzige Regel für
+    /// Listenpflege im ViewModel und den Offline-Cache.
+    func matches(_ article: Article, tagId: Int?, showArchivedForTag: Bool) -> Bool {
+        guard let tagId else { return matches(article) }
+        guard article.tags.contains(where: { $0.id == tagId }) else { return false }
+        return showArchivedForTag || !article.isArchived
+    }
 }
 
 @MainActor
@@ -395,9 +406,9 @@ final class ArticlesViewModel {
 
     /// Blendet archivierte Artikel innerhalb der Einzel-Tag-Ansicht ein/aus
     /// (Toggle über den Augen-Button in `ArticleListView`, siehe dort).
-    /// Startzustand bewusst `false` – konsistent mit der normalen Liste, die
-    /// archivierte Artikel ebenfalls nicht standardmäßig mischt.
-    var showArchivedInTagView: Bool = false
+    /// Startzustand `true` wie in merlin-nextcloud: Ein Tag zeigt alle seine
+    /// Artikel, archivierte sind in Zeile/Karte markiert und abgeblendet.
+    var showArchivedInTagView: Bool = true
 
     var selectedTagName: String? {
         guard let id = selectedTagId else { return nil }
@@ -410,7 +421,7 @@ final class ArticlesViewModel {
 
     func selectTag(_ tagId: Int?) async {
         selectedTagId = tagId
-        showArchivedInTagView = false // frischer Start pro Tag/Tag-Wechsel
+        showArchivedInTagView = true // frischer Start pro Tag/Tag-Wechsel
         await load()
     }
 
@@ -582,19 +593,20 @@ final class ArticlesViewModel {
     /// `ArticleCacheService.matches`, so optimistic updates and
     /// server-reconciled updates behave identically.
     private func applyListMembership(_ article: Article) {
-        if shouldHide(article, in: selectedFilter) {
+        if shouldHide(article) {
             articles.removeAll { $0.id == article.id }
         } else {
             applyUpdate(article)
         }
     }
 
-    /// Whether `article` would be hidden by `filter`. Shared by
+    /// Whether `article` would be hidden by the visible list (active filter,
+    /// or the single-tag view with its archive toggle). Shared by
     /// `applyListMembership` (to drop rows optimistically) and
     /// `reinsertIfMissing` (to decide whether a rolled-back row needs
     /// restoring).
-    private func shouldHide(_ article: Article, in filter: ArticleFilter) -> Bool {
-        !filter.matches(article)
+    private func shouldHide(_ article: Article) -> Bool {
+        !selectedFilter.matches(article, tagId: selectedTagId, showArchivedForTag: showArchivedInTagView)
     }
 
     /// Restores `article` to the list — in roughly sorted position — if the
@@ -604,15 +616,15 @@ final class ArticlesViewModel {
     /// no-op for rows that were already removed, leaving them stuck hidden
     /// until the next full reload.
     private func reinsertIfMissing(_ article: Article) {
-        guard !shouldHide(article, in: selectedFilter) else { return }
+        guard !shouldHide(article) else { return }
         guard !articles.contains(where: { $0.id == article.id }) else {
             applyUpdate(article)
             return
         }
         let idx: Int
-        if selectedFilter.kind == .archive {
+        if selectedTagId == nil, selectedFilter.kind == .archive {
             idx = articles.firstIndex { ($0.archivedAt ?? "") < (article.archivedAt ?? "") } ?? articles.endIndex
-        } else if selectedFilter.kind == .continue {
+        } else if selectedTagId == nil, selectedFilter.kind == .continue {
             idx = articles.firstIndex { ($0.scrollUpdatedAt ?? 0) < (article.scrollUpdatedAt ?? 0) } ?? articles.endIndex
         } else {
             idx = articles.firstIndex { $0.createdAt < article.createdAt } ?? articles.endIndex
