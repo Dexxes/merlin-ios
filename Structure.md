@@ -133,6 +133,8 @@ Eigenständiges Target, das im iOS-Teilen-Menü erscheint.
 | Datei | Zweck |
 |-------|-------|
 | `ShareViewController.swift` | Herzstück der Share-Extension; drei UI-Modi: *Settings* (Zugangsdaten einrichten), *Staging* (URL-Vorschau bzw. Dateiname/Anzahl + Größe, dazu Tag-Auswahl als eingerückter Baum; ein Unter-Tag wählt seine Eltern-Tags mit aus, ein abgewählter Tag seine Unter-Tags ab), *Saving* (Fortschrittsanzeige, beim Hochladen mit Balken „Datei x von y“); extrahiert URLs aus `NSExtensionItem` und, wenn keine Web-URL dabei ist, Dateien (Fotos, Videos, Audios, PDFs, sonstige Dokumente; kopiert per `loadFileRepresentation` in einen eigenen Temp-Ordner); lädt Tag-Liste vom Server; erstellt Artikel via POST; teilt Credentials über den Schlüsselbund-Access-Group mit der Hauptapp |
+| `ImageCompressor.swift` | Komprimierungsstufen für geteilte Fotos (stark: 1600 px/JPEG 0,55, schwach: 4096 px/JPEG 0,8, unkomprimiert) über ImageIO, je mit Gesamtgröße und Vorschau-Ausschnitt; GIF/SVG bleiben unverändert |
+| `CompressionTile.swift` | Kachel einer Komprimierungsstufe im Share-Sheet (Vorschau, Titel, Größe) |
 | `FileUploader.swift` | Lädt geteilte Dateien in den Nextcloud-Ordner „Merlin Dateien“ (nur merlin-nextcloud ab 1.0.18): `POST /files/target` (Zielpfad im Unterordner der Dateiart), WebDAV-Upload (ein `PUT` bis 10 MB, darüber Chunked Upload v2 mit 10-MB-Stücken, einzelne Wiederholung je Stück), dann `POST /files` (Eintrag in der Liste mit Tags) |
 
 ---

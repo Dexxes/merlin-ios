@@ -77,21 +77,27 @@ struct ArticleCounts: Codable {
     var pages: CategoryCounts
     var videos: CategoryCounts
     var audio: CategoryCounts
+    var files: CategoryCounts
 
     init(pages: CategoryCounts = CategoryCounts(),
          videos: CategoryCounts = CategoryCounts(),
-         audio: CategoryCounts = CategoryCounts()) {
+         audio: CategoryCounts = CategoryCounts(),
+         files: CategoryCounts = CategoryCounts()) {
         self.pages  = pages
         self.videos = videos
         self.audio  = audio
+        self.files  = files
     }
 
-    // `audio` fehlt bei Servern ohne Audio-Kategorie - dann 0 statt Decode-Fehler.
+    // `audio` fehlt bei Servern ohne Audio-Kategorie, `files` bei Servern ohne
+    // „Merlin Dateien“ (Standalone-Server, merlin-nextcloud < 1.0.18) - dann 0
+    // statt Decode-Fehler.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         pages  = try c.decode(CategoryCounts.self, forKey: .pages)
         videos = try c.decode(CategoryCounts.self, forKey: .videos)
         audio  = try c.decodeIfPresent(CategoryCounts.self, forKey: .audio) ?? CategoryCounts()
+        files  = try c.decodeIfPresent(CategoryCounts.self, forKey: .files) ?? CategoryCounts()
     }
 
     subscript(group: ContentGroup) -> CategoryCounts {
@@ -99,6 +105,7 @@ struct ArticleCounts: Codable {
         case .pages:  return pages
         case .videos: return videos
         case .audio:  return audio
+        case .files:  return files
         }
     }
 }

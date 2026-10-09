@@ -469,6 +469,9 @@
 "settings.storage.serverLabel" = "Server";
 "settings.testConnection.button" = "Test Connection";
 "share.extracting.subtitle" = "Reading shared content…";
+"share.files.compression.light" = "Compress lightly";
+"share.files.compression.original" = "Uncompressed";
+"share.files.compression.strong" = "Compress strongly";
 "share.files.errorReadFile" = "The shared file could not be read.";
 "share.files.errorStandalone" = "Files can only be saved with Nextcloud, not with the Merlin server.";
 "share.files.errorUpload" = "Upload failed: %@";

@@ -590,6 +590,9 @@ struct ArticleListView: View {
         case .audioUnread:     return L("articleList.emptyState.unheardMessage")
         case .audioFavorites:  return L("articleList.emptyState.favoritesMessage")
         case .audioArchive:    return L("articleList.emptyState.archiveMessage")
+        case .filesUnread:     return L("articleList.emptyState.filesMessage")
+        case .filesFavorites:  return L("articleList.emptyState.favoritesMessage")
+        case .filesArchive:    return L("articleList.emptyState.archiveMessage")
         }
     }
 

@@ -14,6 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the reading list like articles, with the tags you pick. Large videos go up
   in chunks with a progress bar. Links are saved as articles as before; files
   need merlin-nextcloud 1.0.18 and are not available with the Merlin server.
+  Shared photos can be compressed before the upload: "Compress strongly"
+  (up to 1600 px), "Compress lightly" (up to 4096 px) or "Uncompressed",
+  each with a preview of the image detail and the resulting size; the last
+  choice is remembered.
+- Side menu: new "Files" tab (Nextcloud only) next to Text/Video/Audio with
+  the files saved from the phone (not opened, favorites, archive), in list
+  and card view. Uploaded videos and audio appear only there.
 - Tags: tags can be nested like on Nextcloud. The side menu shows the tag
   tree with an arrow to expand or collapse sub-tags (remembered across
   launches); long-press a tag and choose "Move to…" to put it below another

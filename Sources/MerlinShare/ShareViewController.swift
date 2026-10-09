@@ -217,6 +217,7 @@ class ShareViewController: UIViewController {
     private lazy var stagingStack: UIStackView = {
         let stack = UIStackView(arrangedSubviews: [
             urlPreviewLabel,
+            compressionRow,
             tagChipsScrollView,
             tagsField,
             confirmSaveButton
@@ -232,6 +233,38 @@ class ShareViewController: UIViewController {
     private var availableTags: [ShareTag] = []
     private var selectedTagIds: Set<Int> = []
     private var tagButtons: [Int: UIButton] = [:]
+
+    // MARK: – Image compression (staging mode for shared photos)
+
+    /// Strong / light / none, each with a preview crop and the resulting size.
+    private lazy var compressionTiles: [CompressionTile] = ImageCompression.allCases.map { level in
+        let title: String
+        switch level {
+        case .strong:   title = L("share.files.compression.strong")
+        case .light:    title = L("share.files.compression.light")
+        case .original: title = L("share.files.compression.original")
+        }
+        let tile = CompressionTile(level: level, title: title)
+        tile.addTarget(self, action: #selector(compressionTileTapped(_:)), for: .touchUpInside)
+        return tile
+    }
+    private lazy var compressionRow: UIStackView = {
+        let row = UIStackView(arrangedSubviews: compressionTiles)
+        row.axis = .horizontal
+        row.distribution = .fillEqually
+        row.spacing = 8
+        row.isHidden = true
+        row.translatesAutoresizingMaskIntoConstraints = false
+        return row
+    }()
+    private static let compressionDefaultsKey = "shareImageCompression"
+    /// Last choice, light compression the first time.
+    private var selectedCompression: ImageCompression =
+        ImageCompression(rawValue: UserDefaults.standard.string(forKey: ShareViewController.compressionDefaultsKey) ?? "") ?? .light
+    /// One task per level, run one after another (memory) with the selected
+    /// level first. Upload waits for the selected one.
+    private var compressionTasks: [ImageCompression: Task<CompressionOption, Never>] = [:]
+    private var compressionOptions: [ImageCompression: CompressionOption] = [:]
 
     private var pendingURL: String = ""
     /// Files from the share payload (photos, videos, PDFs …) when it carries no web link.
@@ -460,6 +493,7 @@ class ShareViewController: UIViewController {
         urlPreviewLabel.text  = display
         tagsField.text        = ""
         selectedTagIds        = []
+        compressionRow.isHidden = true
         stagingStack.isHidden  = false
         settingsStack.isHidden = true
         activityIndicator.stopAnimating()
@@ -476,13 +510,10 @@ class ShareViewController: UIViewController {
         pendingFiles = files
         pendingURL = ""
         subtitleLabel.text = L("share.files.subtitle")
-        let size = ByteCountFormatter.string(fromByteCount: files.reduce(0) { $0 + $1.size }, countStyle: .file)
-        if files.count == 1, let file = files.first {
-            urlPreviewLabel.text = "\(file.name) · \(size)"
-        } else {
-            let count = String(format: L("share.files.count"), files.count)
-            urlPreviewLabel.text = String(format: L("share.files.summary"), count, size)
-        }
+        let hasPhotos = files.contains(where: ImageCompressor.isCompressible)
+        compressionRow.isHidden = !hasPhotos
+        if hasPhotos { startCompression(files) }
+        updateFilesSummary()
         tagsField.text        = ""
         selectedTagIds        = []
         stagingStack.isHidden  = false
@@ -730,18 +761,18 @@ class ShareViewController: UIViewController {
             .filter { !$0.isEmpty }
 
         let url      = pendingURL
-        let files    = pendingFiles
+        let hasFiles = !pendingFiles.isEmpty
         let existing = selectedTagIds  // chip selections
-        if files.isEmpty { showSavingMode() } else { showUploadingMode() }
+        if hasFiles { showUploadingMode() } else { showSavingMode() }
         Task {
             // Resolve typed names → IDs (create if necessary)
             let newIds = newNames.isEmpty ? [] : await resolveTagIds(for: newNames)
             // Merge with chip-selected IDs; dedup
             let allIds = Array(existing.union(newIds))
-            if files.isEmpty {
-                await saveURL(url, tagIds: allIds)
+            if hasFiles {
+                await saveFiles(await filesForUpload(), tagIds: allIds)
             } else {
-                await saveFiles(files, tagIds: allIds)
+                await saveURL(url, tagIds: allIds)
             }
         }
     }
@@ -752,6 +783,7 @@ class ShareViewController: UIViewController {
     /// tags) plus the extra rows of the tag list.
     private var stagingHeight: CGFloat {
         340 + tagListHeightConstraint.constant - Self.tagRowHeight
+            + (compressionRow.isHidden ? 0 : CompressionTile.height + stagingStack.spacing)
     }
 
     /// Tags in tree order (parents before children, siblings by name) with
@@ -984,6 +1016,63 @@ class ShareViewController: UIViewController {
         }
     }
 
+    // MARK: – Image compression
+
+    private func startCompression(_ files: [SharedFile]) {
+        compressionOptions = [:]
+        for tile in compressionTiles {
+            tile.show(nil)
+            tile.isSelected = tile.level == selectedCompression
+        }
+        let order = [selectedCompression] + ImageCompression.allCases.filter { $0 != selectedCompression }
+        var previous: Task<CompressionOption, Never>?
+        for level in order {
+            let before = previous
+            let task = Task.detached(priority: .userInitiated) { () -> CompressionOption in
+                _ = await before?.value
+                return ImageCompressor.option(for: files, level: level)
+            }
+            compressionTasks[level] = task
+            previous = task
+            Task { [weak self] in
+                let option = await task.value
+                guard let self, !self.isDone else { return }
+                self.compressionOptions[level] = option
+                self.compressionTiles.first { $0.level == level }?.show(option)
+                self.updateFilesSummary()
+            }
+        }
+    }
+
+    @objc private func compressionTileTapped(_ sender: CompressionTile) {
+        selectedCompression = sender.level
+        UserDefaults.standard.set(sender.level.rawValue, forKey: Self.compressionDefaultsKey)
+        for tile in compressionTiles {
+            tile.isSelected = tile === sender
+        }
+        updateFilesSummary()
+    }
+
+    /// Name or count of the shared files plus their total size at the selected
+    /// compression (the original size until that level is computed).
+    private func updateFilesSummary() {
+        let files = compressionRow.isHidden ? pendingFiles
+            : compressionOptions[selectedCompression]?.files ?? pendingFiles
+        let size = ByteCountFormatter.string(fromByteCount: files.reduce(0) { $0 + $1.size }, countStyle: .file)
+        if files.count == 1, let file = files.first {
+            urlPreviewLabel.text = "\(file.name) · \(size)"
+        } else {
+            let count = String(format: L("share.files.count"), files.count)
+            urlPreviewLabel.text = String(format: L("share.files.summary"), count, size)
+        }
+    }
+
+    /// The shared files at the selected compression; waits until it is computed.
+    private func filesForUpload() async -> [SharedFile] {
+        guard !compressionRow.isHidden, let task = compressionTasks[selectedCompression] else { return pendingFiles }
+        return await task.value.files
+    }
+
     // MARK: – File upload
 
     private func showUploadingMode() {
@@ -1092,6 +1181,7 @@ class ShareViewController: UIViewController {
     @objc private func done() {
         guard !isDone else { return }
         isDone = true
+        compressionTasks.values.forEach { $0.cancel() }
         removeTemporaryFiles()
         extensionContext?.completeRequest(returningItems: nil)
     }

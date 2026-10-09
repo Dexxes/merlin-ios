@@ -23,12 +23,14 @@ struct UndoableAction {
 
 // MARK: –
 
-/// Oberste Inhaltskategorie eines Artikels (Seiten/Videos/Audio), analog zu
-/// den Gruppen in Sidebar.vue und ArticleController::index() (contentType)
-/// in merlin-nextcloud. "Video" und "Audio" sind eigene Kategorien, alles
-/// andere (inkl. "Mixed", also Text mit Medium) zählt zu den Seiten.
+/// Oberste Inhaltskategorie eines Artikels (Seiten/Videos/Audio/Dateien),
+/// analog zu den Gruppen in Sidebar.vue und ArticleController::index()
+/// (contentType) in merlin-nextcloud. "Video" und "Audio" sind eigene
+/// Kategorien, alles andere (inkl. "Mixed", also Text mit Medium) zählt zu den
+/// Seiten. Dateien vom Handy („Merlin Dateien“, `fileId` gesetzt) stehen nur
+/// unter Dateien, auch ein hochgeladenes Video.
 enum ContentGroup {
-    case pages, videos, audio
+    case pages, videos, audio, files
 
     init(category: String?) {
         switch category {
@@ -38,12 +40,17 @@ enum ContentGroup {
         }
     }
 
+    init(article: Article) {
+        self = article.fileId != nil ? .files : ContentGroup(category: article.category)
+    }
+
     /// Wert für den `contentType`-Parameter von `GET /api/articles`.
     var contentType: String {
         switch self {
         case .pages:  return "page"
         case .videos: return "video"
         case .audio:  return "audio"
+        case .files:  return "file"
         }
     }
 }
@@ -65,6 +72,10 @@ enum ArticleFilter: String, CaseIterable, Identifiable {
     case audioUnread     = "AudioUnread"
     case audioFavorites  = "AudioFavorites"
     case audioArchive    = "AudioArchive"
+    // Dateien: kein „Weiter…“ (Bilder und Dateien haben keinen Lesefortschritt).
+    case filesUnread     = "FilesUnread"
+    case filesFavorites  = "FilesFavorites"
+    case filesArchive    = "FilesArchive"
 
     var id: String { rawValue }
 
@@ -77,15 +88,16 @@ enum ArticleFilter: String, CaseIterable, Identifiable {
         case .pagesContinue, .pagesUnread, .pagesFavorites, .pagesArchive:     return .pages
         case .videosContinue, .videosUnread, .videosFavorites, .videosArchive: return .videos
         case .audioContinue, .audioUnread, .audioFavorites, .audioArchive:     return .audio
+        case .filesUnread, .filesFavorites, .filesArchive:                     return .files
         }
     }
 
     var kind: Kind {
         switch self {
         case .pagesContinue, .videosContinue, .audioContinue:    return .continue
-        case .pagesUnread, .videosUnread, .audioUnread:          return .unread
-        case .pagesFavorites, .videosFavorites, .audioFavorites: return .favorites
-        case .pagesArchive, .videosArchive, .audioArchive:       return .archive
+        case .pagesUnread, .videosUnread, .audioUnread, .filesUnread:             return .unread
+        case .pagesFavorites, .videosFavorites, .audioFavorites, .filesFavorites: return .favorites
+        case .pagesArchive, .videosArchive, .audioArchive, .filesArchive:         return .archive
         }
     }
 
@@ -101,8 +113,9 @@ enum ArticleFilter: String, CaseIterable, Identifiable {
         case .videosUnread:    return L("articleList.filter.unseen")
         case .audioContinue:   return L("articleList.filter.continueListening")
         case .audioUnread:     return L("articleList.filter.unheard")
-        case .pagesFavorites, .videosFavorites, .audioFavorites: return L("articleList.filter.favorites")
-        case .pagesArchive, .videosArchive, .audioArchive:       return L("articleList.filter.archive")
+        case .filesUnread:     return L("articleList.filter.unopened")
+        case .pagesFavorites, .videosFavorites, .audioFavorites, .filesFavorites: return L("articleList.filter.favorites")
+        case .pagesArchive, .videosArchive, .audioArchive, .filesArchive:         return L("articleList.filter.archive")
         }
     }
 
@@ -114,8 +127,9 @@ enum ArticleFilter: String, CaseIterable, Identifiable {
         case .videosUnread:    return "play.rectangle"
         case .audioContinue:   return "headphones.circle"
         case .audioUnread:     return "headphones"
-        case .pagesFavorites, .videosFavorites, .audioFavorites: return "star"
-        case .pagesArchive, .videosArchive, .audioArchive:       return "archivebox"
+        case .filesUnread:     return "folder"
+        case .pagesFavorites, .videosFavorites, .audioFavorites, .filesFavorites: return "star"
+        case .pagesArchive, .videosArchive, .audioArchive, .filesArchive:         return "archivebox"
         }
     }
 
@@ -136,6 +150,9 @@ enum ArticleFilter: String, CaseIterable, Identifiable {
         case .audioUnread:     return "audio-unread"
         case .audioFavorites:  return "audio-favorites"
         case .audioArchive:    return "audio-archived"
+        case .filesUnread:     return "files-unread"
+        case .filesFavorites:  return "files-favorites"
+        case .filesArchive:    return "files-archived"
         }
     }
 
@@ -154,7 +171,7 @@ enum ArticleFilter: String, CaseIterable, Identifiable {
     /// Grundlage für `ArticlesViewModel.shouldHide` und den Offline-Cache
     /// (`ArticleCacheService.matches`), spiegelt `fetchForFilter`.
     func matches(_ article: Article) -> Bool {
-        guard ContentGroup(category: article.category) == group else { return false }
+        guard ContentGroup(article: article) == group else { return false }
         switch kind {
         case .continue:
             let progress = article.scrollProgress ?? 0
