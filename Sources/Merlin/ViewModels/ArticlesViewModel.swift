@@ -556,6 +556,21 @@ final class ArticlesViewModel {
 
     // MARK: – Mutations
 
+    /// Renames a file entry (file in Nextcloud and entry title). Returns an
+    /// error message for the rename alert, nil on success.
+    func renameFile(_ article: Article, to name: String) async -> String? {
+        do {
+            let updated = try await MerlinAPI.shared.renameFile(article.id, to: name)
+            applyListMembership(updated)
+            await ArticleCacheService.shared.upsert(updated)
+            return nil
+        } catch MerlinAPIError.serverError(409) {
+            return L("fileRename.errorExists")
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
     func toggleFavorite(_ article: Article, recordUndo: Bool = true) async {
         if recordUndo { lastUndoableAction = UndoableAction(kind: .toggleFavorite, article: article) }
 

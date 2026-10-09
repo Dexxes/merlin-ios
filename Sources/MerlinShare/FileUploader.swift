@@ -17,7 +17,8 @@ struct SharedFile: Sendable {
 /// 2. WebDAV upload: one `PUT` for small files, Nextcloud chunked upload v2
 ///    (`MKCOL` + numbered `PUT`s + `MOVE`) for large ones, so a video never has
 ///    to fit into the extension's memory and a failed chunk is retried alone
-/// 3. `POST /api/files` → entry in the list, with the selected tags
+/// 3. `POST /api/files` → entry in the list, with the selected tags and the
+///    text recognised in a photo (`TextRecognizer`)
 ///
 /// The file never goes through the Merlin API itself: PHP upload limits are too
 /// small for videos.
@@ -39,7 +40,7 @@ struct FileUploader: Sendable {
 
     /// Uploads `file` and registers it. `progress` receives the uploaded
     /// fraction of this file (0…1).
-    func upload(_ file: SharedFile, tagIds: [Int],
+    func upload(_ file: SharedFile, tagIds: [Int], text: String? = nil,
                 progress: @escaping @Sendable (Double) -> Void) async throws {
         let target = try await requestTarget(for: file)
         guard let destination = URL(string: baseURL + target.davPath) else { throw UploadError.invalidResponse }
@@ -53,7 +54,7 @@ struct FileUploader: Sendable {
             try await chunkedUpload(file, to: destination, uploadsRoot: uploadsRoot, progress: progress)
         }
         progress(1)
-        try await retrying { try await register(path: target.path, tagIds: tagIds) }
+        try await retrying { try await register(path: target.path, tagIds: tagIds, text: text) }
     }
 
     // MARK: – Merlin API
@@ -76,13 +77,15 @@ struct FileUploader: Sendable {
         return target
     }
 
-    private func register(path: String, tagIds: [Int]) async throws {
+    private func register(path: String, tagIds: [Int], text: String?) async throws {
         var components = URLComponents(url: try apiURL("/files"), resolvingAgainstBaseURL: false)
         if !tagIds.isEmpty {
             components?.queryItems = tagIds.map { URLQueryItem(name: "tagIds[]", value: "\($0)") }
         }
         guard let url = components?.url else { throw UploadError.invalidResponse }
-        _ = try await send(method: "POST", url: url, json: ["path": path])
+        var body = ["path": path]
+        if let text { body["text"] = text }
+        _ = try await send(method: "POST", url: url, json: body)
     }
 
     private func apiURL(_ path: String) throws -> URL {

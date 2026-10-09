@@ -10,6 +10,8 @@ struct ArticleRowView: View {
     let onToggleArchive: () -> Void
     let onDelete: () -> Void
     var onEditTags: () -> Void = {}
+    /// „Umbenennen…“ im Kontextmenü, nur bei Datei-Einträgen.
+    var onRename: (() -> Void)? = nil
     var showFavoriteAction: Bool = true
     var showArchiveAction: Bool = true
     /// Archivierte Artikel markieren und abblenden (siehe ArticleCardView).
@@ -229,6 +231,11 @@ struct ArticleRowView: View {
                 onEditTags()
             } label: {
                 Label(L("articleActions.menu.editTags"), systemImage: "tag")
+            }
+            if article.fileId != nil, let onRename {
+                Button { onRename() } label: {
+                    Label(L("fileRename.menu"), systemImage: "pencil")
+                }
             }
 
             Divider()

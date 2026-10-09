@@ -181,6 +181,16 @@
 "common.save" = "Save";
 "common.settings" = "Settings";
 "common.share" = "Share";
+"fileRename.confirm" = "Rename";
+"fileRename.errorExists" = "A file with this name already exists in the folder.";
+"fileRename.errorTitle" = "Rename failed";
+"fileRename.menu" = "Rename…";
+"fileRename.message" = "The extension .%@ is kept.";
+"fileRename.placeholder" = "Name";
+"fileRename.title" = "Rename file";
+"lightbox.liveText" = "Text in image";
+"lightbox.liveTextFailed" = "Text could not be recognized";
+"lightbox.liveTextNone" = "No text found in the image";
 "merlinServer.account.apiTokensHeading" = "API tokens";
 "merlinServer.account.apiTokensHint" = "For iOS/Android/browser extensions: use username + token instead of a password.";
 "merlinServer.account.cancel" = "Cancel";

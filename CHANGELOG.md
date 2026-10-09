@@ -28,6 +28,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sharing a saved file (list, cards, reader) now shares the file itself, for
   example a photo you can save to Photos or a PDF for Files, instead of its
   Nextcloud link. The file is downloaded when you pick the target.
+- Saved files can be renamed ("Rename…" in the context menu of list and
+  cards and in the reader's side menu). The file in Nextcloud is renamed
+  too and keeps its extension. Needs merlin-nextcloud 1.0.19.
+- Text in images: when photos are shared to Merlin, the text in them is
+  recognised on the device (Vision) and saved with the entry, shown under
+  "Recognized text" and found by the search. In the full-screen image view
+  a Live Text button lets you select, copy, translate or look up the text
+  of the current image.
 - Tags: tags can be nested like on Nextcloud. The side menu shows the tag
   tree with an arrow to expand or collapse sub-tags (remembered across
   launches); long-press a tag and choose "Move to…" to put it below another

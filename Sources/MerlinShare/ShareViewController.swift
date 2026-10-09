@@ -265,6 +265,9 @@ class ShareViewController: UIViewController {
     /// level first. Upload waits for the selected one.
     private var compressionTasks: [ImageCompression: Task<CompressionOption, Never>] = [:]
     private var compressionOptions: [ImageCompression: CompressionOption] = [:]
+    /// Text recognised in the shared photos (index in `pendingFiles` → text),
+    /// sent along with the upload. Runs while the user picks tags.
+    private var textRecognitionTask: Task<[Int: String], Never>?
 
     private var pendingURL: String = ""
     /// Files from the share payload (photos, videos, PDFs …) when it carries no web link.
@@ -512,7 +515,21 @@ class ShareViewController: UIViewController {
         subtitleLabel.text = L("share.files.subtitle")
         let hasPhotos = files.contains(where: ImageCompressor.isCompressible)
         compressionRow.isHidden = !hasPhotos
-        if hasPhotos { startCompression(files) }
+        if hasPhotos {
+            startCompression(files)
+            // Nach der Komprimierung, nicht parallel: beides dekodiert große
+            // Bilder, und die Extension hat nur ~120 MB Speicher.
+            let compressions = Array(compressionTasks.values)
+            textRecognitionTask = Task.detached(priority: .utility) {
+                for compression in compressions { _ = await compression.value }
+                var texts: [Int: String] = [:]
+                for (index, file) in files.enumerated() where ImageCompressor.isCompressible(file) {
+                    if Task.isCancelled { break }
+                    if let text = TextRecognizer.recognize(file.localURL) { texts[index] = text }
+                }
+                return texts
+            }
+        }
         updateFilesSummary()
         tagsField.text        = ""
         selectedTagIds        = []
@@ -1092,13 +1109,15 @@ class ShareViewController: UIViewController {
         let token = Data("\(storedUsername):\(storedPassword)".utf8).base64EncodedString()
         let uploader = FileUploader(baseURL: storedURL, apiPrefix: apiPrefix, authorization: "Basic \(token)")
         let totalBytes = Double(max(1, files.reduce(0) { $0 + $1.size }))
+        // Gleiche Reihenfolge wie pendingFiles (Komprimierung ersetzt nur Dateien).
+        let texts = await textRecognitionTask?.value ?? [:]
         var uploadedBytes: Int64 = 0
 
         for (index, file) in files.enumerated() {
             let before = Double(uploadedBytes)
             updateUploadProgress(index: index, total: files.count, fraction: before / totalBytes)
             do {
-                try await uploader.upload(file, tagIds: tagIds) { [weak self] fraction in
+                try await uploader.upload(file, tagIds: tagIds, text: texts[index]) { [weak self] fraction in
                     Task { @MainActor in
                         self?.updateUploadProgress(index: index, total: files.count,
                                                    fraction: (before + fraction * Double(file.size)) / totalBytes)
@@ -1182,6 +1201,7 @@ class ShareViewController: UIViewController {
         guard !isDone else { return }
         isDone = true
         compressionTasks.values.forEach { $0.cancel() }
+        textRecognitionTask?.cancel()
         removeTemporaryFiles()
         extensionContext?.completeRequest(returningItems: nil)
     }

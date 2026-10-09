@@ -10,6 +10,8 @@ struct ArticleListView: View {
 
     @State private var selectedArticle: Article? = nil
     @State private var tagSheetArticle: Article? = nil
+    /// Datei-Eintrag, für den der Umbenennen-Dialog offen ist.
+    @State private var renameArticle: Article? = nil
     @State private var showAddSheet:    Bool = false
     @State private var showSettings:    Bool = false
     @State private var showTagFilter:   Bool = false
@@ -159,6 +161,7 @@ struct ArticleListView: View {
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
             }
+            .renameFileAlert(article: $renameArticle, viewModel: viewModel)
             .sheet(item: $tagSheetArticle) { article in
                 ArticleTagSheet(
                     article: article,
@@ -450,6 +453,7 @@ struct ArticleListView: View {
                 onToggleArchive:  { Task { await viewModel.toggleArchive(article) } },
                 onDelete:         { Task { await viewModel.delete(article) } },
                 onEditTags:       { tagSheetArticle = article },
+                onRename:         { renameArticle = article },
                 onTap:            { selectedArticle = article },
                 showFavoriteAction: viewModel.selectedFilter.kind != .favorites,
                 showArchiveAction:  !isArchiveView,
@@ -519,6 +523,7 @@ struct ArticleListView: View {
                     onToggleArchive:    { Task { await viewModel.toggleArchive(article) } },
                     onDelete:           { Task { await viewModel.delete(article) } },
                     onEditTags:         { tagSheetArticle = article },
+                    onRename:           { renameArticle = article },
                     showFavoriteAction: viewModel.selectedFilter.kind != .favorites,
                     showArchiveAction:  !isArchiveView,
                     showArchivedState:  !isArchiveView

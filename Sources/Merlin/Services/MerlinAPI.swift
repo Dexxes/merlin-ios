@@ -284,6 +284,15 @@ actor MerlinAPI {
         _ = try await performRaw(req)
     }
 
+    /// Renames the file of a "Merlin files" entry (merlin-nextcloud ≥ 1.0.19).
+    /// `name` without extension; the server keeps the file's extension and
+    /// returns the rebuilt entry. 409 (`serverError(409)`) = name taken.
+    func renameFile(_ id: Int, to name: String) async throws -> Article {
+        var req = try makeRequest("/articles/\(id)/file-name", method: "PUT")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["name": name])
+        return try await perform(req)
+    }
+
     func toggleFavorite(_ id: Int) async throws -> Article {
         var req = try makeRequest("/articles/\(id)/favorite", method: "PUT")
         req.httpBody = Data()

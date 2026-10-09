@@ -1603,6 +1603,8 @@ struct ArticleReaderView: View {
     @State private var lightboxState:      LightboxState? = nil
     @State private var youtubePlayerState: YouTubePlayerState? = nil
     @State private var showTagSheet        = false
+    /// Umbenennen-Dialog für Datei-Einträge (siehe RenameFileAlert).
+    @State private var renameArticle: Article? = nil
     @State private var showReportSheet     = false
     @State private var showShareLinkSheet  = false
     /// Kommentare und Markierungen des Artikels, live per Push (nur Nextcloud).
@@ -2232,6 +2234,7 @@ struct ArticleReaderView: View {
             ReminderSheet(article: current, currentReminder: $articleReminder)
         }
         // ── Öffentlicher Share-Link ──────────────────────────────────────────
+        .renameFileAlert(article: $renameArticle, viewModel: viewModel)
         .sheet(isPresented: $showShareLinkSheet, onDismiss: {
             // Link angelegt/widerrufen: der Push-Kanal endet ohne Link
             // (`.closed`) und muss danach neu verbunden werden.
@@ -2872,6 +2875,13 @@ struct ArticleReaderView: View {
                 menuRow(icon: "tag", label: L("articleReader.sideMenu.editTags")) {
                     showSideMenu = false
                     showTagSheet = true
+                }
+
+                if current.fileId != nil {
+                    menuRow(icon: "pencil", label: L("fileRename.menu")) {
+                        showSideMenu = false
+                        renameArticle = current
+                    }
                 }
 
                 menuRow(
