@@ -27,6 +27,9 @@ struct LiveTextImageView: UIViewRepresentable {
         interaction.analysis = analysis
         // Erkannten Text gleich hervorheben, damit sichtbar ist, was markierbar ist.
         interaction.selectableItemsHighlighted = true
+        // Apples eigenen (blauen) Live-Text-Knopf ausblenden: die Lightbox hat
+        // schon einen an derselben Stelle, beide lagen übereinander.
+        interaction.isSupplementaryInterfaceHidden = true
         return view
     }
 
