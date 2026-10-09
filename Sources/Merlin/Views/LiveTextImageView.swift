@@ -13,6 +13,13 @@ struct LiveTextImageView: UIViewRepresentable {
         let view = UIImageView(image: image)
         view.contentMode = .scaleAspectFit
         view.isUserInteractionEnabled = true
+        // Ohne das meldet der UIImageView die Pixelgröße des Bildes als eigene
+        // Größe, der ZStack der Lightbox wächst mit und schiebt Schließen- und
+        // Live-Text-Knopf aus dem Bild – man kam nicht mehr zurück.
+        for axis in [NSLayoutConstraint.Axis.horizontal, .vertical] {
+            view.setContentHuggingPriority(.defaultLow, for: axis)
+            view.setContentCompressionResistancePriority(.defaultLow, for: axis)
+        }
         let interaction = ImageAnalysisInteraction()
         interaction.preferredInteractionTypes = .automatic
         view.addInteraction(interaction)
@@ -28,6 +35,11 @@ struct LiveTextImageView: UIViewRepresentable {
         if context.coordinator.interaction?.analysis !== analysis {
             context.coordinator.interaction?.analysis = analysis
         }
+    }
+
+    /// Nimmt immer den angebotenen Platz, nie die Bildgröße.
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UIImageView, context: Context) -> CGSize? {
+        proposal.replacingUnspecifiedDimensions()
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }

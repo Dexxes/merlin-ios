@@ -188,7 +188,9 @@
 "fileRename.message" = "Die Endung .%@ bleibt erhalten.";
 "fileRename.placeholder" = "Name";
 "fileRename.title" = "Datei umbenennen";
+"fileText.createEvent" = "Termin erstellen";
 "lightbox.liveText" = "Text im Bild";
+"lightbox.liveTextDone" = "Fertig";
 "lightbox.liveTextFailed" = "Text konnte nicht erkannt werden";
 "lightbox.liveTextNone" = "Kein Text im Bild gefunden";
 "merlinServer.account.apiTokensHeading" = "API-Tokens";

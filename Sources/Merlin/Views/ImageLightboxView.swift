@@ -82,7 +82,27 @@ struct ImageLightboxView: View {
             if let liveText {
                 Color.black.ignoresSafeArea()
                 LiveTextImageView(image: liveText.image, analysis: liveText.analysis)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .ignoresSafeArea()
+
+                // ── Live Text beenden (oben links), zurück zum normalen Bild ──
+                VStack {
+                    HStack {
+                        Button { self.liveText = nil } label: {
+                            Text(L("lightbox.liveTextDone"))
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(.black)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                                .background(Color.white, in: Capsule())
+                                .shadow(color: .black.opacity(0.4), radius: 4)
+                        }
+                        .padding(.top, 56)
+                        .padding(.leading, 20)
+                        Spacer()
+                    }
+                    Spacer()
+                }
             }
 
             // ── X button ─────────────────────────────────────────────────────

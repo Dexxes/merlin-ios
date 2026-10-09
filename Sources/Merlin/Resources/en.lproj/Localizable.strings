@@ -188,7 +188,9 @@
 "fileRename.message" = "The extension .%@ is kept.";
 "fileRename.placeholder" = "Name";
 "fileRename.title" = "Rename file";
+"fileText.createEvent" = "Create event";
 "lightbox.liveText" = "Text in image";
+"lightbox.liveTextDone" = "Done";
 "lightbox.liveTextFailed" = "Text could not be recognized";
 "lightbox.liveTextNone" = "No text found in the image";
 "merlinServer.account.apiTokensHeading" = "API tokens";

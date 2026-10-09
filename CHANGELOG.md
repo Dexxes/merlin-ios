@@ -35,7 +35,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   recognised on the device (Vision) and saved with the entry, shown under
   "Recognized text" and found by the search. In the full-screen image view
   a Live Text button lets you select, copy, translate or look up the text
-  of the current image.
+  of the current image. "Done" at the top left leaves Live Text again.
+- Recognized text with a date gets a "Create event" button below it. It
+  opens the iOS "New Event" dialog filled in with title, date and time,
+  place and the text as notes; you pick the calendar and save there. No
+  calendar permission is needed.
 - Tags: tags can be nested like on Nextcloud. The side menu shows the tag
   tree with an arrow to expand or collapse sub-tags (remembered across
   launches); long-press a tag and choose "Move to…" to put it below another
