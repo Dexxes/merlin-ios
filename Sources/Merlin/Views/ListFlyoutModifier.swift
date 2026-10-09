@@ -187,13 +187,17 @@ struct ListFlyoutModifier: ViewModifier {
                 // Platz für Statusleiste / Dynamic Island
                 Color.clear.frame(height: safeAreaTop)
 
-                // ── Filter: Tabs Text/Video/Audio, darunter die
+                // ── Filter: Tabs Text/Video/Audio(/Dateien, nur mit
+                //    Nextcloud – der Standalone-Server kennt keine Dateien), darunter die
                 //    Continue/Unread(/Unseen/Unheard)/Favorites/Archive-Ansichten
                 //    der gewählten Medienart ──
                 Picker(L("navigationMenu.mediaTypePicker"), selection: $menuGroup) {
                     Text(L("navigationMenu.tab.text")).tag(ContentGroup.pages)
                     Text(L("navigationMenu.tab.video")).tag(ContentGroup.videos)
                     Text(L("navigationMenu.tab.audio")).tag(ContentGroup.audio)
+                    if CredentialsStore.shared.supportsNextcloudOnlyFeatures {
+                        Text(L("navigationMenu.tab.files")).tag(ContentGroup.files)
+                    }
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()

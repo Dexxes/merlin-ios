@@ -28,6 +28,7 @@
 "articleList.emptyState.continueReadingMessage" = "Nichts zum Weiterlesen. Angefangene Artikel erscheinen hier.";
 "articleList.emptyState.continueWatchingMessage" = "Nichts zum Weiterschauen. Angefangene Videos erscheinen hier.";
 "articleList.emptyState.favoritesMessage" = "Noch keine Favoriten. Markiere Artikel mit einem Stern, um sie hier zu finden.";
+"articleList.emptyState.filesMessage" = "Noch keine Dateien. Teile Bilder, PDFs oder andere Dateien vom Handy mit Merlin, um sie hier zu finden.";
 "articleList.emptyState.refreshButton" = "Aktualisieren";
 "articleList.emptyState.taggedMessage" = "Keine Artikel mit Tag \"%@\".";
 "articleList.emptyState.title" = "Noch nichts hier";
@@ -42,6 +43,7 @@
 "articleList.filter.favorites" = "Favoriten";
 "articleList.filter.pages" = "Seiten";
 "articleList.filter.unheard" = "Ungehört";
+"articleList.filter.unopened" = "Nicht geöffnet";
 "articleList.filter.unread" = "Ungelesen";
 "articleList.filter.unseen" = "Ungesehen";
 "articleList.filter.videos" = "Videos";
@@ -179,6 +181,18 @@
 "common.save" = "Speichern";
 "common.settings" = "Einstellungen";
 "common.share" = "Teilen";
+"fileRename.confirm" = "Umbenennen";
+"fileRename.errorExists" = "Im Ordner gibt es schon eine Datei mit diesem Namen.";
+"fileRename.errorTitle" = "Umbenennen fehlgeschlagen";
+"fileRename.menu" = "Umbenennen…";
+"fileRename.message" = "Die Endung .%@ bleibt erhalten.";
+"fileRename.placeholder" = "Name";
+"fileRename.title" = "Datei umbenennen";
+"fileText.createEvent" = "Termin erstellen";
+"lightbox.liveText" = "Text im Bild";
+"lightbox.liveTextDone" = "Fertig";
+"lightbox.liveTextFailed" = "Text konnte nicht erkannt werden";
+"lightbox.liveTextNone" = "Kein Text im Bild gefunden";
 "merlinServer.account.apiTokensHeading" = "API-Tokens";
 "merlinServer.account.apiTokensHint" = "Für iOS/Android/Browser-Erweiterungen: Benutzername + Token statt Passwort verwenden.";
 "merlinServer.account.cancel" = "Abbrechen";
@@ -415,6 +429,7 @@
 "navigationMenu.mediaTypePicker" = "Medienart";
 "navigationMenu.moveTag" = "Verschieben nach…";
 "navigationMenu.tab.audio" = "Audio";
+"navigationMenu.tab.files" = "Dateien";
 "navigationMenu.tab.text" = "Text";
 "navigationMenu.tab.video" = "Video";
 "navigationMenu.tagsHeader" = "Tags";

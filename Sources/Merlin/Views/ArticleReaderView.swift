@@ -1331,7 +1331,7 @@ guard message.name == "highlights",
             if navigationAction.navigationType == .linkActivated,
                let url = navigationAction.request.url,
                let scheme = url.scheme,
-               scheme == "http" || scheme == "https" {
+               scheme == "http" || scheme == "https" || url == RecognizedTextEvent.linkURL {
                 decisionHandler(.cancel)
                 onLinkTapped?(url)
             } else {
@@ -1601,8 +1601,12 @@ struct ArticleReaderView: View {
     @State private var highlightActions = HighlightActionHandler()
     @State private var tappedLinkURL:      URL? = nil
     @State private var lightboxState:      LightboxState? = nil
+    /// Termin aus dem erkannten Text eines Bildes (Link unter „Erkannter Text“).
+    @State private var eventSuggestion:    RecognizedTextEvent? = nil
     @State private var youtubePlayerState: YouTubePlayerState? = nil
     @State private var showTagSheet        = false
+    /// Umbenennen-Dialog für Datei-Einträge (siehe RenameFileAlert).
+    @State private var renameArticle: Article? = nil
     @State private var showReportSheet     = false
     @State private var showShareLinkSheet  = false
     /// Kommentare und Markierungen des Artikels, live per Push (nur Nextcloud).
@@ -1748,17 +1752,33 @@ struct ArticleReaderView: View {
                                               posterURL: current.imageUrl.flatMap(URL.init(string:)))
                     }
 
-                    if current.isPDF, let pdfURL = URL(string: current.url) {
+                    if current.isPDF, let pdfURL = current.pdfSourceURL {
                         // PDF-Artikel: der Server speichert nur die URL; die PDF wird hier geladen und
                         // seitenweise im äußeren ScrollView gerendert (Fortschritt/Restore bleiben so intakt).
                         PDFArticleView(sourceURL: pdfURL, availableWidth: viewportWidth)
+                        // Datei-Einträge: Metadaten aus dem Content (dort zeigt sie sonst die
+                        // Web-Ansicht, die bei PDFs nicht gerendert wird).
+                        if current.fileId != nil, let content = current.content,
+                           let metadata = FileMetadataParser.parse(content) {
+                            FileMetadataSection(title: metadata.title, groups: metadata.groups)
+                        }
                     } else if let content = current.content, !content.isEmpty {
                         ArticleWebView(
-                            html: buildReaderHTML(content: content, fontSize: fontSize,
+                            html: buildReaderHTML(content: current.fileId != nil
+                                                      ? RecognizedTextEvent.addingEventLink(to: content, label: L("fileText.createEvent"))
+                                                      : content,
+                                                  fontSize: fontSize,
                                                   theme: theme, font: readerFont, lineHeight: lineHeight,
                                                   developerMode: developerMode),
                             articleId:      current.id,
-                            onLinkTapped:   { url in tappedLinkURL = url },
+                            onLinkTapped:   { url in
+                                if url == RecognizedTextEvent.linkURL {
+                                    eventSuggestion = RecognizedTextEvent.recognizedText(in: content)
+                                        .flatMap { RecognizedTextEvent.detect(in: $0) }
+                                } else {
+                                    tappedLinkURL = url
+                                }
+                            },
                             onHeightChange: { h in webViewHeight = max(200, h) },
                             onImageTapped:  { idx, srcs in
                                 lightboxState = LightboxState(initialIndex: idx, imageURLs: srcs)
@@ -2117,6 +2137,10 @@ struct ArticleReaderView: View {
             ImageLightboxView(state: ls) { lightboxState = nil }
                 .background(Color.black)
         }
+        .sheet(item: $eventSuggestion) { suggestion in
+            EventEditSheet(suggestion: suggestion) { eventSuggestion = nil }
+                .ignoresSafeArea()
+        }
         .onChange(of: fontSize)    { _, v in
             PreferencesStore.shared.readerFontSize = v
             pushAppearanceToServer()
@@ -2226,6 +2250,7 @@ struct ArticleReaderView: View {
             ReminderSheet(article: current, currentReminder: $articleReminder)
         }
         // ── Öffentlicher Share-Link ──────────────────────────────────────────
+        .renameFileAlert(article: $renameArticle, viewModel: viewModel)
         .sheet(isPresented: $showShareLinkSheet, onDismiss: {
             // Link angelegt/widerrufen: der Push-Kanal endet ohne Link
             // (`.closed`) und muss danach neu verbunden werden.
@@ -2803,14 +2828,15 @@ struct ArticleReaderView: View {
                 menuDivider
 
                 // ── Teilen & Links ────────────────────────────────────────────
-                if let url = URL(string: current.url) {
-                    ShareLink(item: url, subject: Text(current.displayTitle)) {
-                        menuRowContent(icon: "square.and.arrow.up", label: L("articleReader.sideMenu.share"))
-                    }
-                    .simultaneousGesture(TapGesture().onEnded {
-                        showSideMenu = false
-                    })
+                // Datei-Einträge teilen die Datei selbst, sonst den Link.
+                ArticleShareLink(article: current) {
+                    menuRowContent(icon: "square.and.arrow.up", label: L("articleReader.sideMenu.share"))
+                }
+                .simultaneousGesture(TapGesture().onEnded {
+                    showSideMenu = false
+                })
 
+                if let url = URL(string: current.url) {
                     menuRow(icon: "safari", label: L("articleReader.sideMenu.openInBrowser")) {
                         showSideMenu = false
                         UIApplication.shared.open(url)
@@ -2865,6 +2891,13 @@ struct ArticleReaderView: View {
                 menuRow(icon: "tag", label: L("articleReader.sideMenu.editTags")) {
                     showSideMenu = false
                     showTagSheet = true
+                }
+
+                if current.fileId != nil {
+                    menuRow(icon: "pencil", label: L("fileRename.menu")) {
+                        showSideMenu = false
+                        renameArticle = current
+                    }
                 }
 
                 menuRow(
@@ -3977,6 +4010,20 @@ struct ArticleReaderView: View {
             table { border-collapse: collapse; width: 100%; font-size: 0.9em; overflow-x: auto; display: block; }
             th, td { padding: 8px 12px; border: 1px solid \(effectiveDark ? "#3a3a3c" : "#d1d1d6"); text-align: left; }
             th { background: \(effectiveDark ? "#2c2c2e" : "#f2f2f7"); font-weight: 600; }
+            /* Metadaten unter Dateien aus „Merlin Dateien“ (MerlinFileService::metadataHtml). */
+            .merlin-file-metadata { margin-top: 2.5em; font-size: 0.8em; }
+            .merlin-file-metadata details { margin: 0.75em 0; }
+            .merlin-file-metadata summary { font-weight: 600; }
+            .merlin-file-metadata table { display: table; table-layout: fixed; margin-top: 0.5em; }
+            .merlin-file-metadata th { width: 38%; font-weight: 500; background: none; opacity: 0.7; }
+            .merlin-file-metadata th, .merlin-file-metadata td { padding: 5px 8px; vertical-align: top; overflow-wrap: anywhere; }
+            /* Erkannter Text (OCR) und Termin-Link darunter (RecognizedTextEvent). */
+            .merlin-file-text { margin-top: 2em; }
+            .merlin-file-event a {
+              display: inline-block; padding: 8px 16px; border-radius: 999px;
+              background: \(accent); color: \(onAccent) !important; text-decoration: none;
+              font-size: 0.9em; font-weight: 600;
+            }
             .merlin-infobox {
               background: \(isSepia ? "#e8d9be" : (effectiveDark ? "#1e2d3d" : "#f0f7ff"));
               border-left: 4px solid \(accent);

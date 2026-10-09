@@ -28,6 +28,7 @@
 "articleList.emptyState.continueReadingMessage" = "Nothing to continue reading. Articles you've started appear here.";
 "articleList.emptyState.continueWatchingMessage" = "Nothing to continue watching. Videos you've started appear here.";
 "articleList.emptyState.favoritesMessage" = "No favorites yet. Star articles to find them here.";
+"articleList.emptyState.filesMessage" = "No files yet. Share images, PDFs or other files from your phone to Merlin to find them here.";
 "articleList.emptyState.refreshButton" = "Refresh";
 "articleList.emptyState.taggedMessage" = "No articles tagged \"%@\".";
 "articleList.emptyState.title" = "Nothing here yet";
@@ -42,6 +43,7 @@
 "articleList.filter.favorites" = "Favorites";
 "articleList.filter.pages" = "Pages";
 "articleList.filter.unheard" = "Not listened";
+"articleList.filter.unopened" = "Not opened";
 "articleList.filter.unread" = "Unread";
 "articleList.filter.unseen" = "Unwatched";
 "articleList.filter.videos" = "Videos";
@@ -179,6 +181,18 @@
 "common.save" = "Save";
 "common.settings" = "Settings";
 "common.share" = "Share";
+"fileRename.confirm" = "Rename";
+"fileRename.errorExists" = "A file with this name already exists in the folder.";
+"fileRename.errorTitle" = "Rename failed";
+"fileRename.menu" = "Rename…";
+"fileRename.message" = "The extension .%@ is kept.";
+"fileRename.placeholder" = "Name";
+"fileRename.title" = "Rename file";
+"fileText.createEvent" = "Create event";
+"lightbox.liveText" = "Text in image";
+"lightbox.liveTextDone" = "Done";
+"lightbox.liveTextFailed" = "Text could not be recognized";
+"lightbox.liveTextNone" = "No text found in the image";
 "merlinServer.account.apiTokensHeading" = "API tokens";
 "merlinServer.account.apiTokensHint" = "For iOS/Android/browser extensions: use username + token instead of a password.";
 "merlinServer.account.cancel" = "Cancel";
@@ -415,6 +429,7 @@
 "navigationMenu.mediaTypePicker" = "Media type";
 "navigationMenu.moveTag" = "Move to…";
 "navigationMenu.tab.audio" = "Audio";
+"navigationMenu.tab.files" = "Files";
 "navigationMenu.tab.text" = "Text";
 "navigationMenu.tab.video" = "Video";
 "navigationMenu.tagsHeader" = "Tags";

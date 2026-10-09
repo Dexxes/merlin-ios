@@ -1,17 +1,5 @@
 import SwiftUI
 
-// MARK: – UIActivityViewController wrapper (used for swipe-to-share on cards)
-
-private struct ShareSheet: UIViewControllerRepresentable {
-    let url: URL
-    let title: String
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: [url, title], applicationActivities: nil)
-    }
-    func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
-}
-
 // MARK: – Row swipe gesture (UIKit-backed)
 
 /// Bridges the card's swipe-to-reveal-actions drag to a real `UIPanGestureRecognizer`
@@ -75,6 +63,8 @@ struct ArticleCardView: View {
     let onToggleArchive: () -> Void
     let onDelete: () -> Void
     var onEditTags: () -> Void = {}
+    /// „Umbenennen…“ im Kontextmenü, nur bei Datei-Einträgen.
+    var onRename: (() -> Void)? = nil
     var onTap: () -> Void = {}
     var showFavoriteAction: Bool = true
     var showArchiveAction: Bool = true
@@ -237,9 +227,8 @@ struct ArticleCardView: View {
                 )
             )
             .sheet(isPresented: $showShareSheet) {
-                if let url = URL(string: article.url) {
-                    ShareSheet(url: url, title: article.displayTitle)
-                }
+                // Swipe-to-share: Datei-Einträge teilen die Datei, sonst den Link.
+                ArticleShareSheet(article: article)
             }
             .onChange(of: activeSwipeId) { oldId, newId in
                 // Close swipe if another card becomes active — but never interrupt
@@ -598,11 +587,16 @@ struct ArticleCardView: View {
             Button { onEditTags() } label: {
                 Label(L("articleActions.menu.editTags"), systemImage: "tag")
             }
-            Divider()
-            if let url = URL(string: article.url) {
-                ShareLink(item: url, subject: Text(article.displayTitle)) {
-                    Label(L("articleActions.menu.share"), systemImage: "square.and.arrow.up")
+            if article.fileId != nil, let onRename {
+                Button { onRename() } label: {
+                    Label(L("fileRename.menu"), systemImage: "pencil")
                 }
+            }
+            Divider()
+            ArticleShareLink(article: article) {
+                Label(L("articleActions.menu.share"), systemImage: "square.and.arrow.up")
+            }
+            if URL(string: article.url) != nil {
                 Button { UIPasteboard.general.string = article.url } label: {
                     Label(L("articleActions.menu.copyLink"), systemImage: "link")
                 }

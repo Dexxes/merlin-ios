@@ -191,7 +191,10 @@ struct SettingsView: View {
                     Picker(L("settings.preferences.defaultViewLabel"), selection: $defaultFilter) {
                         // Weiterlesen/Weiterschauen sind dynamische, oft leere
                         // Listen – als Standard-Startansicht ausgeschlossen.
-                        ForEach(ArticleFilter.allCases.filter { !$0.isContinue }) { filter in
+                        // Dateien gibt es nur mit Nextcloud.
+                        ForEach(ArticleFilter.allCases.filter {
+                            !$0.isContinue && ($0.group != .files || CredentialsStore.shared.supportsNextcloudOnlyFeatures)
+                        }) { filter in
                             Label(filter.label, systemImage: filter.systemImage)
                                 .tag(filter)
                         }

@@ -8,6 +8,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Share sheet: photos, videos, audio, PDFs and other files can be shared to
+  Merlin. They are uploaded to the Nextcloud folder "Merlin files" (sorted
+  into sub-folders by type, named in your Nextcloud language) and appear in
+  the reading list like articles, with the tags you pick. Large videos go up
+  in chunks with a progress bar. Links are saved as articles as before; files
+  need merlin-nextcloud 1.0.18 and are not available with the Merlin server.
+  Shared photos can be compressed before the upload: "Compress strongly"
+  (up to 1600 px), "Compress lightly" (up to 4096 px) or "Uncompressed",
+  each with a preview of the image detail and the resulting size; the last
+  choice is remembered. Compressed photos keep all metadata (location,
+  camera, date, IPTC/XMP) unchanged.
+- Side menu: new "Files" tab (Nextcloud only) next to Text/Video/Audio with
+  the files saved from the phone (not opened, favorites, archive), in list
+  and card view. Uploaded videos and audio appear only there.
+- Reader: below a saved file all embedded metadata is listed (file details,
+  EXIF/GPS, IPTC, XMP, ID3, QuickTime/MP4, PDF info), grouped and
+  collapsible; also below PDFs.
+- Sharing a saved file (list, cards, reader) now shares the file itself, for
+  example a photo you can save to Photos or a PDF for Files, instead of its
+  Nextcloud link. The file is downloaded when you pick the target.
+- Saved files can be renamed ("Rename…" in the context menu of list and
+  cards and in the reader's side menu). The file in Nextcloud is renamed
+  too and keeps its extension. Needs merlin-nextcloud 1.0.19.
+- Text in images: when photos are shared to Merlin, the text in them is
+  recognised on the device (Vision) and saved with the entry, shown under
+  "Recognized text" and found by the search. In the full-screen image view
+  a Live Text button lets you select, copy, translate or look up the text
+  of the current image. "Done" at the top left leaves Live Text again.
+- Recognized text with a date gets a "Create event" button below it. It
+  opens the iOS "New Event" dialog filled in with title, date and time,
+  place and the text as notes; you pick the calendar and save there. No
+  calendar permission is needed.
 - Tags: tags can be nested like on Nextcloud. The side menu shows the tag
   tree with an arrow to expand or collapse sub-tags (remembered across
   launches); long-press a tag and choose "Move to…" to put it below another
