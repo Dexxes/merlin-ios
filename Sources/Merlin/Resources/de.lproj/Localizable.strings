@@ -188,6 +188,8 @@
 "fileRename.message" = "Die Endung .%@ bleibt erhalten.";
 "fileRename.placeholder" = "Name";
 "fileRename.title" = "Datei umbenennen";
+"fileShare.failed" = "Die Datei konnte nicht geladen werden.";
+"fileShare.loading" = "Datei wird geladen …";
 "fileText.createEvent" = "Termin erstellen";
 "lightbox.liveText" = "Text im Bild";
 "lightbox.liveTextDone" = "Fertig";

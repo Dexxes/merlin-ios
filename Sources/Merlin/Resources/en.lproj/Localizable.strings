@@ -188,6 +188,8 @@
 "fileRename.message" = "The extension .%@ is kept.";
 "fileRename.placeholder" = "Name";
 "fileRename.title" = "Rename file";
+"fileShare.failed" = "The file could not be loaded.";
+"fileShare.loading" = "Loading file …";
 "fileText.createEvent" = "Create event";
 "lightbox.liveText" = "Text in image";
 "lightbox.liveTextDone" = "Done";

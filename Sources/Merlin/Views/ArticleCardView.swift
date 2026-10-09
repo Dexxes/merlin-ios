@@ -104,7 +104,11 @@ struct ArticleCardView: View {
             // Leading: Share (swipe right) — pill button matching trailing style
             HStack(spacing: 0) {
                 Button {
-                    showShareSheet = true
+                    if let file = article.fileShareItem {
+                        FileSharePresenter.share(file)
+                    } else {
+                        showShareSheet = true
+                    }
                     closeSwipe()
                 } label: {
                     VStack(spacing: 3) {
@@ -227,7 +231,7 @@ struct ArticleCardView: View {
                 )
             )
             .sheet(isPresented: $showShareSheet) {
-                // Swipe-to-share: Datei-Einträge teilen die Datei, sonst den Link.
+                // Swipe-to-share für Links; Datei-Einträge gehen über FileSharePresenter.
                 ArticleShareSheet(article: article)
             }
             .onChange(of: activeSwipeId) { oldId, newId in

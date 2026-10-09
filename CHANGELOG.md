@@ -27,7 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   collapsible; also below PDFs.
 - Sharing a saved file (list, cards, reader) now shares the file itself, for
   example a photo you can save to Photos or a PDF for Files, instead of its
-  Nextcloud link. The file is downloaded when you pick the target.
+  Nextcloud link. The file is downloaded first (with a cancel button), then
+  the share sheet opens with the file, so apps like Telegram and Signal
+  accept it.
 - Saved files can be renamed ("Rename…" in the context menu of list and
   cards and in the reader's side menu). The file in Nextcloud is renamed
   too and keeps its extension. Needs merlin-nextcloud 1.0.19.
