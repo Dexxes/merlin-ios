@@ -1748,7 +1748,7 @@ struct ArticleReaderView: View {
                                               posterURL: current.imageUrl.flatMap(URL.init(string:)))
                     }
 
-                    if current.isPDF, let pdfURL = URL(string: current.url) {
+                    if current.isPDF, let pdfURL = current.pdfSourceURL {
                         // PDF-Artikel: der Server speichert nur die URL; die PDF wird hier geladen und
                         // seitenweise im äußeren ScrollView gerendert (Fortschritt/Restore bleiben so intakt).
                         PDFArticleView(sourceURL: pdfURL, availableWidth: viewportWidth)

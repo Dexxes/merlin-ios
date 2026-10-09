@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Share sheet: photos, videos, audio, PDFs and other files can be shared to
+  Merlin. They are uploaded to the Nextcloud folder "Merlin files" (sorted
+  into sub-folders by type, named in your Nextcloud language) and appear in
+  the reading list like articles, with the tags you pick. Large videos go up
+  in chunks with a progress bar. Links are saved as articles as before; files
+  need merlin-nextcloud 1.0.18 and are not available with the Merlin server.
 - Tags: tags can be nested like on Nextcloud. The side menu shows the tag
   tree with an arrow to expand or collapse sub-tags (remembered across
   launches); long-press a tag and choose "Move to…" to put it below another

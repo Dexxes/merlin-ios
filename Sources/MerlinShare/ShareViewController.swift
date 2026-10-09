@@ -137,6 +137,14 @@ class ShareViewController: UIViewController {
         return l
     }()
 
+    /// Upload progress of shared files (hidden while saving a link).
+    private let progressView: UIProgressView = {
+        let p = UIProgressView(progressViewStyle: .default)
+        p.translatesAutoresizingMaskIntoConstraints = false
+        p.isHidden = true
+        return p
+    }()
+
     // MARK: – Staging UI (confirm URL + optional tags before saving)
 
     private let urlPreviewLabel: UILabel = {
@@ -226,6 +234,9 @@ class ShareViewController: UIViewController {
     private var tagButtons: [Int: UIButton] = [:]
 
     private var pendingURL: String = ""
+    /// Files from the share payload (photos, videos, PDFs …) when it carries no web link.
+    /// They go into the Nextcloud folder "Merlin Dateien" (see FileUploader).
+    private var pendingFiles: [SharedFile] = []
     private var isDone = false
 
     // MARK: – Settings UI
@@ -268,7 +279,7 @@ class ShareViewController: UIViewController {
         setupUI()
         if isConfigured {
             showExtractingMode()
-            extractURL()
+            extractContent()
         } else {
             showSettingsMode()
         }
@@ -330,6 +341,7 @@ class ShareViewController: UIViewController {
         // Saving-mode views
         containerView.addSubview(activityIndicator)
         containerView.addSubview(statusLabel)
+        containerView.addSubview(progressView)
 
         // Staging-mode views
         containerView.addSubview(stagingStack)
@@ -367,6 +379,10 @@ class ShareViewController: UIViewController {
             statusLabel.topAnchor.constraint(equalTo: activityIndicator.bottomAnchor, constant: 12),
             statusLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 20),
             statusLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -20),
+
+            progressView.topAnchor.constraint(equalTo: statusLabel.bottomAnchor, constant: 12),
+            progressView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 20),
+            progressView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -20),
 
             // Settings mode
             settingsStack.topAnchor.constraint(equalTo: iconView.bottomAnchor, constant: 20),
@@ -455,6 +471,30 @@ class ShareViewController: UIViewController {
         Task { await loadTagChips() }
     }
 
+    /// Staging for shared files: name or count plus total size, then the same tag tree.
+    private func showStagingMode(files: [SharedFile]) {
+        pendingFiles = files
+        pendingURL = ""
+        subtitleLabel.text = L("share.files.subtitle")
+        let size = ByteCountFormatter.string(fromByteCount: files.reduce(0) { $0 + $1.size }, countStyle: .file)
+        if files.count == 1, let file = files.first {
+            urlPreviewLabel.text = "\(file.name) · \(size)"
+        } else {
+            let count = String(format: L("share.files.count"), files.count)
+            urlPreviewLabel.text = String(format: L("share.files.summary"), count, size)
+        }
+        tagsField.text        = ""
+        selectedTagIds        = []
+        stagingStack.isHidden  = false
+        settingsStack.isHidden = true
+        activityIndicator.stopAnimating()
+        activityIndicator.isHidden = true
+        statusLabel.isHidden   = true
+        containerHeightConstraint?.constant = stagingHeight
+
+        Task { await loadTagChips() }
+    }
+
     private func showSavingMode() {
         subtitleLabel.text = L("share.saving.subtitle")
         stagingStack.isHidden  = true
@@ -499,26 +539,109 @@ class ShareViewController: UIViewController {
         passwordField.resignFirstResponder()
 
         showSavingMode()
-        extractURL()
+        extractContent()
     }
 
     // MARK: – URL extraction
 
-    private func extractURL() {
+    /// A web link is saved as an article (as before); without one, shared files
+    /// (photos, videos, audio, PDFs, other documents) go into "Merlin Dateien".
+    private func extractContent() {
         guard let items = extensionContext?.inputItems as? [NSExtensionItem] else {
             showError(L("share.result.errorReadContent"))
             return
         }
         Task {
-            let url = await findURL(in: items)
-            await MainActor.run {
-                if let url {
-                    showStagingMode(url: url)
-                } else {
-                    showError(L("share.result.errorNoUrl"))
-                }
+            if let url = await findURL(in: items) {
+                showStagingMode(url: url)
+                return
+            }
+            let hasFiles = items.flatMap { $0.attachments ?? [] }.contains { Self.fileTypeIdentifier(of: $0) != nil }
+            guard hasFiles else {
+                showError(L("share.result.errorNoUrl"))
+                return
+            }
+            if keychainRead(.backendKind) == "standalone" {
+                showError(L("share.files.errorStandalone"))
+                return
+            }
+            let files = await findFiles(in: items)
+            if files.isEmpty {
+                showError(L("share.files.errorReadFile"))
+            } else {
+                showStagingMode(files: files)
             }
         }
+    }
+
+    // MARK: – File extraction
+
+    private func findFiles(in items: [NSExtensionItem]) async -> [SharedFile] {
+        var files: [SharedFile] = []
+        for provider in items.flatMap({ $0.attachments ?? [] }) {
+            guard let typeIdentifier = Self.fileTypeIdentifier(of: provider) else { continue }
+            if let file = await loadFile(from: provider, typeIdentifier: typeIdentifier) {
+                files.append(file)
+            }
+        }
+        return files
+    }
+
+    /// The best file representation of a provider (Apple lists the original
+    /// first, e.g. HEIC before JPEG). Web links and plain text are left out;
+    /// text counts only when it is a real file (from the Files app).
+    private nonisolated static func fileTypeIdentifier(of provider: NSItemProvider) -> String? {
+        let types = provider.registeredTypeIdentifiers.compactMap { UTType($0) }
+        let isFile = types.contains { $0.conforms(to: .fileURL) }
+        return types.first { type in
+            guard type.conforms(to: .data), !type.conforms(to: .url) else { return false }
+            return isFile || !type.conforms(to: .plainText)
+        }?.identifier
+    }
+
+    private func loadFile(from provider: NSItemProvider, typeIdentifier: String) async -> SharedFile? {
+        let suggestedName = provider.suggestedName
+        return await withCheckedContinuation { continuation in
+            _ = provider.loadFileRepresentation(forTypeIdentifier: typeIdentifier) { url, _ in
+                // The file only exists until this handler returns: copy it first.
+                let file = url.flatMap {
+                    Self.copyToTemporaryFolder($0, suggestedName: suggestedName, typeIdentifier: typeIdentifier)
+                }
+                continuation.resume(returning: file)
+            }
+        }
+    }
+
+    private nonisolated static func copyToTemporaryFolder(_ source: URL, suggestedName: String?,
+                                                          typeIdentifier: String) -> SharedFile? {
+        let type = UTType(typeIdentifier)
+        let ext = source.pathExtension.isEmpty ? (type?.preferredFilenameExtension ?? "") : source.pathExtension
+        var name = suggestedName.flatMap { $0.isEmpty ? nil : $0 } ?? source.deletingPathExtension().lastPathComponent
+        name = name.replacingOccurrences(of: "/", with: "-")
+        if !ext.isEmpty, (name as NSString).pathExtension.lowercased() != ext.lowercased() {
+            name += "." + ext
+        }
+        let folder = shareTemporaryFolder.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let target = folder.appendingPathComponent(name)
+            try FileManager.default.copyItem(at: source, to: target)
+            let size = Int64((try? target.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
+            let mimeType = UTType(filenameExtension: ext)?.preferredMIMEType
+                ?? type?.preferredMIMEType
+                ?? "application/octet-stream"
+            return SharedFile(localURL: target, name: name, mimeType: mimeType, size: size)
+        } catch {
+            return nil
+        }
+    }
+
+    private nonisolated static var shareTemporaryFolder: URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("merlin-share", isDirectory: true)
+    }
+
+    private func removeTemporaryFiles() {
+        try? FileManager.default.removeItem(at: Self.shareTemporaryFolder)
     }
 
     /// Two-pass search across all NSItemProviders.
@@ -598,7 +721,7 @@ class ShareViewController: UIViewController {
     // MARK: – Confirm save action
 
     @objc private func confirmSave() {
-        guard !pendingURL.isEmpty else { done(); return }
+        guard !pendingURL.isEmpty || !pendingFiles.isEmpty else { done(); return }
         tagsField.resignFirstResponder()
         // New tag names the user typed (for creation)
         let newNames = (tagsField.text ?? "")
@@ -606,15 +729,20 @@ class ShareViewController: UIViewController {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
 
-        showSavingMode()
         let url      = pendingURL
+        let files    = pendingFiles
         let existing = selectedTagIds  // chip selections
+        if files.isEmpty { showSavingMode() } else { showUploadingMode() }
         Task {
             // Resolve typed names → IDs (create if necessary)
             let newIds = newNames.isEmpty ? [] : await resolveTagIds(for: newNames)
             // Merge with chip-selected IDs; dedup
             let allIds = Array(existing.union(newIds))
-            await saveURL(url, tagIds: allIds)
+            if files.isEmpty {
+                await saveURL(url, tagIds: allIds)
+            } else {
+                await saveFiles(files, tagIds: allIds)
+            }
         }
     }
 
@@ -856,6 +984,68 @@ class ShareViewController: UIViewController {
         }
     }
 
+    // MARK: – File upload
+
+    private func showUploadingMode() {
+        showSavingMode()
+        subtitleLabel.text = L("share.files.uploadingSubtitle")
+        progressView.progress = 0
+        progressView.isHidden = false
+    }
+
+    private func updateUploadProgress(index: Int, total: Int, fraction: Double) {
+        let percent = NumberFormatter.localizedString(from: NSNumber(value: min(1, max(0, fraction))), number: .percent)
+        statusLabel.text = String(format: L("share.files.progress"), "\(index + 1)", "\(total)", percent)
+        progressView.setProgress(Float(fraction), animated: true)
+    }
+
+    private func saveFiles(_ files: [SharedFile], tagIds: [Int]) async {
+        let token = Data("\(storedUsername):\(storedPassword)".utf8).base64EncodedString()
+        let uploader = FileUploader(baseURL: storedURL, apiPrefix: apiPrefix, authorization: "Basic \(token)")
+        let totalBytes = Double(max(1, files.reduce(0) { $0 + $1.size }))
+        var uploadedBytes: Int64 = 0
+
+        for (index, file) in files.enumerated() {
+            let before = Double(uploadedBytes)
+            updateUploadProgress(index: index, total: files.count, fraction: before / totalBytes)
+            do {
+                try await uploader.upload(file, tagIds: tagIds) { [weak self] fraction in
+                    Task { @MainActor in
+                        self?.updateUploadProgress(index: index, total: files.count,
+                                                   fraction: (before + fraction * Double(file.size)) / totalBytes)
+                    }
+                }
+            } catch {
+                removeTemporaryFiles()
+                showUploadError(error, file: file)
+                return
+            }
+            uploadedBytes += file.size
+        }
+        removeTemporaryFiles()
+        showSuccess(L("share.result.successTitle"))
+    }
+
+    private func showUploadError(_ error: Error, file: SharedFile) {
+        progressView.isHidden = true
+        let failed = String(format: L("share.files.errorUpload"), file.name)
+        switch error {
+        case FileUploader.UploadError.http(401, _):
+            showError(L("share.result.errorAuthFailed"))
+        case FileUploader.UploadError.http(429, _):
+            showError(L("share.result.errorRateLimited"))
+        case FileUploader.UploadError.http(let code, let message):
+            let detail = message.map { "\n" + $0 } ?? ""
+            showError(failed + "\n" + String(format: L("share.result.errorServerCode"), code) + detail)
+        case FileUploader.UploadError.unreadableFile:
+            showError(L("share.files.errorReadFile"))
+        case FileUploader.UploadError.invalidResponse:
+            showError(failed + "\n" + L("share.result.errorNoResponse"))
+        default:
+            showError(failed + "\n" + String(format: L("share.result.errorNetwork"), error.localizedDescription))
+        }
+    }
+
     // MARK: – State display
 
     private func showSuccess(_ message: String) {
@@ -902,6 +1092,7 @@ class ShareViewController: UIViewController {
     @objc private func done() {
         guard !isDone else { return }
         isDone = true
+        removeTemporaryFiles()
         extensionContext?.completeRequest(returningItems: nil)
     }
 
