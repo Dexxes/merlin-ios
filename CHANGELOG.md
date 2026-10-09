@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reader: below a saved file all embedded metadata is listed (file details,
   EXIF/GPS, IPTC, XMP, ID3, QuickTime/MP4, PDF info), grouped and
   collapsible; also below PDFs.
+- Sharing a saved file (list, cards, reader) now shares the file itself, for
+  example a photo you can save to Photos or a PDF for Files, instead of its
+  Nextcloud link. The file is downloaded when you pick the target.
 - Tags: tags can be nested like on Nextcloud. The side menu shows the tag
   tree with an arrow to expand or collapse sub-tags (remembered across
   launches); long-press a tag and choose "Move to…" to put it below another

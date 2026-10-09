@@ -148,12 +148,10 @@ struct ArticleRowView: View {
             reloadProgress()
         }
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
-            if let url = URL(string: article.url) {
-                ShareLink(item: url, subject: Text(article.displayTitle)) {
-                    Label(L("articleActions.share"), systemImage: "square.and.arrow.up")
-                }
-                .tint(.blue)
+            ArticleShareLink(article: article) {
+                Label(L("articleActions.share"), systemImage: "square.and.arrow.up")
             }
+            .tint(.blue)
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             // First action = full-swipe target (Mail pattern): archive, never
@@ -240,10 +238,8 @@ struct ArticleRowView: View {
             } label: {
                 Label(L("articleActions.menu.copyLink"), systemImage: "link")
             }
-            if let url = URL(string: article.url) {
-                ShareLink(item: url, subject: Text(article.displayTitle)) {
-                    Label(L("articleActions.menu.share"), systemImage: "square.and.arrow.up")
-                }
+            ArticleShareLink(article: article) {
+                Label(L("articleActions.menu.share"), systemImage: "square.and.arrow.up")
             }
 
             Divider()

@@ -20,7 +20,8 @@ enum FileMetadataParser {
     /// The reader web view shows the section itself; this is for views that
     /// don't render the content (PDF entries).
     static func parse(_ html: String) -> (title: String, groups: [FileMetadataGroup])? {
-        guard let start = html.range(of: #"<section class="merlin-file-metadata">"#) else { return nil }
+        guard let start = html.range(of: #"<section class="merlin-file-metadata"[^>]*>"#, options: .regularExpression)
+        else { return nil }
         let section = html[start.upperBound...]
         let title = firstMatch(#"<h2>(.*?)</h2>"#, in: section).map(plainText) ?? ""
 
@@ -53,6 +54,14 @@ enum FileMetadataParser {
                 return range.location == NSNotFound ? "" : ns.substring(with: range)
             }
         }
+    }
+
+    /// Signed download link of the original file (`data-download-src` on the
+    /// metadata section), used to share the file itself.
+    static func downloadURL(in html: String) -> URL? {
+        guard let raw = matches(#"<section class="merlin-file-metadata" data-download-src="([^"]+)""#, in: html).first?.first
+        else { return nil }
+        return URL(string: plainText(raw))
     }
 
     /// Strips tags (e.g. the map link around the GPS position) and decodes

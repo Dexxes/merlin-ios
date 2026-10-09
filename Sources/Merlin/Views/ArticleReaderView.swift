@@ -2809,14 +2809,15 @@ struct ArticleReaderView: View {
                 menuDivider
 
                 // ── Teilen & Links ────────────────────────────────────────────
-                if let url = URL(string: current.url) {
-                    ShareLink(item: url, subject: Text(current.displayTitle)) {
-                        menuRowContent(icon: "square.and.arrow.up", label: L("articleReader.sideMenu.share"))
-                    }
-                    .simultaneousGesture(TapGesture().onEnded {
-                        showSideMenu = false
-                    })
+                // Datei-Einträge teilen die Datei selbst, sonst den Link.
+                ArticleShareLink(article: current) {
+                    menuRowContent(icon: "square.and.arrow.up", label: L("articleReader.sideMenu.share"))
+                }
+                .simultaneousGesture(TapGesture().onEnded {
+                    showSideMenu = false
+                })
 
+                if let url = URL(string: current.url) {
                     menuRow(icon: "safari", label: L("articleReader.sideMenu.openInBrowser")) {
                         showSideMenu = false
                         UIApplication.shared.open(url)
