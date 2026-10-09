@@ -17,7 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Shared photos can be compressed before the upload: "Compress strongly"
   (up to 1600 px), "Compress lightly" (up to 4096 px) or "Uncompressed",
   each with a preview of the image detail and the resulting size; the last
-  choice is remembered.
+  choice is remembered. Compressed photos keep all metadata (location,
+  camera, date, IPTC/XMP) unchanged.
 - Side menu: new "Files" tab (Nextcloud only) next to Text/Video/Audio with
   the files saved from the phone (not opened, favorites, archive), in list
   and card view. Uploaded videos and audio appear only there.

@@ -62,11 +62,14 @@ enum ImageCompressor {
 
     /// JPEG version of `file` next to it (`<folder>/<level>/<name>.jpg`). The
     /// original when it is already smaller, `nil` when it can't be read.
-    /// Metadata (location, camera) is not copied.
+    /// All metadata (EXIF incl. location, TIFF, IPTC, XMP) is copied as is;
+    /// only the pixel dimensions are updated to the new size. The pixels stay
+    /// in the original's orientation, so its orientation tag stays valid too.
     static func compress(_ file: SharedFile, level: ImageCompression) -> SharedFile? {
         guard let settings = level.settings else { return file }
         guard let source = CGImageSourceCreateWithURL(file.localURL as CFURL, nil),
-              let image = decode(source, maxPixelSize: settings.maxPixelSize) else { return nil }
+              let image = decode(source, maxPixelSize: settings.maxPixelSize, applyOrientation: false)
+        else { return nil }
 
         let name = (file.name as NSString).deletingPathExtension + ".jpg"
         let folder = file.localURL.deletingLastPathComponent()
@@ -79,8 +82,17 @@ enum ImageCompressor {
         }
         guard let destination = CGImageDestinationCreateWithURL(
             target as CFURL, UTType.jpeg.identifier as CFString, 1, nil) else { return nil }
-        let properties = [kCGImageDestinationLossyCompressionQuality: settings.quality] as CFDictionary
-        CGImageDestinationAddImage(destination, image, properties)
+        let options = [kCGImageDestinationLossyCompressionQuality: settings.quality] as CFDictionary
+        if let original = CGImageSourceCopyMetadataAtIndex(source, 0, nil),
+           let metadata = CGImageMetadataCreateMutableCopy(original) {
+            CGImageMetadataSetValueMatchingImageProperty(
+                metadata, kCGImagePropertyExifDictionary, kCGImagePropertyExifPixelXDimension, image.width as CFNumber)
+            CGImageMetadataSetValueMatchingImageProperty(
+                metadata, kCGImagePropertyExifDictionary, kCGImagePropertyExifPixelYDimension, image.height as CFNumber)
+            CGImageDestinationAddImageAndMetadata(destination, image, metadata, options)
+        } else {
+            CGImageDestinationAddImage(destination, image, options)
+        }
         guard CGImageDestinationFinalize(destination) else { return nil }
 
         let size = Int64((try? target.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
@@ -91,15 +103,18 @@ enum ImageCompressor {
         return SharedFile(localURL: target, name: name, mimeType: "image/jpeg", size: size)
     }
 
-    /// Decodes the image with its orientation applied, scaled down to at most
-    /// `maxPixelSize` on the longer side (never up).
-    private static func decode(_ source: CGImageSource, maxPixelSize: Int) -> CGImage? {
+    /// Decodes the image scaled down to at most `maxPixelSize` on the longer
+    /// side (never up). `applyOrientation` turns the pixels upright (preview);
+    /// without it they keep the stored orientation (compression, so the
+    /// copied orientation tag still matches).
+    private static func decode(_ source: CGImageSource, maxPixelSize: Int,
+                               applyOrientation: Bool = true) -> CGImage? {
         let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
         let width = properties?[kCGImagePropertyPixelWidth] as? Int ?? maxPixelSize
         let height = properties?[kCGImagePropertyPixelHeight] as? Int ?? maxPixelSize
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceCreateThumbnailWithTransform: applyOrientation,
             kCGImageSourceShouldCacheImmediately: true,
             kCGImageSourceThumbnailMaxPixelSize: min(maxPixelSize, max(width, height)),
         ]
