@@ -31,7 +31,7 @@ struct EventEditSheet: UIViewControllerRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(onDone: onDone) }
 
     @MainActor
-    final class Coordinator: NSObject, EKEventEditViewDelegate {
+    final class Coordinator: NSObject, @preconcurrency EKEventEditViewDelegate {
         let onDone: () -> Void
 
         init(onDone: @escaping () -> Void) { self.onDone = onDone }
