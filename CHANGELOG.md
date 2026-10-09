@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Side menu: new "Files" tab (Nextcloud only) next to Text/Video/Audio with
   the files saved from the phone (not opened, favorites, archive), in list
   and card view. Uploaded videos and audio appear only there.
+- Reader: below a saved file all embedded metadata is listed (file details,
+  EXIF/GPS, IPTC, XMP, ID3, QuickTime/MP4, PDF info), grouped and
+  collapsible; also below PDFs.
 - Tags: tags can be nested like on Nextcloud. The side menu shows the tag
   tree with an arrow to expand or collapse sub-tags (remembered across
   launches); long-press a tag and choose "Move to…" to put it below another

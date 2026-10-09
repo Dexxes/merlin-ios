@@ -1752,6 +1752,12 @@ struct ArticleReaderView: View {
                         // PDF-Artikel: der Server speichert nur die URL; die PDF wird hier geladen und
                         // seitenweise im äußeren ScrollView gerendert (Fortschritt/Restore bleiben so intakt).
                         PDFArticleView(sourceURL: pdfURL, availableWidth: viewportWidth)
+                        // Datei-Einträge: Metadaten aus dem Content (dort zeigt sie sonst die
+                        // Web-Ansicht, die bei PDFs nicht gerendert wird).
+                        if current.fileId != nil, let content = current.content,
+                           let metadata = FileMetadataParser.parse(content) {
+                            FileMetadataSection(title: metadata.title, groups: metadata.groups)
+                        }
                     } else if let content = current.content, !content.isEmpty {
                         ArticleWebView(
                             html: buildReaderHTML(content: content, fontSize: fontSize,
@@ -3977,6 +3983,13 @@ struct ArticleReaderView: View {
             table { border-collapse: collapse; width: 100%; font-size: 0.9em; overflow-x: auto; display: block; }
             th, td { padding: 8px 12px; border: 1px solid \(effectiveDark ? "#3a3a3c" : "#d1d1d6"); text-align: left; }
             th { background: \(effectiveDark ? "#2c2c2e" : "#f2f2f7"); font-weight: 600; }
+            /* Metadaten unter Dateien aus „Merlin Dateien“ (MerlinFileService::metadataHtml). */
+            .merlin-file-metadata { margin-top: 2.5em; font-size: 0.8em; }
+            .merlin-file-metadata details { margin: 0.75em 0; }
+            .merlin-file-metadata summary { font-weight: 600; }
+            .merlin-file-metadata table { display: table; table-layout: fixed; margin-top: 0.5em; }
+            .merlin-file-metadata th { width: 38%; font-weight: 500; background: none; opacity: 0.7; }
+            .merlin-file-metadata th, .merlin-file-metadata td { padding: 5px 8px; vertical-align: top; overflow-wrap: anywhere; }
             .merlin-infobox {
               background: \(isSepia ? "#e8d9be" : (effectiveDark ? "#1e2d3d" : "#f0f7ff"));
               border-left: 4px solid \(accent);
