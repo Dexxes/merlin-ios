@@ -127,6 +127,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comments: web addresses in comments are tappable links.
 
 ### Changed
+- Reader: the subscription/donation box is never placed directly after a
+  heading or a fully bold paragraph (an inline sub-heading); it moves to the
+  next fitting paragraph instead, like on Nextcloud.
 - Side menu: Pages, Videos and Audio are no longer three stacked groups.
   A segmented control at the top (Text · Video · Audio) picks the media
   type, and only its four views (Continue, Unread/Unseen/Not listened,
