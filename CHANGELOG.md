@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Reader: the article background now has a subtle paper texture in the Light
+  and Sepia themes; the fibers scroll along with the text. It can be turned
+  off with "Paper texture" in the appearance sheet. Dark stays pure black.
 - Tags: tags can be nested like on Nextcloud. The side menu shows the tag
   tree with an arrow to expand or collapse sub-tags (remembered across
   launches); long-press a tag and choose "Move to…" to put it below another

@@ -131,6 +131,7 @@ final class PreferencesStore: @unchecked Sendable {
         static let readerFontSize       = "merlin_reader_font_size"
         static let readerTheme          = "merlin_reader_theme"
         static let readerFont           = "merlin_reader_font"
+        static let paperTexture         = "merlin_reader_paper_texture"
         static let progressEdge         = "merlin_progress_edge"
         static let lineHeight           = "merlin_line_height"
         static let saveProgress           = "merlin_save_progress"
@@ -244,6 +245,16 @@ final class PreferencesStore: @unchecked Sendable {
             return theme
         }
         set { defaults.set(newValue.rawValue, forKey: Key.readerTheme) }
+    }
+
+    /// Papierstruktur als Reader-Hintergrund (nur Hell/Sepia, siehe `PaperBackground`).
+    /// Standard: an.
+    var readerPaperTexture: Bool {
+        get {
+            guard defaults.object(forKey: Key.paperTexture) != nil else { return true }
+            return defaults.bool(forKey: Key.paperTexture)
+        }
+        set { defaults.set(newValue, forKey: Key.paperTexture) }
     }
 
     var readerFont: ReaderFont {

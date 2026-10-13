@@ -861,6 +861,42 @@ private struct HighlightToolbarView: View {
     }
 }
 
+/// Reader-Hintergrund: Theme-Farbe, in Hell/Sepia optional mit Papierstruktur.
+/// Die Graustufen-Kachel (`paper-texture.png`, erzeugt von
+/// `scripts/generate-paper-texture.py`) liegt per Multiply über der Farbe, damit
+/// Sepia seinen Farbton behält. Die Ebene bleibt bildschirmfest (eine Fläche in
+/// Bildschirm- statt Artikellänge) und wird um `scrollOffset` modulo Kachelhöhe
+/// verschoben – die Fasern wandern so mit dem Text wie bei echtem Papier.
+private struct PaperBackground: View {
+    let color: Color
+    let textured: Bool
+    let scrollOffset: CGFloat
+
+    var body: some View {
+        color.overlay {
+            if textured, let tile = Self.tile {
+                GeometryReader { geo in
+                    let tileHeight = tile.size.height
+                    Image(uiImage: tile)
+                        .resizable(resizingMode: .tile)
+                        .frame(width: geo.size.width, height: geo.size.height + tileHeight)
+                        .offset(y: -scrollOffset.truncatingRemainder(dividingBy: tileHeight))
+                        .blendMode(.multiply)
+                }
+                .clipped()
+                .allowsHitTesting(false)
+            }
+        }
+    }
+
+    /// Einmal geladen, mit Skalierung 3, damit ein Texel einem Gerätepixel entspricht.
+    private static let tile: UIImage? = {
+        guard let url = Bundle.module.url(forResource: "paper-texture", withExtension: "png"),
+              let cg = UIImage(contentsOfFile: url.path)?.cgImage else { return nil }
+        return UIImage(cgImage: cg, scale: 3, orientation: .up)
+    }()
+}
+
 /// Ab iOS 26 echtes Liquid Glass; darunter eine flache, themenfarbige Fläche
 /// (kein `regularMaterial` — das würde bei abweichendem App-Theme z. B. im
 /// Dark-Reader-Modus auf einem Light-System-Theme die falsche Tönung ziehen,
@@ -1618,6 +1654,7 @@ struct ArticleReaderView: View {
     @State private var theme:         ReaderTheme  = PreferencesStore.shared.readerTheme
     @State private var readerFont:    ReaderFont   = PreferencesStore.shared.readerFont
     @State private var lineHeight:    Double        = PreferencesStore.shared.lineHeight
+    @State private var paperTexture:  Bool          = PreferencesStore.shared.readerPaperTexture
     @State private var progressEdge:  ProgressEdge = PreferencesStore.shared.progressEdge
     @State private var showSideMenu      = false
     @State private var showReminderSheet = false
@@ -1653,7 +1690,7 @@ struct ArticleReaderView: View {
 
     /// Fasst alle Einstellungen zusammen, die die Reader-HTML neu laden lassen.
     private var appearanceKey: String {
-        "\(fontSize)|\(theme.rawValue)|\(readerFont.rawValue)|\(lineHeight)"
+        "\(fontSize)|\(theme.rawValue)|\(readerFont.rawValue)|\(lineHeight)|\(showsPaperTexture)"
     }
 
     /// Inline-Player exakt über der angetippten Vorschaukarte. Der WebView scrollt nicht
@@ -1723,8 +1760,11 @@ struct ArticleReaderView: View {
 
             // Fill the entire screen with the reader background colour so no
             // white areas bleed through above the top buttons or below the
-            // bottom bar when dark / sepia mode is active.
-            readerBgColor.ignoresSafeArea()
+            // bottom bar when dark / sepia mode is active. In Hell/Sepia liegt
+            // hier auch die Papierstruktur; der HTML-Body ist dann transparent.
+            PaperBackground(color: readerBgColor, textured: showsPaperTexture,
+                            scrollOffset: scrollOffset)
+                .ignoresSafeArea()
             // MARK: Content – outer ScrollView owns all scrolling
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
@@ -1756,6 +1796,7 @@ struct ArticleReaderView: View {
                         ArticleWebView(
                             html: buildReaderHTML(content: content, fontSize: fontSize,
                                                   theme: theme, font: readerFont, lineHeight: lineHeight,
+                                                  transparentBackground: showsPaperTexture,
                                                   developerMode: developerMode),
                             articleId:      current.id,
                             onLinkTapped:   { url in tappedLinkURL = url },
@@ -2109,8 +2150,9 @@ struct ArticleReaderView: View {
         .onChange(of: appearanceKey) { _, _ in youtubePlayerState = nil }
         .sheet(isPresented: $showAppearance) {
             AppearanceSheet(fontSize: $fontSize, theme: $theme, readerFont: $readerFont, lineHeight: $lineHeight,
+                            paperTexture: $paperTexture,
                             onAccentColorChange: { pushAppearanceToServer() })
-                .presentationDetents([.height(460)])
+                .presentationDetents([.height(520)])
                 .presentationDragIndicator(.visible)
         }
         .fullScreenCover(item: $lightboxState) { ls in
@@ -2132,6 +2174,9 @@ struct ArticleReaderView: View {
         .onChange(of: lineHeight)  { _, v in
             PreferencesStore.shared.lineHeight = v
             pushAppearanceToServer()
+        }
+        .onChange(of: paperTexture) { _, v in
+            PreferencesStore.shared.readerPaperTexture = v
         }
         .onAppear {
             localIsFavorite = article.isFavorite
@@ -2415,6 +2460,9 @@ struct ArticleReaderView: View {
     private var readerIsDark: Bool {
         (theme == .dark) || (theme == .auto && colorScheme == .dark)
     }
+
+    /// Papierstruktur nur in Hell/Sepia – Dunkel bleibt reines (OLED-)Schwarz.
+    private var showsPaperTexture: Bool { paperTexture && !readerIsDark }
 
     /// Lesbare Vordergrundfarbe auf der Akzentfläche (weiß, bei sehr hellen Akzenten dunkel).
     private var onAccentHex: String {
@@ -3791,6 +3839,7 @@ struct ArticleReaderView: View {
                                  theme: ReaderTheme = .auto,
                                  font: ReaderFont = .system,
                                  lineHeight: Double = 1.6,
+                                 transparentBackground: Bool = false,
                                  developerMode: Bool = false) -> String {
         // Determine effective dark/light based on theme override or system setting
         let effectiveDark: Bool = {
@@ -3869,7 +3918,7 @@ struct ArticleReaderView: View {
             body {
               margin: 0;
               padding: 0 20px 40px;
-              background: \(bg);
+              background: \(transparentBackground ? "transparent" : bg);
               color: \(fg);
               font-family: \(font.cssValue);
               font-size: \(fontSize)px;
@@ -4171,6 +4220,7 @@ private struct AppearanceSheet: View {
     @Binding var theme:      ReaderTheme
     @Binding var readerFont: ReaderFont
     @Binding var lineHeight: Double
+    @Binding var paperTexture: Bool
     var onAccentColorChange: () -> Void = {}
 
     @AppStorage("merlin_accent_progress_color") private var accentColorHex: String = "#FF3B30"
@@ -4183,6 +4233,7 @@ private struct AppearanceSheet: View {
             themeRow
             fontRow
             lineHeightRow
+            paperTextureRow
             accentColorRow
             Spacer()
         }
@@ -4282,6 +4333,20 @@ private struct AppearanceSheet: View {
                     .frame(width: 28, alignment: .trailing)
             }
         }
+    }
+
+    /// Wirkt nur in Hell/Sepia (siehe `showsPaperTexture`), daher im Dunkel-Theme ausgegraut.
+    @ViewBuilder
+    private var paperTextureRow: some View {
+        Toggle(isOn: $paperTexture) {
+            Label(L("articleReader.appearance.paperTexture"), systemImage: "doc.richtext")
+                .font(.subheadline)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .disabled(theme == .dark)
     }
 
     @ViewBuilder
