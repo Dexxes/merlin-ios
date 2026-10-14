@@ -3739,7 +3739,7 @@ struct ArticleReaderView: View {
     /// JS für die Support-Infobox ("Dir gefällt der Artikel von …? Überlege ein Abo abzuschließen oder zu
     /// spenden"), gleiche Platzierungslogik wie `insertSupportBox` im Nextcloud-Web-Reader: nach einem
     /// pseudo-zufälligen Top-Level-`<p>` (Seed = Artikel-ID, damit die Position stabil bleibt), nur ab
-    /// 4 Absätzen. Als eigenes Element `<merlin-support-box>` gesetzt: der XPath-Zähler der Highlights
+    /// 4 Absätzen, nie direkt nach einer Überschrift oder einem komplett fetten Absatz. Als eigenes Element `<merlin-support-box>` gesetzt: der XPath-Zähler der Highlights
     /// (`getXPath`) zählt Geschwister je Tag-Name, ein unbekannter Tag verschiebt daher keinen Index
     /// des Artikeltextes und Highlights lösen weiter plattformübergreifend gleich auf.
     static func supportBoxScript(for box: SupportBox, seed: Int) -> String? {
@@ -3798,7 +3798,23 @@ struct ArticleReaderView: View {
           if(ps.length<4) return;
           var h=0x811c9dc5>>>0, s=cfg.seed;
           for(var i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,0x01000193);}
-          var idx=1+((h>>>0)%(ps.length-2));
+          // Nie direkt nach einer Zwischenüberschrift: Absätze mit Überschrift oder komplett fettem Text
+          // (<strong>/<b>) überspringen, ab der Seed-Position erst nach hinten, dann nach vorn suchen.
+          function headingLike(p){
+            if(p.querySelector('h1,h2,h3,h4,h5,h6'))return true;
+            var w=document.createTreeWalker(p,NodeFilter.SHOW_TEXT),n,any=false;
+            while((n=w.nextNode())){
+              if(n.data.trim()==='')continue;
+              any=true;
+              var b=n.parentElement.closest('strong,b');
+              if(!b||!p.contains(b))return false;
+            }
+            return any;
+          }
+          var start=1+((h>>>0)%(ps.length-2)), idx=-1, k;
+          for(k=start;k<=ps.length-2&&idx<0;k++){if(!headingLike(ps[k]))idx=k;}
+          for(k=start-1;k>=1&&idx<0;k--){if(!headingLike(ps[k]))idx=k;}
+          if(idx<0) return;
           var box=document.createElement('merlin-support-box');
           box.setAttribute('role','note');
           box.style.cssText='display:flex;align-items:stretch;gap:0.9em;margin:1.5em 0;padding:0.85em 1em;border-left:4px solid '+cfg.accent+';border-radius:0 8px 8px 0;background:rgba(128,128,128,0.1);background:color-mix(in srgb,'+cfg.accent+' 12%,transparent);font-size:0.93em;line-height:1.6;-webkit-user-select:none;user-select:none;';
