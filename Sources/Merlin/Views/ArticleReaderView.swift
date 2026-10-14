@@ -412,7 +412,7 @@ private let merlinImageTapJS: String = #"""
   function wire(img,getAll){
     if(img.dataset.merlinTap)return;
     if(img.closest('.merlin-yt-embed'))return; // Thumbnail eines YouTube-Platzhalters — eigene Handhabung in merlinYoutubeTapJS
-    if(img.closest('merlin-support-box'))return; // Icon der Support-Infobox: kein Artikelbild, keine Lightbox
+    if(img.closest('merlin-support-box,merlin-author-box'))return; // Icon der Support-Infobox/Autorenfoto: kein Artikelbild, keine Lightbox
     img.dataset.merlinTap='1';
     img.style.cursor='pointer';
     img.addEventListener('click',function(e){
@@ -425,7 +425,7 @@ private let merlinImageTapJS: String = #"""
       window.webkit.messageHandlers.imageTap.postMessage({index:idx,srcs:srcs});
     });
   }
-  function all(){return Array.from(document.querySelectorAll('img')).filter(function(i){return !i.closest('.merlin-yt-embed')&&!i.closest('merlin-support-box')&&!i.closest('.merlin-inline-media--playable');});}
+  function all(){return Array.from(document.querySelectorAll('img')).filter(function(i){return !i.closest('.merlin-yt-embed')&&!i.closest('merlin-support-box,merlin-author-box')&&!i.closest('.merlin-inline-media--playable');});}
   all().forEach(function(img){wire(img,all);});
   new MutationObserver(function(ms){
     ms.forEach(function(m){
@@ -580,7 +580,7 @@ private let merlinDebugJS: String = #"""
 
   function addPanel(img){
     if(img.dataset.merlinDbg)return;
-    if(img.closest('merlin-support-box'))return; // Icon der Support-Infobox: kein Artikelbild
+    if(img.closest('merlin-support-box,merlin-author-box'))return; // Icon der Support-Infobox/Autorenfoto: kein Artikelbild
     img.dataset.merlinDbg='1';
     var wrap=document.createElement('div');
     wrap.className='mdbg-wrap';
@@ -3861,8 +3861,12 @@ struct ArticleReaderView: View {
         }()
         let isSepia = theme == .sepia
 
+        // Autorenboxen (Foto/Bio) am Artikelende; gibt es welche, ersetzen sie die Zeile „Autor, Medium“.
+        let authorBoxesHTML = AuthorBoxHTML.html(for: current.authors, accent: accentColorHex)
+
         // Am Ende des Artikels noch einmal „Autor, Medium“ (z. B. „Max Muster, taz.de“).
         let footerBylineHTML: String = {
+            guard authorBoxesHTML.isEmpty else { return authorBoxesHTML }
             // Mit Profil-Link (authorUrl) wird der Autorname verlinkt.
             func esc(_ s: String) -> String {
                 s.replacingOccurrences(of: "&", with: "&amp;")
@@ -4079,6 +4083,7 @@ struct ArticleReaderView: View {
               font-size: 0.9em; font-style: italic; color: \(fgMuted);
             }
             .merlin-footer-byline a { color: inherit !important; }
+            \(AuthorBoxHTML.css)
             .merlin-mastodon-post + .merlin-mastodon-post { margin-top: 8px; }
             .merlin-mastodon-post__header {
               display: flex; align-items: center; gap: 10px;
@@ -4197,7 +4202,7 @@ struct ArticleReaderView: View {
               if (img.dataset.merlinPhAttached) return;
               // Icon der Support-Infobox: kein Artikelbild, hat einen eigenen Umgang mit Ladefehlern
               // (wird einfach entfernt, siehe supportBoxScript) statt des großen Platzhalters.
-              if (img.closest && img.closest('merlin-support-box')) return;
+              if (img.closest && img.closest('merlin-support-box,merlin-author-box')) return;
               img.dataset.merlinPhAttached = '1';
               if (img.complete && img.naturalWidth === 0 && img.src) {
                 makePlaceholder(img);
