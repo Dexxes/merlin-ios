@@ -110,6 +110,8 @@ struct ListFlyoutModifier: ViewModifier {
     @State private var tagToMove:      Tag?    = nil
     /// Aufgeklappte Eltern-Tags (verschachtelte Tags), kommagetrennte Ids.
     @AppStorage("merlinExpandedTagIds") private var expandedTagIdsRaw: String = ""
+    /// Tag, dessen Löschen gerade bestätigt werden soll (Kontextmenü in der Tag-Liste).
+    @State private var tagToDelete:    Tag?    = nil
     @AppStorage("merlinIsCardView") private var isCardView: Bool = true
 
     func body(content: Content) -> some View {
@@ -240,7 +242,7 @@ struct ListFlyoutModifier: ViewModifier {
                     // Ausgeklappte Tag-Liste als Baum: Unter-Tags eingerückt,
                     // Eltern-Tags mit eigenem Pfeil zum Auf-/Zuklappen. Ein
                     // Tag zeigt auch die Artikel seiner Unter-Tags. Lange
-                    // drücken → „Verschieben nach…“.
+                    // drücken → „Verschieben nach…“ oder „Tag löschen“.
                     if tagsExpanded {
                         ForEach(visibleTagRows) { row in
                             tagRow(row)
@@ -288,6 +290,22 @@ struct ListFlyoutModifier: ViewModifier {
 
             }
             .padding(.top, 8)
+        }
+        .confirmationDialog(
+            L("navigationMenu.deleteTag.title"),
+            isPresented: Binding(
+                get: { tagToDelete != nil },
+                set: { if !$0 { tagToDelete = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: tagToDelete
+        ) { tag in
+            Button(L("common.delete"), role: .destructive) {
+                Task { await viewModel.deleteTag(tag) }
+            }
+            Button(L("common.cancel"), role: .cancel) {}
+        } message: { tag in
+            Text(String(format: L("navigationMenu.deleteTag.message"), tag.name))
         }
 
         // ── Merlin-Logo – immer an der Bildschirmkante sichtbar ───────────
@@ -429,6 +447,11 @@ struct ListFlyoutModifier: ViewModifier {
                 tagToMove = tag
             } label: {
                 Label(L("navigationMenu.moveTag"), systemImage: "folder")
+            }
+            Button(role: .destructive) {
+                tagToDelete = tag
+            } label: {
+                Label(L("navigationMenu.deleteTag"), systemImage: "trash")
             }
         }
     }
