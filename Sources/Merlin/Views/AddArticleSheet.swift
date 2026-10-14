@@ -15,6 +15,12 @@ struct AddArticleSheet: View {
     @State private var errorMessage: String? = nil
     @FocusState private var isUrlFocused: Bool
 
+    /// `initialURL` füllt das URL-Feld vor (z. B. aus dem Link-Dialog im Reader).
+    init(viewModel: ArticlesViewModel, initialURL: String = "") {
+        self.viewModel = viewModel
+        _urlText = State(initialValue: initialURL)
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -85,7 +91,8 @@ struct AddArticleSheet: View {
                 }
             }
             .onAppear {
-                isUrlFocused = true
+                // Vorbefüllt geht es um die Tags - keine Tastatur für die URL.
+                isUrlFocused = urlText.isEmpty
                 Task { await viewModel.loadTags() }
             }
         }

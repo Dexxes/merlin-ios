@@ -1636,6 +1636,8 @@ struct ArticleReaderView: View {
     /// logic. One stable instance for the lifetime of this view.
     @State private var highlightActions = HighlightActionHandler()
     @State private var tappedLinkURL:      URL? = nil
+    /// Link aus dem Link-Dialog, der mit Tags hinzugefügt werden soll (nil = Sheet zu).
+    @State private var addWithTagsLink:    AddWithTagsLink? = nil
     @State private var lightboxState:      LightboxState? = nil
     @State private var youtubePlayerState: YouTubePlayerState? = nil
     @State private var showTagSheet        = false
@@ -2189,15 +2191,10 @@ struct ArticleReaderView: View {
             isPresented: .init(get: { tappedLinkURL != nil }, set: { if !$0 { tappedLinkURL = nil } }),
             titleVisibility: .visible
         ) {
-            if let url = tappedLinkURL {
-                Button(L("articleReader.sideMenu.openInBrowser")) {
-                    UIApplication.shared.open(url)
-                }
-                Button(L("articleReader.linkDialog.addToReadingList")) {
-                    Task { try? await viewModel.addArticle(url: url.absoluteString) }
-                }
-                Button(L("common.cancel"), role: .cancel) { tappedLinkURL = nil }
-            }
+            linkDialogActions
+        }
+        .sheet(item: $addWithTagsLink) { link in
+            AddArticleSheet(viewModel: viewModel, initialURL: link.url)
         }
         .sheet(isPresented: $showTagSheet) {
             ArticleTagSheet(
@@ -2464,6 +2461,23 @@ struct ArticleReaderView: View {
         buildReaderHTML(content: content, fontSize: fontSize, theme: theme, font: readerFont,
                         lineHeight: lineHeight, transparentBackground: showsPaperTexture,
                         developerMode: developerMode)
+    }
+
+    /// Einträge des Dialogs beim Antippen eines Links im Artikel.
+    @ViewBuilder
+    private var linkDialogActions: some View {
+        if let url = tappedLinkURL {
+            Button(L("articleReader.sideMenu.openInBrowser")) {
+                UIApplication.shared.open(url)
+            }
+            Button(L("articleReader.linkDialog.addToMerlin")) {
+                Task { try? await viewModel.addArticle(url: url.absoluteString) }
+            }
+            Button(L("articleReader.linkDialog.addWithTags")) {
+                addWithTagsLink = AddWithTagsLink(url: url.absoluteString)
+            }
+            Button(L("common.cancel"), role: .cancel) { tappedLinkURL = nil }
+        }
     }
 
     private var appearanceSheet: some View {
@@ -4406,6 +4420,12 @@ private struct AppearanceSheet: View {
     }
 
 
+}
+
+/// Identifiable-Hülle für `.sheet(item:)` beim "Mit Tags hinzufügen" aus dem Link-Dialog.
+private struct AddWithTagsLink: Identifiable {
+    let url: String
+    var id: String { url }
 }
 
 // MARK: – Tag editing sheet
