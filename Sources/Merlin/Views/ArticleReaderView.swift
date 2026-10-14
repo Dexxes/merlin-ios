@@ -4493,50 +4493,16 @@ struct ArticleTagSheet: View {
 
                     // Suggestions for matching existing tags
                     if !tagSuggestions.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(tagSuggestions) { tag in
-                                    let chipColor: Color = tag.color.flatMap { Color(hexString: $0) } ?? .accentColor
-                                    Button {
-                                        selectedTagIds = tree.selecting(tag.id, in: selectedTagIds)
-                                        newTagInput = ""
-                                    } label: {
-                                        HStack(spacing: 4) {
-                                            Image(systemName: "plus").font(.caption2.weight(.semibold))
-                                            Text(tag.name).font(.caption).lineLimit(1)
-                                        }
-                                        .padding(.horizontal, 10).padding(.vertical, 5)
-                                        .background(chipColor.opacity(0.10))
-                                        .foregroundStyle(chipColor)
-                                        .clipShape(Capsule())
-                                        .overlay(Capsule().stroke(chipColor.opacity(0.35), lineWidth: 0.5))
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                            .padding(.vertical, 2)
+                        TagSuggestionList(tags: tagSuggestions) { tag in
+                            selectedTagIds = tree.selecting(tag.id, in: selectedTagIds)
+                            newTagInput = ""
                         }
                     }
 
                     // Pending new tags (will be created on save)
                     if !pendingTags.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(pendingTags, id: \.self) { name in
-                                    HStack(spacing: 4) {
-                                        Text(name).font(.caption)
-                                        Button { pendingTags.removeAll { $0 == name } } label: {
-                                            Image(systemName: "xmark").font(.caption2)
-                                        }
-                                    }
-                                    .padding(.horizontal, 10).padding(.vertical, 5)
-                                    .background(Color.accentColor.opacity(0.12))
-                                    .foregroundStyle(Color.accentColor)
-                                    .clipShape(Capsule())
-                                    .overlay(Capsule().stroke(Color.accentColor.opacity(0.4), lineWidth: 0.5))
-                                }
-                            }
-                            .padding(.vertical, 2)
+                        PendingTagList(names: pendingTags) { name in
+                            pendingTags.removeAll { $0 == name }
                         }
                     }
 
