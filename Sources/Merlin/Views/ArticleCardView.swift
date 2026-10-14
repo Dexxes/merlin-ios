@@ -534,21 +534,7 @@ struct ArticleCardView: View {
                 }
 
                 if !article.tags.isEmpty {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 4) {
-                            ForEach(article.tags) { tag in
-                                let c = tag.color.flatMap { Color(hexString: $0) } ?? Color(.systemGray4)
-                                Text(tag.name)
-                                    .font(.caption2)
-                                    .lineLimit(1)
-                                    .padding(.horizontal, 5)
-                                    .padding(.vertical, 2)
-                                    .background(c.opacity(0.2))
-                                    .foregroundStyle(c)
-                                    .clipShape(Capsule())
-                            }
-                        }
-                    }
+                    ArticleTagLine(tags: article.tags)
                 }
             }
             .padding(10)

@@ -15,6 +15,12 @@ struct AddArticleSheet: View {
     @State private var errorMessage: String? = nil
     @FocusState private var isUrlFocused: Bool
 
+    /// `initialURL` füllt das URL-Feld vor (z. B. aus dem Link-Dialog im Reader).
+    init(viewModel: ArticlesViewModel, initialURL: String = "") {
+        self.viewModel = viewModel
+        _urlText = State(initialValue: initialURL)
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -36,7 +42,7 @@ struct AddArticleSheet: View {
                 // Tags
                 Section {
                     if !viewModel.allTags.isEmpty {
-                        tagChipGrid
+                        tagTreeList
                     }
                     HStack {
                         TextField(L("addArticle.tagsPlaceholder"), text: $newTagInput)
@@ -50,10 +56,10 @@ struct AddArticleSheet: View {
                         }
                     }
                     if !tagSuggestions.isEmpty {
-                        suggestionsRow
+                        suggestionsList
                     }
                     if !pendingTags.isEmpty {
-                        pendingTagsRow
+                        pendingTagsList
                     }
                     if !viewModel.allTags.isEmpty,
                        !pendingTags.isEmpty || !newTagInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -85,7 +91,8 @@ struct AddArticleSheet: View {
                 }
             }
             .onAppear {
-                isUrlFocused = true
+                // Vorbefüllt geht es um die Tags - keine Tastatur für die URL.
+                isUrlFocused = urlText.isEmpty
                 Task { await viewModel.loadTags() }
             }
         }
@@ -105,72 +112,29 @@ struct AddArticleSheet: View {
 
     // MARK: – Sub-views
 
-    @ViewBuilder
-    private var tagChipGrid: some View {
-        // Baumreihenfolge; Unter-Tags zeigen ihren Pfad ("Reisen › Japan").
-        let tree = viewModel.tagTree
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 90))], spacing: 8) {
-            ForEach(tree.rows()) { row in
-                let tag = row.tag
-                let sel = selectedTagIds.contains(tag.id)
-                AddSheetTagChip(name: row.depth > 0 ? tree.path(of: tag) : tag.name, color: tag.color, isSelected: sel) {
-                    selectedTagIds = tree.toggling(tag.id, in: selectedTagIds)
-                }
-            }
-        }
-        .padding(.vertical, 4)
+    // Zeilen wie in der Share-Extension; der Rahmen ersetzt den Form-Zellhintergrund.
+
+    private var tagTreeList: some View {
+        TagTreeSelectionList(tree: viewModel.tagTree, selection: $selectedTagIds)
+            .listRowInsets(EdgeInsets())
+            .listRowBackground(Color.clear)
     }
 
-    @ViewBuilder
-    private var suggestionsRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(tagSuggestions) { tag in
-                    let chipColor: Color = {
-                        guard let hex = tag.color, let c = Color(hexString: hex) else { return .accentColor }
-                        return c
-                    }()
-                    Button {
-                        selectedTagIds = viewModel.tagTree.selecting(tag.id, in: selectedTagIds)
-                        newTagInput = ""
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "plus").font(.caption2.weight(.semibold))
-                            Text(tag.name).font(.caption).lineLimit(1)
-                        }
-                        .padding(.horizontal, 10).padding(.vertical, 5)
-                        .background(chipColor.opacity(0.10))
-                        .foregroundStyle(chipColor)
-                        .clipShape(Capsule())
-                        .overlay(Capsule().stroke(chipColor.opacity(0.35), lineWidth: 0.5))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.vertical, 2)
+    private var suggestionsList: some View {
+        TagSuggestionList(tags: tagSuggestions) { tag in
+            selectedTagIds = viewModel.tagTree.selecting(tag.id, in: selectedTagIds)
+            newTagInput = ""
         }
+        .listRowInsets(EdgeInsets())
+        .listRowBackground(Color.clear)
     }
 
-    @ViewBuilder
-    private var pendingTagsRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(pendingTags, id: \.self) { name in
-                    HStack(spacing: 4) {
-                        Text(name).font(.caption)
-                        Button { pendingTags.removeAll { $0 == name } } label: {
-                            Image(systemName: "xmark").font(.caption2)
-                        }
-                    }
-                    .padding(.horizontal, 10).padding(.vertical, 5)
-                    .background(Color.accentColor.opacity(0.12))
-                    .foregroundStyle(Color.accentColor)
-                    .clipShape(Capsule())
-                    .overlay(Capsule().stroke(Color.accentColor.opacity(0.4), lineWidth: 0.5))
-                }
-            }
-            .padding(.vertical, 2)
+    private var pendingTagsList: some View {
+        PendingTagList(names: pendingTags) { name in
+            pendingTags.removeAll { $0 == name }
         }
+        .listRowInsets(EdgeInsets())
+        .listRowBackground(Color.clear)
     }
 
     // MARK: – Actions
@@ -208,35 +172,5 @@ struct AddArticleSheet: View {
             }
             isSaving = false
         }
-    }
-}
-
-// MARK: – Tag chip
-
-private struct AddSheetTagChip: View {
-    let name: String
-    let color: String?
-    let isSelected: Bool
-    let action: () -> Void
-
-    private var chipColor: Color {
-        guard let hex = color, let c = Color(hexString: hex) else { return .accentColor }
-        return c
-    }
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 4) {
-                if isSelected { Image(systemName: "checkmark").font(.caption2.weight(.bold)) }
-                Text(name).font(.caption).lineLimit(1)
-            }
-            .padding(.horizontal, 10).padding(.vertical, 5)
-            .background(isSelected ? chipColor.opacity(0.15) : Color(.secondarySystemGroupedBackground))
-            .foregroundStyle(isSelected ? chipColor : Color.secondary)
-            .clipShape(Capsule())
-            .overlay(Capsule().stroke(isSelected ? chipColor : Color(.separator),
-                                      lineWidth: isSelected ? 1 : 0.5))
-        }
-        .buttonStyle(.plain)
     }
 }

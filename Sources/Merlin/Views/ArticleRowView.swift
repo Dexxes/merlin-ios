@@ -97,22 +97,7 @@ struct ArticleRowView: View {
                 }
 
                 if !article.tags.isEmpty {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 4) {
-                            ForEach(article.tags) { tag in
-                                let chipColor = tag.color.flatMap { Color(hexString: $0) } ?? Color(.systemGray4)
-                                Text(tag.name)
-                                    .font(.caption2)
-                                    .lineLimit(1)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(chipColor.opacity(0.2))
-                                    .foregroundStyle(chipColor)
-                                    .clipShape(Capsule())
-                                    .overlay(Capsule().strokeBorder(chipColor.opacity(0.4), lineWidth: 0.5))
-                            }
-                        }
-                    }
+                    ArticleTagLine(tags: article.tags)
                 }
 
                 // MARK: Dev-mode image cache info

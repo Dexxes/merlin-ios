@@ -1636,6 +1636,8 @@ struct ArticleReaderView: View {
     /// logic. One stable instance for the lifetime of this view.
     @State private var highlightActions = HighlightActionHandler()
     @State private var tappedLinkURL:      URL? = nil
+    /// Link aus dem Link-Dialog, der mit Tags hinzugefügt werden soll (nil = Sheet zu).
+    @State private var addWithTagsLink:    AddWithTagsLink? = nil
     @State private var lightboxState:      LightboxState? = nil
     /// Termin aus dem erkannten Text eines Bildes (Link unter „Erkannter Text“).
     @State private var eventSuggestion:    RecognizedTextEvent? = nil
@@ -2212,15 +2214,10 @@ struct ArticleReaderView: View {
             isPresented: .init(get: { tappedLinkURL != nil }, set: { if !$0 { tappedLinkURL = nil } }),
             titleVisibility: .visible
         ) {
-            if let url = tappedLinkURL {
-                Button(L("articleReader.sideMenu.openInBrowser")) {
-                    UIApplication.shared.open(url)
-                }
-                Button(L("articleReader.linkDialog.addToReadingList")) {
-                    Task { try? await viewModel.addArticle(url: url.absoluteString) }
-                }
-                Button(L("common.cancel"), role: .cancel) { tappedLinkURL = nil }
-            }
+            linkDialogActions
+        }
+        .sheet(item: $addWithTagsLink) { link in
+            AddArticleSheet(viewModel: viewModel, initialURL: link.url)
         }
         .sheet(isPresented: $showTagSheet) {
             ArticleTagSheet(
@@ -2488,6 +2485,23 @@ struct ArticleReaderView: View {
         buildReaderHTML(content: content, fontSize: fontSize, theme: theme, font: readerFont,
                         lineHeight: lineHeight, transparentBackground: showsPaperTexture,
                         developerMode: developerMode)
+    }
+
+    /// Einträge des Dialogs beim Antippen eines Links im Artikel.
+    @ViewBuilder
+    private var linkDialogActions: some View {
+        if let url = tappedLinkURL {
+            Button(L("articleReader.sideMenu.openInBrowser")) {
+                UIApplication.shared.open(url)
+            }
+            Button(L("articleReader.linkDialog.addToMerlin")) {
+                Task { try? await viewModel.addArticle(url: url.absoluteString) }
+            }
+            Button(L("articleReader.linkDialog.addWithTags")) {
+                addWithTagsLink = AddWithTagsLink(url: url.absoluteString)
+            }
+            Button(L("common.cancel"), role: .cancel) { tappedLinkURL = nil }
+        }
     }
 
     private var appearanceSheet: some View {
@@ -4454,6 +4468,12 @@ private struct AppearanceSheet: View {
 
 }
 
+/// Identifiable-Hülle für `.sheet(item:)` beim "Mit Tags hinzufügen" aus dem Link-Dialog.
+private struct AddWithTagsLink: Identifiable {
+    let url: String
+    var id: String { url }
+}
+
 // MARK: – Tag editing sheet
 
 struct ArticleTagSheet: View {
@@ -4519,50 +4539,16 @@ struct ArticleTagSheet: View {
 
                     // Suggestions for matching existing tags
                     if !tagSuggestions.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(tagSuggestions) { tag in
-                                    let chipColor: Color = tag.color.flatMap { Color(hexString: $0) } ?? .accentColor
-                                    Button {
-                                        selectedTagIds = tree.selecting(tag.id, in: selectedTagIds)
-                                        newTagInput = ""
-                                    } label: {
-                                        HStack(spacing: 4) {
-                                            Image(systemName: "plus").font(.caption2.weight(.semibold))
-                                            Text(tag.name).font(.caption).lineLimit(1)
-                                        }
-                                        .padding(.horizontal, 10).padding(.vertical, 5)
-                                        .background(chipColor.opacity(0.10))
-                                        .foregroundStyle(chipColor)
-                                        .clipShape(Capsule())
-                                        .overlay(Capsule().stroke(chipColor.opacity(0.35), lineWidth: 0.5))
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                            .padding(.vertical, 2)
+                        TagSuggestionList(tags: tagSuggestions) { tag in
+                            selectedTagIds = tree.selecting(tag.id, in: selectedTagIds)
+                            newTagInput = ""
                         }
                     }
 
                     // Pending new tags (will be created on save)
                     if !pendingTags.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(pendingTags, id: \.self) { name in
-                                    HStack(spacing: 4) {
-                                        Text(name).font(.caption)
-                                        Button { pendingTags.removeAll { $0 == name } } label: {
-                                            Image(systemName: "xmark").font(.caption2)
-                                        }
-                                    }
-                                    .padding(.horizontal, 10).padding(.vertical, 5)
-                                    .background(Color.accentColor.opacity(0.12))
-                                    .foregroundStyle(Color.accentColor)
-                                    .clipShape(Capsule())
-                                    .overlay(Capsule().stroke(Color.accentColor.opacity(0.4), lineWidth: 0.5))
-                                }
-                            }
-                            .padding(.vertical, 2)
+                        PendingTagList(names: pendingTags) { name in
+                            pendingTags.removeAll { $0 == name }
                         }
                     }
 
