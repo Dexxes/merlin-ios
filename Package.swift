@@ -32,6 +32,7 @@ let package = Package(
                 .process("Resources"),
                 .copy("no-img.png"),
                 .copy("merlin-logo.png"),
+                .copy("paper-texture.png"),
             ]
         ),
         .target(
