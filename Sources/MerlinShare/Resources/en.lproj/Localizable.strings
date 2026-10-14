@@ -469,6 +469,16 @@
 "settings.storage.serverLabel" = "Server";
 "settings.testConnection.button" = "Test Connection";
 "share.extracting.subtitle" = "Reading shared content…";
+"share.files.compression.light" = "Compress lightly";
+"share.files.compression.original" = "Uncompressed";
+"share.files.compression.strong" = "Compress strongly";
+"share.files.errorReadFile" = "The shared file could not be read.";
+"share.files.errorStandalone" = "Files can only be saved with Nextcloud, not with the Merlin server.";
+"share.files.errorUpload" = "Upload failed: %@";
+"share.files.progress" = "File %@ of %@ · %@";
+"share.files.subtitle" = "Save files to Merlin";
+"share.files.summary" = "%@ · %@";
+"share.files.uploadingSubtitle" = "Uploading…";
 "share.rateLimited.subtitle" = "Rate limited";
 "share.result.errorAppNotFound" = "Merlin app not found on this server.";
 "share.result.errorAuthFailed" = "Authentication failed.\nCheck your credentials in the Merlin app.";
