@@ -13,6 +13,16 @@ struct SupportBox: Codable, Equatable {
     var iconUrl: String?
 }
 
+/// Ein Autor des Artikels (`authors` im API-JSON, merlin-nextcloud): Name, Profil-Link und – wenn der
+/// Content-Filter der Domain `<author-image>`/`<author-bio>` kennt – Foto und Kurzbiografie für die
+/// Autorenbox am Artikelende (siehe `AuthorBoxHTML`).
+struct ArticleAuthor: Codable, Equatable {
+    var name: String
+    var url: String?
+    var image: String?
+    var bio: String?
+}
+
 struct Article: Identifiable, Codable, Equatable {
     let id: Int
     var url: String
@@ -23,6 +33,8 @@ struct Article: Identifiable, Codable, Equatable {
     /// Link zum Autorenprofil bei der Quelle (`authorUrl`, Merlin-Server ab Migration 26). Nur bei genau
     /// einem Autor gesetzt; nil bei älteren Servern. Für die Anzeige `authorProfileURL` verwenden.
     var authorUrl: String?
+    /// Alle Autoren mit Profil-Link, Foto und Bio (nil bei älteren Servern oder ohne solche Angaben).
+    var authors: [ArticleAuthor]?
     var siteName: String?
     var imageUrl: String?
     var isFavorite: Bool
@@ -67,15 +79,22 @@ struct Article: Identifiable, Codable, Equatable {
     /// Nur in der Einzelabruf-Antwort (`getArticle`) gesetzt, nicht in Listen; wird bewusst nicht in den
     /// Offline-Cache geschrieben (der Login-Status des Nutzers kann sich ändern), siehe `encode(to:)`.
     var supportBox: SupportBox?
+    /// Nextcloud-Datei-ID bei Einträgen für Dateien aus „Merlin Dateien“ (vom Handy geteilte Bilder, Videos,
+    /// Audios, PDFs, sonstige Dateien; merlin-nextcloud ab 1.0.18), sonst nil. `url` zeigt dann in die
+    /// Nextcloud-Dateien-App, der Inhalt lädt die Datei über signierte Links.
+    var fileId: Int?
+    /// MIME-Typ der Datei bei Datei-Einträgen.
+    var fileMime: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, url, title, content, excerpt, author, authorUrl, siteName, imageUrl
+        case id, url, title, content, excerpt, author, authorUrl, authors, siteName, imageUrl
         case isFavorite, isArchived, readingTime, publishedAt, createdAt, updatedAt, archivedAt
         case tags, isProcessing, category, scrollProgress, scrollUpdatedAt
         case requiresLoginDomain, requiresLoginPage
         case isPaywalled, paywallSubscribeUrl
         case unsupportedSiteDomain
         case supportBox
+        case fileId, fileMime
     }
 
     init(from decoder: Decoder) throws {
@@ -87,6 +106,7 @@ struct Article: Identifiable, Codable, Equatable {
         excerpt = try c.decodeIfPresent(String.self, forKey: .excerpt)
         author = try c.decodeIfPresent(String.self, forKey: .author)
         authorUrl = try? c.decodeIfPresent(String.self, forKey: .authorUrl)
+        authors = try? c.decodeIfPresent([ArticleAuthor].self, forKey: .authors)
         siteName = try c.decodeIfPresent(String.self, forKey: .siteName)
         imageUrl = try c.decodeIfPresent(String.self, forKey: .imageUrl)
         isArchived = try c.decode(Bool.self, forKey: .isArchived)
@@ -107,6 +127,8 @@ struct Article: Identifiable, Codable, Equatable {
         paywallSubscribeUrl = try c.decodeIfPresent(String.self, forKey: .paywallSubscribeUrl)
         unsupportedSiteDomain = try c.decodeIfPresent(String.self, forKey: .unsupportedSiteDomain)
         supportBox = try? c.decodeIfPresent(SupportBox.self, forKey: .supportBox)
+        fileId = try? c.decodeIfPresent(Int.self, forKey: .fileId)
+        fileMime = try? c.decodeIfPresent(String.self, forKey: .fileMime)
 
         // isFavorite kommt vom Server entweder als `false` (nicht favorisiert)
         // oder als ISO8601-String (Favorisierungszeitpunkt) – kein Bool-Only-Feld.
@@ -128,6 +150,7 @@ struct Article: Identifiable, Codable, Equatable {
         try c.encodeIfPresent(excerpt, forKey: .excerpt)
         try c.encodeIfPresent(author, forKey: .author)
         try c.encodeIfPresent(authorUrl, forKey: .authorUrl)
+        try c.encodeIfPresent(authors, forKey: .authors)
         try c.encodeIfPresent(siteName, forKey: .siteName)
         try c.encodeIfPresent(imageUrl, forKey: .imageUrl)
         try c.encode(isArchived, forKey: .isArchived)
@@ -146,6 +169,8 @@ struct Article: Identifiable, Codable, Equatable {
         try c.encode(isPaywalled, forKey: .isPaywalled)
         try c.encodeIfPresent(paywallSubscribeUrl, forKey: .paywallSubscribeUrl)
         try c.encodeIfPresent(unsupportedSiteDomain, forKey: .unsupportedSiteDomain)
+        try c.encodeIfPresent(fileId, forKey: .fileId)
+        try c.encodeIfPresent(fileMime, forKey: .fileMime)
 
         // Spiegelbildlich zum Decoder: EIN Wire-Feld, false oder Datum. Wird
         // auch für den lokalen Disk-Cache verwendet, damit Decode/Encode
@@ -197,6 +222,17 @@ struct Article: Identifiable, Codable, Equatable {
         if category == "PDF" { return true }
         guard let path = URL(string: url)?.path else { return false }
         return path.lowercased().hasSuffix(".pdf")
+    }
+
+    /// Wo die PDF eines PDF-Artikels liegt: bei Datei-Einträgen der signierte Link aus dem Marker
+    /// `div.merlin-pdf[data-pdf-src]` im Inhalt (`url` führt dort in die Nextcloud-Dateien-App und braucht
+    /// einen Login; nil, solange der Inhalt noch nicht geladen ist), sonst die Quell-URL.
+    var pdfSourceURL: URL? {
+        guard fileId != nil else { return URL(string: url) }
+        guard let content,
+              let range = content.range(of: #"data-pdf-src="[^"]+""#, options: .regularExpression) else { return nil }
+        let raw = content[range].dropFirst("data-pdf-src=\"".count).dropLast()
+        return URL(string: raw.replacingOccurrences(of: "&amp;", with: "&"))
     }
 
     /// Two articles are equal when they represent the same DB row AND none of

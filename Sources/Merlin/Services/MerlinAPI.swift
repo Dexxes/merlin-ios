@@ -77,21 +77,27 @@ struct ArticleCounts: Codable {
     var pages: CategoryCounts
     var videos: CategoryCounts
     var audio: CategoryCounts
+    var files: CategoryCounts
 
     init(pages: CategoryCounts = CategoryCounts(),
          videos: CategoryCounts = CategoryCounts(),
-         audio: CategoryCounts = CategoryCounts()) {
+         audio: CategoryCounts = CategoryCounts(),
+         files: CategoryCounts = CategoryCounts()) {
         self.pages  = pages
         self.videos = videos
         self.audio  = audio
+        self.files  = files
     }
 
-    // `audio` fehlt bei Servern ohne Audio-Kategorie - dann 0 statt Decode-Fehler.
+    // `audio` fehlt bei Servern ohne Audio-Kategorie, `files` bei Servern ohne
+    // „Merlin Dateien“ (Standalone-Server, merlin-nextcloud < 1.0.18) - dann 0
+    // statt Decode-Fehler.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         pages  = try c.decode(CategoryCounts.self, forKey: .pages)
         videos = try c.decode(CategoryCounts.self, forKey: .videos)
         audio  = try c.decodeIfPresent(CategoryCounts.self, forKey: .audio) ?? CategoryCounts()
+        files  = try c.decodeIfPresent(CategoryCounts.self, forKey: .files) ?? CategoryCounts()
     }
 
     subscript(group: ContentGroup) -> CategoryCounts {
@@ -99,6 +105,7 @@ struct ArticleCounts: Codable {
         case .pages:  return pages
         case .videos: return videos
         case .audio:  return audio
+        case .files:  return files
         }
     }
 }
@@ -277,6 +284,15 @@ actor MerlinAPI {
         _ = try await performRaw(req)
     }
 
+    /// Renames the file of a "Merlin files" entry (merlin-nextcloud ≥ 1.0.19).
+    /// `name` without extension; the server keeps the file's extension and
+    /// returns the rebuilt entry. 409 (`serverError(409)`) = name taken.
+    func renameFile(_ id: Int, to name: String) async throws -> Article {
+        var req = try makeRequest("/articles/\(id)/file-name", method: "PUT")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["name": name])
+        return try await perform(req)
+    }
+
     func toggleFavorite(_ id: Int) async throws -> Article {
         var req = try makeRequest("/articles/\(id)/favorite", method: "PUT")
         req.httpBody = Data()
@@ -318,9 +334,21 @@ actor MerlinAPI {
         return try await perform(req)
     }
 
-    func createTag(name: String) async throws -> Tag {
+    /// Legt einen Tag an; mit `parentId` als Unter-Tag (verschachtelte Tags,
+    /// nur merlin-nextcloud – andere Server ignorieren das Feld).
+    func createTag(name: String, parentId: Int? = nil) async throws -> Tag {
         var req = try makeRequest("/tags", method: "POST")
-        req.httpBody = try JSONEncoder().encode(["name": name])
+        var body: [String: Any] = ["name": name]
+        if let parentId { body["parentId"] = parentId }
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        return try await perform(req)
+    }
+
+    /// Hängt einen Tag (samt Unter-Tags) unter `parentId`; `nil` = oberste
+    /// Ebene (der Server erwartet dafür `0`). Kreise lehnt der Server ab.
+    func moveTag(id: Int, parentId: Int?) async throws -> Tag {
+        var req = try makeRequest("/tags/\(id)", method: "PUT")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["parentId": parentId ?? 0])
         return try await perform(req)
     }
 
@@ -334,8 +362,8 @@ actor MerlinAPI {
     }
 
     /// Resolves a list of tag names: matches existing ones by name (case-insensitive),
-    /// creates any that don't exist yet, and returns all IDs.
-    func resolveTagIds(for names: [String]) async throws -> [Int] {
+    /// creates any that don't exist yet (below `parentId`, if given), and returns all IDs.
+    func resolveTagIds(for names: [String], parentId: Int? = nil) async throws -> [Int] {
         guard !names.isEmpty else { return [] }
         let existing = try await getTags()
         var ids: [Int] = []
@@ -343,7 +371,7 @@ actor MerlinAPI {
             if let found = existing.first(where: { $0.name.lowercased() == name.lowercased() }) {
                 ids.append(found.id)
             } else {
-                let created = try await createTag(name: name)
+                let created = try await createTag(name: name, parentId: parentId)
                 ids.append(created.id)
             }
         }

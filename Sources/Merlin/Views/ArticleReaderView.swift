@@ -412,7 +412,7 @@ private let merlinImageTapJS: String = #"""
   function wire(img,getAll){
     if(img.dataset.merlinTap)return;
     if(img.closest('.merlin-yt-embed'))return; // Thumbnail eines YouTube-Platzhalters — eigene Handhabung in merlinYoutubeTapJS
-    if(img.closest('merlin-support-box'))return; // Icon der Support-Infobox: kein Artikelbild, keine Lightbox
+    if(img.closest('merlin-support-box,merlin-author-box'))return; // Icon der Support-Infobox/Autorenfoto: kein Artikelbild, keine Lightbox
     img.dataset.merlinTap='1';
     img.style.cursor='pointer';
     img.addEventListener('click',function(e){
@@ -425,7 +425,7 @@ private let merlinImageTapJS: String = #"""
       window.webkit.messageHandlers.imageTap.postMessage({index:idx,srcs:srcs});
     });
   }
-  function all(){return Array.from(document.querySelectorAll('img')).filter(function(i){return !i.closest('.merlin-yt-embed')&&!i.closest('merlin-support-box')&&!i.closest('.merlin-inline-media--playable');});}
+  function all(){return Array.from(document.querySelectorAll('img')).filter(function(i){return !i.closest('.merlin-yt-embed')&&!i.closest('merlin-support-box,merlin-author-box')&&!i.closest('.merlin-inline-media--playable');});}
   all().forEach(function(img){wire(img,all);});
   new MutationObserver(function(ms){
     ms.forEach(function(m){
@@ -580,7 +580,7 @@ private let merlinDebugJS: String = #"""
 
   function addPanel(img){
     if(img.dataset.merlinDbg)return;
-    if(img.closest('merlin-support-box'))return; // Icon der Support-Infobox: kein Artikelbild
+    if(img.closest('merlin-support-box,merlin-author-box'))return; // Icon der Support-Infobox/Autorenfoto: kein Artikelbild
     img.dataset.merlinDbg='1';
     var wrap=document.createElement('div');
     wrap.className='mdbg-wrap';
@@ -859,6 +859,42 @@ private struct HighlightToolbarView: View {
         .padding(.bottom, dockTop ? 0 : edgeInset)
         .modifier(HighlightToolbarBackground(bgColor: bgColor))
     }
+}
+
+/// Reader-Hintergrund: Theme-Farbe, in Hell/Sepia optional mit Papierstruktur.
+/// Die Graustufen-Kachel (`paper-texture.png`, erzeugt von
+/// `scripts/generate-paper-texture.py`) liegt per Multiply über der Farbe, damit
+/// Sepia seinen Farbton behält. Die Ebene bleibt bildschirmfest (eine Fläche in
+/// Bildschirm- statt Artikellänge) und wird um `scrollOffset` modulo Kachelhöhe
+/// verschoben – die Fasern wandern so mit dem Text wie bei echtem Papier.
+private struct PaperBackground: View {
+    let color: Color
+    let textured: Bool
+    let scrollOffset: CGFloat
+
+    var body: some View {
+        color.overlay {
+            if textured, let tile = Self.tile {
+                GeometryReader { geo in
+                    let tileHeight = tile.size.height
+                    Image(uiImage: tile)
+                        .resizable(resizingMode: .tile)
+                        .frame(width: geo.size.width, height: geo.size.height + tileHeight)
+                        .offset(y: -scrollOffset.truncatingRemainder(dividingBy: tileHeight))
+                        .blendMode(.multiply)
+                }
+                .clipped()
+                .allowsHitTesting(false)
+            }
+        }
+    }
+
+    /// Einmal geladen, mit Skalierung 3, damit ein Texel einem Gerätepixel entspricht.
+    private static let tile: UIImage? = {
+        guard let url = Bundle.module.url(forResource: "paper-texture", withExtension: "png"),
+              let cg = UIImage(contentsOfFile: url.path)?.cgImage else { return nil }
+        return UIImage(cgImage: cg, scale: 3, orientation: .up)
+    }()
 }
 
 /// Ab iOS 26 echtes Liquid Glass; darunter eine flache, themenfarbige Fläche
@@ -1331,7 +1367,7 @@ guard message.name == "highlights",
             if navigationAction.navigationType == .linkActivated,
                let url = navigationAction.request.url,
                let scheme = url.scheme,
-               scheme == "http" || scheme == "https" {
+               scheme == "http" || scheme == "https" || url == RecognizedTextEvent.linkURL {
                 decisionHandler(.cancel)
                 onLinkTapped?(url)
             } else {
@@ -1600,9 +1636,15 @@ struct ArticleReaderView: View {
     /// logic. One stable instance for the lifetime of this view.
     @State private var highlightActions = HighlightActionHandler()
     @State private var tappedLinkURL:      URL? = nil
+    /// Link aus dem Link-Dialog, der mit Tags hinzugefügt werden soll (nil = Sheet zu).
+    @State private var addWithTagsLink:    AddWithTagsLink? = nil
     @State private var lightboxState:      LightboxState? = nil
+    /// Termin aus dem erkannten Text eines Bildes (Link unter „Erkannter Text“).
+    @State private var eventSuggestion:    RecognizedTextEvent? = nil
     @State private var youtubePlayerState: YouTubePlayerState? = nil
     @State private var showTagSheet        = false
+    /// Umbenennen-Dialog für Datei-Einträge (siehe RenameFileAlert).
+    @State private var renameArticle: Article? = nil
     @State private var showReportSheet     = false
     @State private var showShareLinkSheet  = false
     /// Kommentare und Markierungen des Artikels, live per Push (nur Nextcloud).
@@ -1618,6 +1660,7 @@ struct ArticleReaderView: View {
     @State private var theme:         ReaderTheme  = PreferencesStore.shared.readerTheme
     @State private var readerFont:    ReaderFont   = PreferencesStore.shared.readerFont
     @State private var lineHeight:    Double        = PreferencesStore.shared.lineHeight
+    @State private var paperTexture:  Bool          = PreferencesStore.shared.readerPaperTexture
     @State private var progressEdge:  ProgressEdge = PreferencesStore.shared.progressEdge
     @State private var showSideMenu      = false
     @State private var showReminderSheet = false
@@ -1653,7 +1696,7 @@ struct ArticleReaderView: View {
 
     /// Fasst alle Einstellungen zusammen, die die Reader-HTML neu laden lassen.
     private var appearanceKey: String {
-        "\(fontSize)|\(theme.rawValue)|\(readerFont.rawValue)|\(lineHeight)"
+        "\(fontSize)|\(theme.rawValue)|\(readerFont.rawValue)|\(lineHeight)|\(showsPaperTexture)"
     }
 
     /// Inline-Player exakt über der angetippten Vorschaukarte. Der WebView scrollt nicht
@@ -1723,8 +1766,9 @@ struct ArticleReaderView: View {
 
             // Fill the entire screen with the reader background colour so no
             // white areas bleed through above the top buttons or below the
-            // bottom bar when dark / sepia mode is active.
-            readerBgColor.ignoresSafeArea()
+            // bottom bar when dark / sepia mode is active. In Hell/Sepia liegt
+            // hier auch die Papierstruktur; der HTML-Body ist dann transparent.
+            readerBackground
             // MARK: Content – outer ScrollView owns all scrolling
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
@@ -1748,17 +1792,30 @@ struct ArticleReaderView: View {
                                               posterURL: current.imageUrl.flatMap(URL.init(string:)))
                     }
 
-                    if current.isPDF, let pdfURL = URL(string: current.url) {
+                    if current.isPDF, let pdfURL = current.pdfSourceURL {
                         // PDF-Artikel: der Server speichert nur die URL; die PDF wird hier geladen und
                         // seitenweise im äußeren ScrollView gerendert (Fortschritt/Restore bleiben so intakt).
                         PDFArticleView(sourceURL: pdfURL, availableWidth: viewportWidth)
+                        // Datei-Einträge: Metadaten aus dem Content (dort zeigt sie sonst die
+                        // Web-Ansicht, die bei PDFs nicht gerendert wird).
+                        if current.fileId != nil, let content = current.content,
+                           let metadata = FileMetadataParser.parse(content) {
+                            FileMetadataSection(title: metadata.title, groups: metadata.groups)
+                        }
                     } else if let content = current.content, !content.isEmpty {
                         ArticleWebView(
-                            html: buildReaderHTML(content: content, fontSize: fontSize,
-                                                  theme: theme, font: readerFont, lineHeight: lineHeight,
-                                                  developerMode: developerMode),
+                            html: readerHTML(content: current.fileId != nil
+                                             ? RecognizedTextEvent.addingEventLink(to: content, label: L("fileText.createEvent"))
+                                             : content),
                             articleId:      current.id,
-                            onLinkTapped:   { url in tappedLinkURL = url },
+                            onLinkTapped:   { url in
+                                if url == RecognizedTextEvent.linkURL {
+                                    eventSuggestion = RecognizedTextEvent.recognizedText(in: content)
+                                        .flatMap { RecognizedTextEvent.detect(in: $0) }
+                                } else {
+                                    tappedLinkURL = url
+                                }
+                            },
                             onHeightChange: { h in webViewHeight = max(200, h) },
                             onImageTapped:  { idx, srcs in
                                 lightboxState = LightboxState(initialIndex: idx, imageURLs: srcs)
@@ -2108,14 +2165,15 @@ struct ArticleReaderView: View {
         // YouTube-Karte geht dabei verloren, das Overlay hätte keine Position mehr.
         .onChange(of: appearanceKey) { _, _ in youtubePlayerState = nil }
         .sheet(isPresented: $showAppearance) {
-            AppearanceSheet(fontSize: $fontSize, theme: $theme, readerFont: $readerFont, lineHeight: $lineHeight,
-                            onAccentColorChange: { pushAppearanceToServer() })
-                .presentationDetents([.height(460)])
-                .presentationDragIndicator(.visible)
+            appearanceSheet
         }
         .fullScreenCover(item: $lightboxState) { ls in
             ImageLightboxView(state: ls) { lightboxState = nil }
                 .background(Color.black)
+        }
+        .sheet(item: $eventSuggestion) { suggestion in
+            EventEditSheet(suggestion: suggestion) { eventSuggestion = nil }
+                .ignoresSafeArea()
         }
         .onChange(of: fontSize)    { _, v in
             PreferencesStore.shared.readerFontSize = v
@@ -2156,15 +2214,10 @@ struct ArticleReaderView: View {
             isPresented: .init(get: { tappedLinkURL != nil }, set: { if !$0 { tappedLinkURL = nil } }),
             titleVisibility: .visible
         ) {
-            if let url = tappedLinkURL {
-                Button(L("articleReader.sideMenu.openInBrowser")) {
-                    UIApplication.shared.open(url)
-                }
-                Button(L("articleReader.linkDialog.addToReadingList")) {
-                    Task { try? await viewModel.addArticle(url: url.absoluteString) }
-                }
-                Button(L("common.cancel"), role: .cancel) { tappedLinkURL = nil }
-            }
+            linkDialogActions
+        }
+        .sheet(item: $addWithTagsLink) { link in
+            AddArticleSheet(viewModel: viewModel, initialURL: link.url)
         }
         .sheet(isPresented: $showTagSheet) {
             ArticleTagSheet(
@@ -2226,6 +2279,7 @@ struct ArticleReaderView: View {
             ReminderSheet(article: current, currentReminder: $articleReminder)
         }
         // ── Öffentlicher Share-Link ──────────────────────────────────────────
+        .renameFileAlert(article: $renameArticle, viewModel: viewModel)
         .sheet(isPresented: $showShareLinkSheet, onDismiss: {
             // Link angelegt/widerrufen: der Push-Kanal endet ohne Link
             // (`.closed`) und muss danach neu verbunden werden.
@@ -2414,6 +2468,48 @@ struct ArticleReaderView: View {
     /// Effektives Hell/Dunkel des Readers (Theme-Override oder System).
     private var readerIsDark: Bool {
         (theme == .dark) || (theme == .auto && colorScheme == .dark)
+    }
+
+    /// Papierstruktur nur in Hell/Sepia – Dunkel bleibt reines (OLED-)Schwarz.
+    private var showsPaperTexture: Bool { paperTexture && !readerIsDark }
+
+    // Die folgenden drei sind eigene Properties, damit `body` für den Type-Checker
+    // klein genug bleibt (vgl. `youtubeOverlay`).
+
+    private var readerBackground: some View {
+        PaperBackground(color: readerBgColor, textured: showsPaperTexture, scrollOffset: scrollOffset)
+            .ignoresSafeArea()
+    }
+
+    private func readerHTML(content: String) -> String {
+        buildReaderHTML(content: content, fontSize: fontSize, theme: theme, font: readerFont,
+                        lineHeight: lineHeight, transparentBackground: showsPaperTexture,
+                        developerMode: developerMode)
+    }
+
+    /// Einträge des Dialogs beim Antippen eines Links im Artikel.
+    @ViewBuilder
+    private var linkDialogActions: some View {
+        if let url = tappedLinkURL {
+            Button(L("articleReader.sideMenu.openInBrowser")) {
+                UIApplication.shared.open(url)
+            }
+            Button(L("articleReader.linkDialog.addToMerlin")) {
+                Task { try? await viewModel.addArticle(url: url.absoluteString) }
+            }
+            Button(L("articleReader.linkDialog.addWithTags")) {
+                addWithTagsLink = AddWithTagsLink(url: url.absoluteString)
+            }
+            Button(L("common.cancel"), role: .cancel) { tappedLinkURL = nil }
+        }
+    }
+
+    private var appearanceSheet: some View {
+        AppearanceSheet(fontSize: $fontSize, theme: $theme, readerFont: $readerFont, lineHeight: $lineHeight,
+                        paperTexture: $paperTexture,
+                        onAccentColorChange: { pushAppearanceToServer() })
+            .presentationDetents([.height(520)])
+            .presentationDragIndicator(.visible)
     }
 
     /// Lesbare Vordergrundfarbe auf der Akzentfläche (weiß, bei sehr hellen Akzenten dunkel).
@@ -2803,14 +2899,15 @@ struct ArticleReaderView: View {
                 menuDivider
 
                 // ── Teilen & Links ────────────────────────────────────────────
-                if let url = URL(string: current.url) {
-                    ShareLink(item: url, subject: Text(current.displayTitle)) {
-                        menuRowContent(icon: "square.and.arrow.up", label: L("articleReader.sideMenu.share"))
-                    }
-                    .simultaneousGesture(TapGesture().onEnded {
-                        showSideMenu = false
-                    })
+                // Datei-Einträge teilen die Datei selbst, sonst den Link.
+                ArticleShareLink(article: current) {
+                    menuRowContent(icon: "square.and.arrow.up", label: L("articleReader.sideMenu.share"))
+                }
+                .simultaneousGesture(TapGesture().onEnded {
+                    showSideMenu = false
+                })
 
+                if let url = URL(string: current.url) {
                     menuRow(icon: "safari", label: L("articleReader.sideMenu.openInBrowser")) {
                         showSideMenu = false
                         UIApplication.shared.open(url)
@@ -2865,6 +2962,13 @@ struct ArticleReaderView: View {
                 menuRow(icon: "tag", label: L("articleReader.sideMenu.editTags")) {
                     showSideMenu = false
                     showTagSheet = true
+                }
+
+                if current.fileId != nil {
+                    menuRow(icon: "pencil", label: L("fileRename.menu")) {
+                        showSideMenu = false
+                        renameArticle = current
+                    }
                 }
 
                 menuRow(
@@ -3681,7 +3785,7 @@ struct ArticleReaderView: View {
     /// JS für die Support-Infobox ("Dir gefällt der Artikel von …? Überlege ein Abo abzuschließen oder zu
     /// spenden"), gleiche Platzierungslogik wie `insertSupportBox` im Nextcloud-Web-Reader: nach einem
     /// pseudo-zufälligen Top-Level-`<p>` (Seed = Artikel-ID, damit die Position stabil bleibt), nur ab
-    /// 4 Absätzen. Als eigenes Element `<merlin-support-box>` gesetzt: der XPath-Zähler der Highlights
+    /// 4 Absätzen, nie direkt nach einer Überschrift oder einem komplett fetten Absatz. Als eigenes Element `<merlin-support-box>` gesetzt: der XPath-Zähler der Highlights
     /// (`getXPath`) zählt Geschwister je Tag-Name, ein unbekannter Tag verschiebt daher keinen Index
     /// des Artikeltextes und Highlights lösen weiter plattformübergreifend gleich auf.
     static func supportBoxScript(for box: SupportBox, seed: Int) -> String? {
@@ -3740,7 +3844,23 @@ struct ArticleReaderView: View {
           if(ps.length<4) return;
           var h=0x811c9dc5>>>0, s=cfg.seed;
           for(var i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,0x01000193);}
-          var idx=1+((h>>>0)%(ps.length-2));
+          // Nie direkt nach einer Zwischenüberschrift: Absätze mit Überschrift oder komplett fettem Text
+          // (<strong>/<b>) überspringen, ab der Seed-Position erst nach hinten, dann nach vorn suchen.
+          function headingLike(p){
+            if(p.querySelector('h1,h2,h3,h4,h5,h6'))return true;
+            var w=document.createTreeWalker(p,NodeFilter.SHOW_TEXT),n,any=false;
+            while((n=w.nextNode())){
+              if(n.data.trim()==='')continue;
+              any=true;
+              var b=n.parentElement.closest('strong,b');
+              if(!b||!p.contains(b))return false;
+            }
+            return any;
+          }
+          var start=1+((h>>>0)%(ps.length-2)), idx=-1, k;
+          for(k=start;k<=ps.length-2&&idx<0;k++){if(!headingLike(ps[k]))idx=k;}
+          for(k=start-1;k>=1&&idx<0;k--){if(!headingLike(ps[k]))idx=k;}
+          if(idx<0) return;
           var box=document.createElement('merlin-support-box');
           box.setAttribute('role','note');
           box.style.cssText='display:flex;align-items:stretch;gap:0.9em;margin:1.5em 0;padding:0.85em 1em;border-left:4px solid '+cfg.accent+';border-radius:0 8px 8px 0;background:rgba(128,128,128,0.1);background:color-mix(in srgb,'+cfg.accent+' 12%,transparent);font-size:0.93em;line-height:1.6;-webkit-user-select:none;user-select:none;';
@@ -3791,6 +3911,7 @@ struct ArticleReaderView: View {
                                  theme: ReaderTheme = .auto,
                                  font: ReaderFont = .system,
                                  lineHeight: Double = 1.6,
+                                 transparentBackground: Bool = false,
                                  developerMode: Bool = false) -> String {
         // Determine effective dark/light based on theme override or system setting
         let effectiveDark: Bool = {
@@ -3802,8 +3923,12 @@ struct ArticleReaderView: View {
         }()
         let isSepia = theme == .sepia
 
+        // Autorenboxen (Foto/Bio) am Artikelende; gibt es welche, ersetzen sie die Zeile „Autor, Medium“.
+        let authorBoxesHTML = AuthorBoxHTML.html(for: current.authors, accent: accentColorHex)
+
         // Am Ende des Artikels noch einmal „Autor, Medium“ (z. B. „Max Muster, taz.de“).
         let footerBylineHTML: String = {
+            guard authorBoxesHTML.isEmpty else { return authorBoxesHTML }
             // Mit Profil-Link (authorUrl) wird der Autorname verlinkt.
             func esc(_ s: String) -> String {
                 s.replacingOccurrences(of: "&", with: "&amp;")
@@ -3869,7 +3994,7 @@ struct ArticleReaderView: View {
             body {
               margin: 0;
               padding: 0 20px 40px;
-              background: \(bg);
+              background: \(transparentBackground ? "transparent" : bg);
               color: \(fg);
               font-family: \(font.cssValue);
               font-size: \(fontSize)px;
@@ -3977,6 +4102,20 @@ struct ArticleReaderView: View {
             table { border-collapse: collapse; width: 100%; font-size: 0.9em; overflow-x: auto; display: block; }
             th, td { padding: 8px 12px; border: 1px solid \(effectiveDark ? "#3a3a3c" : "#d1d1d6"); text-align: left; }
             th { background: \(effectiveDark ? "#2c2c2e" : "#f2f2f7"); font-weight: 600; }
+            /* Metadaten unter Dateien aus „Merlin Dateien“ (MerlinFileService::metadataHtml). */
+            .merlin-file-metadata { margin-top: 2.5em; font-size: 0.8em; }
+            .merlin-file-metadata details { margin: 0.75em 0; }
+            .merlin-file-metadata summary { font-weight: 600; }
+            .merlin-file-metadata table { display: table; table-layout: fixed; margin-top: 0.5em; }
+            .merlin-file-metadata th { width: 38%; font-weight: 500; background: none; opacity: 0.7; }
+            .merlin-file-metadata th, .merlin-file-metadata td { padding: 5px 8px; vertical-align: top; overflow-wrap: anywhere; }
+            /* Erkannter Text (OCR) und Termin-Link darunter (RecognizedTextEvent). */
+            .merlin-file-text { margin-top: 2em; }
+            .merlin-file-event a {
+              display: inline-block; padding: 8px 16px; border-radius: 999px;
+              background: \(accent); color: \(onAccent) !important; text-decoration: none;
+              font-size: 0.9em; font-weight: 600;
+            }
             .merlin-infobox {
               background: \(isSepia ? "#e8d9be" : (effectiveDark ? "#1e2d3d" : "#f0f7ff"));
               border-left: 4px solid \(accent);
@@ -4020,6 +4159,7 @@ struct ArticleReaderView: View {
               font-size: 0.9em; font-style: italic; color: \(fgMuted);
             }
             .merlin-footer-byline a { color: inherit !important; }
+            \(AuthorBoxHTML.css)
             .merlin-mastodon-post + .merlin-mastodon-post { margin-top: 8px; }
             .merlin-mastodon-post__header {
               display: flex; align-items: center; gap: 10px;
@@ -4138,7 +4278,7 @@ struct ArticleReaderView: View {
               if (img.dataset.merlinPhAttached) return;
               // Icon der Support-Infobox: kein Artikelbild, hat einen eigenen Umgang mit Ladefehlern
               // (wird einfach entfernt, siehe supportBoxScript) statt des großen Platzhalters.
-              if (img.closest && img.closest('merlin-support-box')) return;
+              if (img.closest && img.closest('merlin-support-box,merlin-author-box')) return;
               img.dataset.merlinPhAttached = '1';
               if (img.complete && img.naturalWidth === 0 && img.src) {
                 makePlaceholder(img);
@@ -4171,6 +4311,7 @@ private struct AppearanceSheet: View {
     @Binding var theme:      ReaderTheme
     @Binding var readerFont: ReaderFont
     @Binding var lineHeight: Double
+    @Binding var paperTexture: Bool
     var onAccentColorChange: () -> Void = {}
 
     @AppStorage("merlin_accent_progress_color") private var accentColorHex: String = "#FF3B30"
@@ -4183,11 +4324,15 @@ private struct AppearanceSheet: View {
             themeRow
             fontRow
             lineHeightRow
+            paperTextureRow
             accentColorRow
             Spacer()
         }
         .padding(20)
         .background(Color(.systemGroupedBackground))
+        .onChange(of: paperTexture) { _, v in
+            PreferencesStore.shared.readerPaperTexture = v
+        }
     }
 
     @ViewBuilder
@@ -4284,6 +4429,20 @@ private struct AppearanceSheet: View {
         }
     }
 
+    /// Wirkt nur in Hell/Sepia (siehe `showsPaperTexture`), daher im Dunkel-Theme ausgegraut.
+    @ViewBuilder
+    private var paperTextureRow: some View {
+        Toggle(isOn: $paperTexture) {
+            Label(L("articleReader.appearance.paperTexture"), systemImage: "doc.richtext")
+                .font(.subheadline)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .disabled(theme == .dark)
+    }
+
     @ViewBuilder
     private var accentColorRow: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -4309,6 +4468,12 @@ private struct AppearanceSheet: View {
 
 }
 
+/// Identifiable-Hülle für `.sheet(item:)` beim "Mit Tags hinzufügen" aus dem Link-Dialog.
+private struct AddWithTagsLink: Identifiable {
+    let url: String
+    var id: String { url }
+}
+
 // MARK: – Tag editing sheet
 
 struct ArticleTagSheet: View {
@@ -4322,6 +4487,10 @@ struct ArticleTagSheet: View {
     @State private var newTagInput:    String   = ""
     @State private var pendingTags:    [String] = []
     @State private var isSaving:       Bool     = false
+    /// Eltern-Tag für neu angelegte Tags; `nil` = oberste Ebene.
+    @State private var newTagParentId: Int?     = nil
+
+    private var tree: TagTree { TagTree(allTags) }
 
     init(article: Article, allTags: [Tag], onSave: @escaping (Set<Int>) -> Void) {
         self.article = article
@@ -4344,36 +4513,9 @@ struct ArticleTagSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
 
-                    // Existing tags grid
+                    // Existing tags as an indented tree (sub-tags below their parent)
                     if !allTags.isEmpty {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 100))], spacing: 10) {
-                            ForEach(allTags) { tag in
-                                let isSelected = selectedTagIds.contains(tag.id)
-                                let chipColor: Color = tag.color.flatMap { Color(hexString: $0) } ?? .accentColor
-                                Button {
-                                    if isSelected { selectedTagIds.remove(tag.id) }
-                                    else          { selectedTagIds.insert(tag.id) }
-                                } label: {
-                                    HStack(spacing: 6) {
-                                        if isSelected {
-                                            Image(systemName: "checkmark")
-                                                .font(.caption2.weight(.bold))
-                                        }
-                                        Text(tag.name)
-                                            .font(.subheadline)
-                                            .lineLimit(1)
-                                    }
-                                    .frame(maxWidth: .infinity, minHeight: 38)
-                                    .background(isSelected ? chipColor.opacity(0.15) : Color(.secondarySystemGroupedBackground))
-                                    .foregroundStyle(isSelected ? chipColor : Color.secondary)
-                                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(
-                                        isSelected ? chipColor : Color(.separator),
-                                        lineWidth: isSelected ? 1.0 : 0.5))
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
+                        TagTreeSelectionList(tree: tree, selection: $selectedTagIds)
                     }
 
                     // New tag input
@@ -4397,51 +4539,23 @@ struct ArticleTagSheet: View {
 
                     // Suggestions for matching existing tags
                     if !tagSuggestions.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(tagSuggestions) { tag in
-                                    let chipColor: Color = tag.color.flatMap { Color(hexString: $0) } ?? .accentColor
-                                    Button {
-                                        selectedTagIds.insert(tag.id)
-                                        newTagInput = ""
-                                    } label: {
-                                        HStack(spacing: 4) {
-                                            Image(systemName: "plus").font(.caption2.weight(.semibold))
-                                            Text(tag.name).font(.caption).lineLimit(1)
-                                        }
-                                        .padding(.horizontal, 10).padding(.vertical, 5)
-                                        .background(chipColor.opacity(0.10))
-                                        .foregroundStyle(chipColor)
-                                        .clipShape(Capsule())
-                                        .overlay(Capsule().stroke(chipColor.opacity(0.35), lineWidth: 0.5))
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                            .padding(.vertical, 2)
+                        TagSuggestionList(tags: tagSuggestions) { tag in
+                            selectedTagIds = tree.selecting(tag.id, in: selectedTagIds)
+                            newTagInput = ""
                         }
                     }
 
                     // Pending new tags (will be created on save)
                     if !pendingTags.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(pendingTags, id: \.self) { name in
-                                    HStack(spacing: 4) {
-                                        Text(name).font(.caption)
-                                        Button { pendingTags.removeAll { $0 == name } } label: {
-                                            Image(systemName: "xmark").font(.caption2)
-                                        }
-                                    }
-                                    .padding(.horizontal, 10).padding(.vertical, 5)
-                                    .background(Color.accentColor.opacity(0.12))
-                                    .foregroundStyle(Color.accentColor)
-                                    .clipShape(Capsule())
-                                    .overlay(Capsule().stroke(Color.accentColor.opacity(0.4), lineWidth: 0.5))
-                                }
-                            }
-                            .padding(.vertical, 2)
+                        PendingTagList(names: pendingTags) { name in
+                            pendingTags.removeAll { $0 == name }
                         }
+                    }
+
+                    // Eltern-Tag für die neuen Tags (verschachtelte Tags)
+                    if !allTags.isEmpty,
+                       !pendingTags.isEmpty || !newTagInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        TagParentPicker(tree: tree, selection: $newTagParentId)
                     }
                 }
                 .padding()
@@ -4480,8 +4594,12 @@ struct ArticleTagSheet: View {
         Task {
             var finalIds = selectedTagIds
             if !pendingTags.isEmpty {
-                let created = (try? await MerlinAPI.shared.resolveTagIds(for: pendingTags)) ?? []
+                let created = (try? await MerlinAPI.shared.resolveTagIds(for: pendingTags, parentId: newTagParentId)) ?? []
                 created.forEach { finalIds.insert($0) }
+                // Neue Unter-Tags ziehen ihren Eltern-Tag mit, wie beim Antippen.
+                if !created.isEmpty, let parent = newTagParentId {
+                    finalIds = tree.selecting(parent, in: finalIds)
+                }
             }
             onSave(finalIds)
             dismiss()

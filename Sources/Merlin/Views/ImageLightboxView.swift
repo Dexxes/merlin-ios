@@ -1,4 +1,5 @@
 import SwiftUI
+import VisionKit
 
 // MARK: – State passed from ArticleReaderView
 
@@ -25,6 +26,12 @@ struct ImageLightboxView: View {
     /// zoomed/not-zoomed boundary is actually crossed — not on every pinch delta —
     /// to avoid flooding this view with re-renders during a live pinch gesture.
     @State private var isZoomed: Bool = false
+
+    /// Live-Text-Modus: das sichtbare Bild mit markierbarem Text (VisionKit)
+    /// statt des zoombaren Bildes; Zoom und Wischen zum Schließen ruhen solange.
+    @State private var liveText: (image: UIImage, analysis: ImageAnalysis)?
+    @State private var liveTextLoading = false
+    @State private var liveTextMessage: String?
 
     init(state: LightboxState, onDismiss: @escaping () -> Void) {
         self.state     = state
@@ -67,7 +74,36 @@ struct ImageLightboxView: View {
             .scaleEffect(isZoomed ? 1.0 : max(0.88, 1.0 - abs(dragOffset) / 1_200))
             .animation(.interactiveSpring(), value: dragOffset)
             // Reset tracked zoom state whenever the user swipes to a new page
-            .onChange(of: currentPage) { isZoomed = false }
+            .onChange(of: currentPage) {
+                isZoomed = false
+                liveText = nil
+            }
+
+            if let liveText {
+                Color.black.ignoresSafeArea()
+                LiveTextImageView(image: liveText.image, analysis: liveText.analysis)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .ignoresSafeArea()
+
+                // ── Live Text beenden (oben links), zurück zum normalen Bild ──
+                VStack {
+                    HStack {
+                        Button { self.liveText = nil } label: {
+                            Text(L("lightbox.liveTextDone"))
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(.black)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                                .background(Color.white, in: Capsule())
+                                .shadow(color: .black.opacity(0.4), radius: 4)
+                        }
+                        .padding(.top, 56)
+                        .padding(.leading, 20)
+                        Spacer()
+                    }
+                    Spacer()
+                }
+            }
 
             // ── X button ─────────────────────────────────────────────────────
             VStack {
@@ -86,8 +122,48 @@ struct ImageLightboxView: View {
                 Spacer()
             }
 
+            // ── Live Text (unten rechts, wie in Fotos) ───────────────────────
+            if ImageAnalyzer.isSupported {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        Button { toggleLiveText() } label: {
+                            Group {
+                                if liveTextLoading {
+                                    ProgressView().tint(.white)
+                                } else {
+                                    Image(systemName: "text.viewfinder")
+                                        .font(.title2)
+                                        .foregroundStyle(liveText != nil ? Color.black : Color.white)
+                                }
+                            }
+                            .frame(width: 44, height: 44)
+                            .background(liveText != nil ? Color.white : Color.white.opacity(0.2), in: Circle())
+                        }
+                        .accessibilityLabel(L("lightbox.liveText"))
+                        .padding(.trailing, 20)
+                        .padding(.bottom, 24)
+                    }
+                }
+            }
+
+            if let liveTextMessage {
+                VStack {
+                    Spacer()
+                    Text(liveTextMessage)
+                        .font(.footnote)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(.black.opacity(0.6), in: Capsule())
+                        .padding(.bottom, 84)
+                }
+                .transition(.opacity)
+            }
+
             // ── Page counter ─────────────────────────────────────────────────
-            if state.imageURLs.count > 1 {
+            if state.imageURLs.count > 1 && liveText == nil {
                 VStack {
                     Spacer()
                     Text("\(visibleIndex + 1) / \(state.imageURLs.count)")
@@ -101,12 +177,12 @@ struct ImageLightboxView: View {
         .simultaneousGesture(
             DragGesture(minimumDistance: 12)
                 .onChanged { v in
-                    guard !isZoomed else { return }
+                    guard !isZoomed, liveText == nil else { return }
                     guard abs(v.translation.height) > abs(v.translation.width) else { return }
                     dragOffset = v.translation.height
                 }
                 .onEnded { v in
-                    guard !isZoomed else { return }
+                    guard !isZoomed, liveText == nil else { return }
                     guard abs(v.translation.height) > abs(v.translation.width) else {
                         withAnimation(.spring(response: 0.3)) { dragOffset = 0 }
                         return
@@ -122,6 +198,36 @@ struct ImageLightboxView: View {
                     }
                 }
         )
+    }
+
+    // MARK: – Live Text
+
+    private func toggleLiveText() {
+        if liveText != nil {
+            liveText = nil
+            return
+        }
+        guard !liveTextLoading else { return }
+        liveTextLoading = true
+        let urlString = state.imageURLs[visibleIndex]
+        Task {
+            defer { liveTextLoading = false }
+            do {
+                let (image, analysis) = try await LiveTextLoader.load(urlString)
+                liveText = (image, analysis)
+            } catch LiveTextLoader.Failure.noText {
+                showLiveTextMessage(L("lightbox.liveTextNone"))
+            } catch {
+                showLiveTextMessage(L("lightbox.liveTextFailed"))
+            }
+        }
+    }
+
+    private func showLiveTextMessage(_ message: String) {
+        withAnimation { liveTextMessage = message }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            withAnimation { liveTextMessage = nil }
+        }
     }
 
     // MARK: – Dismiss

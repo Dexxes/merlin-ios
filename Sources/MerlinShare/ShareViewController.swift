@@ -137,6 +137,14 @@ class ShareViewController: UIViewController {
         return l
     }()
 
+    /// Upload progress of shared files (hidden while saving a link).
+    private let progressView: UIProgressView = {
+        let p = UIProgressView(progressViewStyle: .default)
+        p.translatesAutoresizingMaskIntoConstraints = false
+        p.isHidden = true
+        return p
+    }()
+
     // MARK: – Staging UI (confirm URL + optional tags before saving)
 
     private let urlPreviewLabel: UILabel = {
@@ -149,23 +157,28 @@ class ShareViewController: UIViewController {
         return l
     }()
 
-    // Horizontal scroll view that holds existing-tag chips
+    // Vertical scroll view that holds the existing tags as an indented tree
+    // (sub-tags below their parent tag)
     private let tagChipsScrollView: UIScrollView = {
         let sv = UIScrollView()
         sv.showsHorizontalScrollIndicator = false
-        sv.showsVerticalScrollIndicator = false
+        sv.alwaysBounceVertical = false
         sv.translatesAutoresizingMaskIntoConstraints = false
-        sv.heightAnchor.constraint(equalToConstant: 36).isActive = true
         return sv
     }()
     private let tagChipsStack: UIStackView = {
         let s = UIStackView()
-        s.axis = .horizontal
-        s.spacing = 8
-        s.alignment = .center
+        s.axis = .vertical
+        s.spacing = 2
+        s.alignment = .fill
         s.translatesAutoresizingMaskIntoConstraints = false
         return s
     }()
+    private static let tagRowHeight: CGFloat = 36
+    /// Visible rows before the tag list scrolls.
+    private static let maxVisibleTagRows = 5
+    private lazy var tagListHeightConstraint =
+        tagChipsScrollView.heightAnchor.constraint(equalToConstant: Self.tagRowHeight)
     private let tagsLoadingLabel: UILabel = {
         let l = UILabel()
         l.text = L("share.staging.loadingTags")
@@ -204,6 +217,7 @@ class ShareViewController: UIViewController {
     private lazy var stagingStack: UIStackView = {
         let stack = UIStackView(arrangedSubviews: [
             urlPreviewLabel,
+            compressionRow,
             tagChipsScrollView,
             tagsField,
             confirmSaveButton
@@ -215,11 +229,50 @@ class ShareViewController: UIViewController {
     }()
 
     // Available tags fetched from server; selected ones tracked separately
-    private struct ShareTag { let id: Int; let name: String }
+    private struct ShareTag { let id: Int; let name: String; let parentId: Int? }
     private var availableTags: [ShareTag] = []
     private var selectedTagIds: Set<Int> = []
+    private var tagButtons: [Int: UIButton] = [:]
+
+    // MARK: – Image compression (staging mode for shared photos)
+
+    /// Strong / light / none, each with a preview crop and the resulting size.
+    private lazy var compressionTiles: [CompressionTile] = ImageCompression.allCases.map { level in
+        let title: String
+        switch level {
+        case .strong:   title = L("share.files.compression.strong")
+        case .light:    title = L("share.files.compression.light")
+        case .original: title = L("share.files.compression.original")
+        }
+        let tile = CompressionTile(level: level, title: title)
+        tile.addTarget(self, action: #selector(compressionTileTapped(_:)), for: .touchUpInside)
+        return tile
+    }
+    private lazy var compressionRow: UIStackView = {
+        let row = UIStackView(arrangedSubviews: compressionTiles)
+        row.axis = .horizontal
+        row.distribution = .fillEqually
+        row.spacing = 8
+        row.isHidden = true
+        row.translatesAutoresizingMaskIntoConstraints = false
+        return row
+    }()
+    private static let compressionDefaultsKey = "shareImageCompression"
+    /// Last choice, light compression the first time.
+    private var selectedCompression: ImageCompression =
+        ImageCompression(rawValue: UserDefaults.standard.string(forKey: ShareViewController.compressionDefaultsKey) ?? "") ?? .light
+    /// One task per level, run one after another (memory) with the selected
+    /// level first. Upload waits for the selected one.
+    private var compressionTasks: [ImageCompression: Task<CompressionOption, Never>] = [:]
+    private var compressionOptions: [ImageCompression: CompressionOption] = [:]
+    /// Text recognised in the shared photos (index in `pendingFiles` → text),
+    /// sent along with the upload. Runs while the user picks tags.
+    private var textRecognitionTask: Task<[Int: String], Never>?
 
     private var pendingURL: String = ""
+    /// Files from the share payload (photos, videos, PDFs …) when it carries no web link.
+    /// They go into the Nextcloud folder "Merlin Dateien" (see FileUploader).
+    private var pendingFiles: [SharedFile] = []
     private var isDone = false
 
     // MARK: – Settings UI
@@ -262,7 +315,7 @@ class ShareViewController: UIViewController {
         setupUI()
         if isConfigured {
             showExtractingMode()
-            extractURL()
+            extractContent()
         } else {
             showSettingsMode()
         }
@@ -324,6 +377,7 @@ class ShareViewController: UIViewController {
         // Saving-mode views
         containerView.addSubview(activityIndicator)
         containerView.addSubview(statusLabel)
+        containerView.addSubview(progressView)
 
         // Staging-mode views
         containerView.addSubview(stagingStack)
@@ -362,6 +416,10 @@ class ShareViewController: UIViewController {
             statusLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 20),
             statusLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -20),
 
+            progressView.topAnchor.constraint(equalTo: statusLabel.bottomAnchor, constant: 12),
+            progressView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 20),
+            progressView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -20),
+
             // Settings mode
             settingsStack.topAnchor.constraint(equalTo: iconView.bottomAnchor, constant: 20),
             settingsStack.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 20),
@@ -381,7 +439,8 @@ class ShareViewController: UIViewController {
             tagChipsStack.trailingAnchor.constraint(equalTo: tagChipsScrollView.contentLayoutGuide.trailingAnchor),
             tagChipsStack.topAnchor.constraint(equalTo: tagChipsScrollView.contentLayoutGuide.topAnchor),
             tagChipsStack.bottomAnchor.constraint(equalTo: tagChipsScrollView.contentLayoutGuide.bottomAnchor),
-            tagChipsStack.heightAnchor.constraint(equalTo: tagChipsScrollView.frameLayoutGuide.heightAnchor),
+            tagChipsStack.widthAnchor.constraint(equalTo: tagChipsScrollView.frameLayoutGuide.widthAnchor),
+            tagListHeightConstraint,
         ])
 
         // Show loading placeholder until tags arrive
@@ -437,14 +496,50 @@ class ShareViewController: UIViewController {
         urlPreviewLabel.text  = display
         tagsField.text        = ""
         selectedTagIds        = []
+        compressionRow.isHidden = true
         stagingStack.isHidden  = false
         settingsStack.isHidden = true
         activityIndicator.stopAnimating()
         activityIndicator.isHidden = true
         statusLabel.isHidden   = true
-        containerHeightConstraint?.constant = 340
+        containerHeightConstraint?.constant = stagingHeight
 
         // Load existing tags in the background and populate the chips row
+        Task { await loadTagChips() }
+    }
+
+    /// Staging for shared files: name or count plus total size, then the same tag tree.
+    private func showStagingMode(files: [SharedFile]) {
+        pendingFiles = files
+        pendingURL = ""
+        subtitleLabel.text = L("share.files.subtitle")
+        let hasPhotos = files.contains(where: ImageCompressor.isCompressible)
+        compressionRow.isHidden = !hasPhotos
+        if hasPhotos {
+            startCompression(files)
+            // Nach der Komprimierung, nicht parallel: beides dekodiert große
+            // Bilder, und die Extension hat nur ~120 MB Speicher.
+            let compressions = Array(compressionTasks.values)
+            textRecognitionTask = Task.detached(priority: .utility) {
+                for compression in compressions { _ = await compression.value }
+                var texts: [Int: String] = [:]
+                for (index, file) in files.enumerated() where ImageCompressor.isCompressible(file) {
+                    if Task.isCancelled { break }
+                    if let text = TextRecognizer.recognize(file.localURL) { texts[index] = text }
+                }
+                return texts
+            }
+        }
+        updateFilesSummary()
+        tagsField.text        = ""
+        selectedTagIds        = []
+        stagingStack.isHidden  = false
+        settingsStack.isHidden = true
+        activityIndicator.stopAnimating()
+        activityIndicator.isHidden = true
+        statusLabel.isHidden   = true
+        containerHeightConstraint?.constant = stagingHeight
+
         Task { await loadTagChips() }
     }
 
@@ -492,26 +587,109 @@ class ShareViewController: UIViewController {
         passwordField.resignFirstResponder()
 
         showSavingMode()
-        extractURL()
+        extractContent()
     }
 
     // MARK: – URL extraction
 
-    private func extractURL() {
+    /// A web link is saved as an article (as before); without one, shared files
+    /// (photos, videos, audio, PDFs, other documents) go into "Merlin Dateien".
+    private func extractContent() {
         guard let items = extensionContext?.inputItems as? [NSExtensionItem] else {
             showError(L("share.result.errorReadContent"))
             return
         }
         Task {
-            let url = await findURL(in: items)
-            await MainActor.run {
-                if let url {
-                    showStagingMode(url: url)
-                } else {
-                    showError(L("share.result.errorNoUrl"))
-                }
+            if let url = await findURL(in: items) {
+                showStagingMode(url: url)
+                return
+            }
+            let hasFiles = items.flatMap { $0.attachments ?? [] }.contains { Self.fileTypeIdentifier(of: $0) != nil }
+            guard hasFiles else {
+                showError(L("share.result.errorNoUrl"))
+                return
+            }
+            if keychainRead(.backendKind) == "standalone" {
+                showError(L("share.files.errorStandalone"))
+                return
+            }
+            let files = await findFiles(in: items)
+            if files.isEmpty {
+                showError(L("share.files.errorReadFile"))
+            } else {
+                showStagingMode(files: files)
             }
         }
+    }
+
+    // MARK: – File extraction
+
+    private func findFiles(in items: [NSExtensionItem]) async -> [SharedFile] {
+        var files: [SharedFile] = []
+        for provider in items.flatMap({ $0.attachments ?? [] }) {
+            guard let typeIdentifier = Self.fileTypeIdentifier(of: provider) else { continue }
+            if let file = await loadFile(from: provider, typeIdentifier: typeIdentifier) {
+                files.append(file)
+            }
+        }
+        return files
+    }
+
+    /// The best file representation of a provider (Apple lists the original
+    /// first, e.g. HEIC before JPEG). Web links and plain text are left out;
+    /// text counts only when it is a real file (from the Files app).
+    private nonisolated static func fileTypeIdentifier(of provider: NSItemProvider) -> String? {
+        let types = provider.registeredTypeIdentifiers.compactMap { UTType($0) }
+        let isFile = types.contains { $0.conforms(to: .fileURL) }
+        return types.first { type in
+            guard type.conforms(to: .data), !type.conforms(to: .url) else { return false }
+            return isFile || !type.conforms(to: .plainText)
+        }?.identifier
+    }
+
+    private func loadFile(from provider: NSItemProvider, typeIdentifier: String) async -> SharedFile? {
+        let suggestedName = provider.suggestedName
+        return await withCheckedContinuation { continuation in
+            _ = provider.loadFileRepresentation(forTypeIdentifier: typeIdentifier) { url, _ in
+                // The file only exists until this handler returns: copy it first.
+                let file = url.flatMap {
+                    Self.copyToTemporaryFolder($0, suggestedName: suggestedName, typeIdentifier: typeIdentifier)
+                }
+                continuation.resume(returning: file)
+            }
+        }
+    }
+
+    private nonisolated static func copyToTemporaryFolder(_ source: URL, suggestedName: String?,
+                                                          typeIdentifier: String) -> SharedFile? {
+        let type = UTType(typeIdentifier)
+        let ext = source.pathExtension.isEmpty ? (type?.preferredFilenameExtension ?? "") : source.pathExtension
+        var name = suggestedName.flatMap { $0.isEmpty ? nil : $0 } ?? source.deletingPathExtension().lastPathComponent
+        name = name.replacingOccurrences(of: "/", with: "-")
+        if !ext.isEmpty, (name as NSString).pathExtension.lowercased() != ext.lowercased() {
+            name += "." + ext
+        }
+        let folder = shareTemporaryFolder.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let target = folder.appendingPathComponent(name)
+            try FileManager.default.copyItem(at: source, to: target)
+            let size = Int64((try? target.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
+            let mimeType = UTType(filenameExtension: ext)?.preferredMIMEType
+                ?? type?.preferredMIMEType
+                ?? "application/octet-stream"
+            return SharedFile(localURL: target, name: name, mimeType: mimeType, size: size)
+        } catch {
+            return nil
+        }
+    }
+
+    private nonisolated static var shareTemporaryFolder: URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("merlin-share", isDirectory: true)
+    }
+
+    private func removeTemporaryFiles() {
+        try? FileManager.default.removeItem(at: Self.shareTemporaryFolder)
     }
 
     /// Two-pass search across all NSItemProviders.
@@ -591,7 +769,7 @@ class ShareViewController: UIViewController {
     // MARK: – Confirm save action
 
     @objc private func confirmSave() {
-        guard !pendingURL.isEmpty else { done(); return }
+        guard !pendingURL.isEmpty || !pendingFiles.isEmpty else { done(); return }
         tagsField.resignFirstResponder()
         // New tag names the user typed (for creation)
         let newNames = (tagsField.text ?? "")
@@ -599,19 +777,78 @@ class ShareViewController: UIViewController {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
 
-        showSavingMode()
         let url      = pendingURL
+        let hasFiles = !pendingFiles.isEmpty
         let existing = selectedTagIds  // chip selections
+        if hasFiles { showUploadingMode() } else { showSavingMode() }
         Task {
             // Resolve typed names → IDs (create if necessary)
             let newIds = newNames.isEmpty ? [] : await resolveTagIds(for: newNames)
             // Merge with chip-selected IDs; dedup
             let allIds = Array(existing.union(newIds))
-            await saveURL(url, tagIds: allIds)
+            if hasFiles {
+                await saveFiles(await filesForUpload(), tagIds: allIds)
+            } else {
+                await saveURL(url, tagIds: allIds)
+            }
         }
     }
 
-    // MARK: – Tag chips (staging mode)
+    // MARK: – Tag tree (staging mode)
+
+    /// Sheet height in staging mode: the base layout (sized for one row of
+    /// tags) plus the extra rows of the tag list.
+    private var stagingHeight: CGFloat {
+        340 + tagListHeightConstraint.constant - Self.tagRowHeight
+            + (compressionRow.isHidden ? 0 : CompressionTile.height + stagingStack.spacing)
+    }
+
+    /// Tags in tree order (parents before children, siblings by name) with
+    /// their depth. A tag whose parent is missing counts as top level.
+    private func tagTreeRows() -> [(tag: ShareTag, depth: Int)] {
+        let ids = Set(availableTags.map(\.id))
+        var children: [Int?: [ShareTag]] = [:]
+        for tag in availableTags {
+            let parent = tag.parentId.flatMap { ids.contains($0) ? $0 : nil }
+            children[parent, default: []].append(tag)
+        }
+        var rows: [(tag: ShareTag, depth: Int)] = []
+        var seen = Set<Int>()
+        func walk(_ parent: Int?, _ depth: Int) {
+            let sorted = (children[parent] ?? []).sorted {
+                $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+            }
+            for tag in sorted where seen.insert(tag.id).inserted {
+                rows.append((tag: tag, depth: depth))
+                walk(tag.id, depth + 1)
+            }
+        }
+        walk(nil, 0)
+        return rows
+    }
+
+    /// Parent tag, its parent, … of `id`.
+    private func ancestorIds(of id: Int) -> Set<Int> {
+        let byId = Dictionary(availableTags.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        var result = Set<Int>()
+        var parent = byId[id]?.parentId.flatMap { byId[$0] }
+        while let p = parent, p.id != id, result.insert(p.id).inserted {
+            parent = p.parentId.flatMap { byId[$0] }
+        }
+        return result
+    }
+
+    /// Sub-tags of `id` at any depth.
+    private func descendantIds(of id: Int) -> Set<Int> {
+        var result = Set<Int>()
+        var queue = availableTags.filter { $0.parentId == id }
+        while !queue.isEmpty {
+            let tag = queue.removeFirst()
+            guard tag.id != id, result.insert(tag.id).inserted else { continue }
+            queue.append(contentsOf: availableTags.filter { $0.parentId == tag.id })
+        }
+        return result
+    }
 
     /// Fetches all tags from the server and builds the horizontal chip row.
     @MainActor
@@ -623,7 +860,7 @@ class ShareViewController: UIViewController {
         var req = URLRequest(url: tagsURL, timeoutInterval: 10)
         req.setValue("Basic \(token)", forHTTPHeaderField: "Authorization")
 
-        struct TagDTO: Decodable { let id: Int; let name: String }
+        struct TagDTO: Decodable { let id: Int; let name: String; let parentId: Int? }
         let fetched: [TagDTO]
         do {
             let (data, _) = try await URLSession.shared.data(for: req)
@@ -632,10 +869,11 @@ class ShareViewController: UIViewController {
             fetched = []
         }
 
-        availableTags = fetched.map { ShareTag(id: $0.id, name: $0.name) }
+        availableTags = fetched.map { ShareTag(id: $0.id, name: $0.name, parentId: $0.parentId) }
 
-        // Rebuild the chips stack on the main thread
+        // Rebuild the tag list on the main thread
         for view in tagChipsStack.arrangedSubviews { tagChipsStack.removeArrangedSubview(view); view.removeFromSuperview() }
+        tagButtons = [:]
 
         if availableTags.isEmpty {
             let none = UILabel()
@@ -644,43 +882,60 @@ class ShareViewController: UIViewController {
             none.textColor = .secondaryLabel
             tagChipsStack.addArrangedSubview(none)
         } else {
-            for tag in availableTags {
-                let btn = makeChipButton(tag: tag)
+            for row in tagTreeRows() {
+                let btn = makeTagRowButton(tag: row.tag, depth: row.depth)
+                tagButtons[row.tag.id] = btn
                 tagChipsStack.addArrangedSubview(btn)
             }
         }
+
+        // Grow the sheet with the list, up to maxVisibleTagRows; beyond that it scrolls.
+        let rowCount = max(1, min(tagButtons.count, Self.maxVisibleTagRows))
+        tagListHeightConstraint.constant = CGFloat(rowCount) * Self.tagRowHeight
+            + CGFloat(rowCount - 1) * tagChipsStack.spacing
+        if !stagingStack.isHidden {
+            containerHeightConstraint?.constant = stagingHeight
+            UIView.animate(withDuration: 0.2) { self.view.layoutIfNeeded() }
+        }
     }
 
-    private func makeChipButton(tag: ShareTag) -> UIButton {
-        var config = UIButton.Configuration.bordered()
-        config.title          = tag.name
-        config.cornerStyle    = .capsule
-        config.baseForegroundColor = .secondaryLabel
-        config.baseBackgroundColor = .systemFill
+    /// One row of the tag tree: checkmark circle and name, indented by depth.
+    private func makeTagRowButton(tag: ShareTag, depth: Int) -> UIButton {
+        var config = UIButton.Configuration.plain()
+        config.title = tag.name
+        config.imagePadding = 8
+        config.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 4 + CGFloat(depth) * 22, bottom: 0, trailing: 4)
+        config.titleLineBreakMode = .byTruncatingTail
         let btn = UIButton(configuration: config)
         btn.tag = tag.id
+        btn.contentHorizontalAlignment = .leading
+        btn.heightAnchor.constraint(equalToConstant: Self.tagRowHeight).isActive = true
         btn.addTarget(self, action: #selector(chipTapped(_:)), for: .touchUpInside)
+        applySelectionStyle(to: btn, selected: selectedTagIds.contains(tag.id))
         return btn
     }
 
+    private func applySelectionStyle(to button: UIButton, selected: Bool) {
+        var config = button.configuration ?? .plain()
+        config.image = UIImage(systemName: selected ? "checkmark.circle.fill" : "circle")
+        config.baseForegroundColor = selected ? .systemBlue : .label
+        button.configuration = config
+        button.accessibilityTraits = selected ? [.button, .selected] : .button
+    }
+
+    /// Selecting a sub-tag also selects its parent tags; deselecting a tag
+    /// also deselects its sub-tags, so a sub-tag never stays selected without
+    /// its parent.
     @objc private func chipTapped(_ sender: UIButton) {
         let tagId = sender.tag
         if selectedTagIds.contains(tagId) {
-            selectedTagIds.remove(tagId)
+            selectedTagIds.subtract(descendantIds(of: tagId).union([tagId]))
         } else {
-            selectedTagIds.insert(tagId)
+            selectedTagIds.formUnion(ancestorIds(of: tagId).union([tagId]))
         }
-        // Update button appearance to reflect selected state
-        var config = sender.configuration ?? UIButton.Configuration.bordered()
-        if selectedTagIds.contains(tagId) {
-            config.baseForegroundColor = .white
-            config.baseBackgroundColor = .systemBlue
-        } else {
-            config.baseForegroundColor = .secondaryLabel
-            config.baseBackgroundColor = .systemFill
+        for (id, button) in tagButtons {
+            applySelectionStyle(to: button, selected: selectedTagIds.contains(id))
         }
-        config.cornerStyle = .capsule
-        sender.configuration = config
     }
 
     // MARK: – Tag resolution
@@ -778,6 +1033,127 @@ class ShareViewController: UIViewController {
         }
     }
 
+    // MARK: – Image compression
+
+    private func startCompression(_ files: [SharedFile]) {
+        compressionOptions = [:]
+        for tile in compressionTiles {
+            tile.show(nil)
+            tile.isSelected = tile.level == selectedCompression
+        }
+        let order = [selectedCompression] + ImageCompression.allCases.filter { $0 != selectedCompression }
+        var previous: Task<CompressionOption, Never>?
+        for level in order {
+            let before = previous
+            let task = Task.detached(priority: .userInitiated) { () -> CompressionOption in
+                _ = await before?.value
+                return ImageCompressor.option(for: files, level: level)
+            }
+            compressionTasks[level] = task
+            previous = task
+            Task { [weak self] in
+                let option = await task.value
+                guard let self, !self.isDone else { return }
+                self.compressionOptions[level] = option
+                self.compressionTiles.first { $0.level == level }?.show(option)
+                self.updateFilesSummary()
+            }
+        }
+    }
+
+    @objc private func compressionTileTapped(_ sender: CompressionTile) {
+        selectedCompression = sender.level
+        UserDefaults.standard.set(sender.level.rawValue, forKey: Self.compressionDefaultsKey)
+        for tile in compressionTiles {
+            tile.isSelected = tile === sender
+        }
+        updateFilesSummary()
+    }
+
+    /// Name or count of the shared files plus their total size at the selected
+    /// compression (the original size until that level is computed).
+    private func updateFilesSummary() {
+        let files = compressionRow.isHidden ? pendingFiles
+            : compressionOptions[selectedCompression]?.files ?? pendingFiles
+        let size = ByteCountFormatter.string(fromByteCount: files.reduce(0) { $0 + $1.size }, countStyle: .file)
+        if files.count == 1, let file = files.first {
+            urlPreviewLabel.text = "\(file.name) · \(size)"
+        } else {
+            let count = String(format: L("share.files.count"), files.count)
+            urlPreviewLabel.text = String(format: L("share.files.summary"), count, size)
+        }
+    }
+
+    /// The shared files at the selected compression; waits until it is computed.
+    private func filesForUpload() async -> [SharedFile] {
+        guard !compressionRow.isHidden, let task = compressionTasks[selectedCompression] else { return pendingFiles }
+        return await task.value.files
+    }
+
+    // MARK: – File upload
+
+    private func showUploadingMode() {
+        showSavingMode()
+        subtitleLabel.text = L("share.files.uploadingSubtitle")
+        progressView.progress = 0
+        progressView.isHidden = false
+    }
+
+    private func updateUploadProgress(index: Int, total: Int, fraction: Double) {
+        let percent = NumberFormatter.localizedString(from: NSNumber(value: min(1, max(0, fraction))), number: .percent)
+        statusLabel.text = String(format: L("share.files.progress"), "\(index + 1)", "\(total)", percent)
+        progressView.setProgress(Float(fraction), animated: true)
+    }
+
+    private func saveFiles(_ files: [SharedFile], tagIds: [Int]) async {
+        let token = Data("\(storedUsername):\(storedPassword)".utf8).base64EncodedString()
+        let uploader = FileUploader(baseURL: storedURL, apiPrefix: apiPrefix, authorization: "Basic \(token)")
+        let totalBytes = Double(max(1, files.reduce(0) { $0 + $1.size }))
+        // Gleiche Reihenfolge wie pendingFiles (Komprimierung ersetzt nur Dateien).
+        let texts = await textRecognitionTask?.value ?? [:]
+        var uploadedBytes: Int64 = 0
+
+        for (index, file) in files.enumerated() {
+            let before = Double(uploadedBytes)
+            updateUploadProgress(index: index, total: files.count, fraction: before / totalBytes)
+            do {
+                try await uploader.upload(file, tagIds: tagIds, text: texts[index]) { [weak self] fraction in
+                    Task { @MainActor in
+                        self?.updateUploadProgress(index: index, total: files.count,
+                                                   fraction: (before + fraction * Double(file.size)) / totalBytes)
+                    }
+                }
+            } catch {
+                removeTemporaryFiles()
+                showUploadError(error, file: file)
+                return
+            }
+            uploadedBytes += file.size
+        }
+        removeTemporaryFiles()
+        showSuccess(L("share.result.successTitle"))
+    }
+
+    private func showUploadError(_ error: Error, file: SharedFile) {
+        progressView.isHidden = true
+        let failed = String(format: L("share.files.errorUpload"), file.name)
+        switch error {
+        case FileUploader.UploadError.http(401, _):
+            showError(L("share.result.errorAuthFailed"))
+        case FileUploader.UploadError.http(429, _):
+            showError(L("share.result.errorRateLimited"))
+        case FileUploader.UploadError.http(let code, let message):
+            let detail = message.map { "\n" + $0 } ?? ""
+            showError(failed + "\n" + String(format: L("share.result.errorServerCode"), code) + detail)
+        case FileUploader.UploadError.unreadableFile:
+            showError(L("share.files.errorReadFile"))
+        case FileUploader.UploadError.invalidResponse:
+            showError(failed + "\n" + L("share.result.errorNoResponse"))
+        default:
+            showError(failed + "\n" + String(format: L("share.result.errorNetwork"), error.localizedDescription))
+        }
+    }
+
     // MARK: – State display
 
     private func showSuccess(_ message: String) {
@@ -817,13 +1193,16 @@ class ShareViewController: UIViewController {
                                                              in: Bundle(for: ShareViewController.self),
                                                              compatibleWith: nil)
             self.iconView.tintColor                  = .label
-            self.containerHeightConstraint?.constant  = 340
+            self.containerHeightConstraint?.constant  = self.stagingHeight
         }
     }
 
     @objc private func done() {
         guard !isDone else { return }
         isDone = true
+        compressionTasks.values.forEach { $0.cancel() }
+        textRecognitionTask?.cancel()
+        removeTemporaryFiles()
         extensionContext?.completeRequest(returningItems: nil)
     }
 

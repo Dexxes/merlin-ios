@@ -39,8 +39,18 @@ struct TagFilterSheet: View {
 
     // MARK: – Sub-views
 
+    /// Ein ausgeblendeter Tag blendet auch seine Unter-Tags aus; diese sind
+    /// deshalb abgeblendet, auch wenn sie selbst nicht ausgeblendet sind.
+    private var inheritedHiddenIds: Set<Int> {
+        let tree = TagTree(allTags)
+        return excludedTagIds.reduce(into: Set<Int>()) { $0.formUnion(tree.descendantIds(of: $1)) }
+    }
+
     private var tagList: some View {
-        List(allTags) { tag in
+        let inherited = inheritedHiddenIds
+        return List(TagTree(allTags).rows()) { row in
+            let tag = row.tag
+            let isExcluded = excludedTagIds.contains(tag.id)
             Button {
                 onToggle(tag.id)
             } label: {
@@ -55,10 +65,13 @@ struct TagFilterSheet: View {
 
                     Spacer()
 
-                    Image(systemName: excludedTagIds.contains(tag.id) ? "eye.slash" : "eye")
+                    Image(systemName: isExcluded || inherited.contains(tag.id) ? "eye.slash" : "eye")
                         .font(.subheadline)
-                        .foregroundStyle(excludedTagIds.contains(tag.id) ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.accentColor))
+                        .foregroundStyle(isExcluded ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.accentColor))
                 }
+                .padding(.leading, CGFloat(row.depth) * 20)
+                .opacity(!isExcluded && inherited.contains(tag.id) ? 0.5 : 1)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
         }

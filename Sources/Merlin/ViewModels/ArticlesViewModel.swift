@@ -23,12 +23,14 @@ struct UndoableAction {
 
 // MARK: –
 
-/// Oberste Inhaltskategorie eines Artikels (Seiten/Videos/Audio), analog zu
-/// den Gruppen in Sidebar.vue und ArticleController::index() (contentType)
-/// in merlin-nextcloud. "Video" und "Audio" sind eigene Kategorien, alles
-/// andere (inkl. "Mixed", also Text mit Medium) zählt zu den Seiten.
+/// Oberste Inhaltskategorie eines Artikels (Seiten/Videos/Audio/Dateien),
+/// analog zu den Gruppen in Sidebar.vue und ArticleController::index()
+/// (contentType) in merlin-nextcloud. "Video" und "Audio" sind eigene
+/// Kategorien, alles andere (inkl. "Mixed", also Text mit Medium) zählt zu den
+/// Seiten. Dateien vom Handy („Merlin Dateien“, `fileId` gesetzt) stehen nur
+/// unter Dateien, auch ein hochgeladenes Video.
 enum ContentGroup {
-    case pages, videos, audio
+    case pages, videos, audio, files
 
     init(category: String?) {
         switch category {
@@ -38,12 +40,17 @@ enum ContentGroup {
         }
     }
 
+    init(article: Article) {
+        self = article.fileId != nil ? .files : ContentGroup(category: article.category)
+    }
+
     /// Wert für den `contentType`-Parameter von `GET /api/articles`.
     var contentType: String {
         switch self {
         case .pages:  return "page"
         case .videos: return "video"
         case .audio:  return "audio"
+        case .files:  return "file"
         }
     }
 }
@@ -65,6 +72,10 @@ enum ArticleFilter: String, CaseIterable, Identifiable {
     case audioUnread     = "AudioUnread"
     case audioFavorites  = "AudioFavorites"
     case audioArchive    = "AudioArchive"
+    // Dateien: kein „Weiter…“ (Bilder und Dateien haben keinen Lesefortschritt).
+    case filesUnread     = "FilesUnread"
+    case filesFavorites  = "FilesFavorites"
+    case filesArchive    = "FilesArchive"
 
     var id: String { rawValue }
 
@@ -77,15 +88,16 @@ enum ArticleFilter: String, CaseIterable, Identifiable {
         case .pagesContinue, .pagesUnread, .pagesFavorites, .pagesArchive:     return .pages
         case .videosContinue, .videosUnread, .videosFavorites, .videosArchive: return .videos
         case .audioContinue, .audioUnread, .audioFavorites, .audioArchive:     return .audio
+        case .filesUnread, .filesFavorites, .filesArchive:                     return .files
         }
     }
 
     var kind: Kind {
         switch self {
         case .pagesContinue, .videosContinue, .audioContinue:    return .continue
-        case .pagesUnread, .videosUnread, .audioUnread:          return .unread
-        case .pagesFavorites, .videosFavorites, .audioFavorites: return .favorites
-        case .pagesArchive, .videosArchive, .audioArchive:       return .archive
+        case .pagesUnread, .videosUnread, .audioUnread, .filesUnread:             return .unread
+        case .pagesFavorites, .videosFavorites, .audioFavorites, .filesFavorites: return .favorites
+        case .pagesArchive, .videosArchive, .audioArchive, .filesArchive:         return .archive
         }
     }
 
@@ -101,8 +113,9 @@ enum ArticleFilter: String, CaseIterable, Identifiable {
         case .videosUnread:    return L("articleList.filter.unseen")
         case .audioContinue:   return L("articleList.filter.continueListening")
         case .audioUnread:     return L("articleList.filter.unheard")
-        case .pagesFavorites, .videosFavorites, .audioFavorites: return L("articleList.filter.favorites")
-        case .pagesArchive, .videosArchive, .audioArchive:       return L("articleList.filter.archive")
+        case .filesUnread:     return L("articleList.filter.unopened")
+        case .pagesFavorites, .videosFavorites, .audioFavorites, .filesFavorites: return L("articleList.filter.favorites")
+        case .pagesArchive, .videosArchive, .audioArchive, .filesArchive:         return L("articleList.filter.archive")
         }
     }
 
@@ -114,8 +127,9 @@ enum ArticleFilter: String, CaseIterable, Identifiable {
         case .videosUnread:    return "play.rectangle"
         case .audioContinue:   return "headphones.circle"
         case .audioUnread:     return "headphones"
-        case .pagesFavorites, .videosFavorites, .audioFavorites: return "star"
-        case .pagesArchive, .videosArchive, .audioArchive:       return "archivebox"
+        case .filesUnread:     return "folder"
+        case .pagesFavorites, .videosFavorites, .audioFavorites, .filesFavorites: return "star"
+        case .pagesArchive, .videosArchive, .audioArchive, .filesArchive:         return "archivebox"
         }
     }
 
@@ -136,6 +150,9 @@ enum ArticleFilter: String, CaseIterable, Identifiable {
         case .audioUnread:     return "audio-unread"
         case .audioFavorites:  return "audio-favorites"
         case .audioArchive:    return "audio-archived"
+        case .filesUnread:     return "files-unread"
+        case .filesFavorites:  return "files-favorites"
+        case .filesArchive:    return "files-archived"
         }
     }
 
@@ -154,7 +171,7 @@ enum ArticleFilter: String, CaseIterable, Identifiable {
     /// Grundlage für `ArticlesViewModel.shouldHide` und den Offline-Cache
     /// (`ArticleCacheService.matches`), spiegelt `fetchForFilter`.
     func matches(_ article: Article) -> Bool {
-        guard ContentGroup(category: article.category) == group else { return false }
+        guard ContentGroup(article: article) == group else { return false }
         switch kind {
         case .continue:
             let progress = article.scrollProgress ?? 0
@@ -167,13 +184,14 @@ enum ArticleFilter: String, CaseIterable, Identifiable {
     }
 
     /// Wie `matches(_:)`, berücksichtigt aber zusätzlich die Einzel-Tag-Ansicht:
-    /// Ist `tagId` gesetzt, zählt der Filter selbst nicht (siehe
-    /// `ArticlesViewModel.fetchForFilter`), sondern nur, ob der Artikel den Tag
-    /// trägt und ob archivierte Artikel eingeblendet sind. Einzige Regel für
-    /// Listenpflege im ViewModel und den Offline-Cache.
-    func matches(_ article: Article, tagId: Int?, showArchivedForTag: Bool) -> Bool {
-        guard let tagId else { return matches(article) }
-        guard article.tags.contains(where: { $0.id == tagId }) else { return false }
+    /// Ist `tagIds` gesetzt (der gewählte Tag plus seine Unter-Tags, siehe
+    /// `TagTree.scope(of:)`), zählt der Filter selbst nicht (siehe
+    /// `ArticlesViewModel.fetchForFilter`), sondern nur, ob der Artikel einen
+    /// dieser Tags trägt und ob archivierte Artikel eingeblendet sind. Einzige
+    /// Regel für Listenpflege im ViewModel und den Offline-Cache.
+    func matches(_ article: Article, tagIds: Set<Int>?, showArchivedForTag: Bool) -> Bool {
+        guard let tagIds else { return matches(article) }
+        guard article.tags.contains(where: { tagIds.contains($0.id) }) else { return false }
         return showArchivedForTag || !article.isArchived
     }
 }
@@ -285,9 +303,11 @@ final class ArticlesViewModel {
         // Artikel mit ausgeblendeten Tags entfernen – aber nicht in der
         // Einzel-Tag-Ansicht: wer explizit einen Tag öffnet, will dessen
         // Artikel sehen, auch wenn der Tag im Tag-Filter ausgeblendet ist.
+        // Ein ausgeblendeter Tag blendet auch seine Unter-Tags aus.
         if selectedTagId == nil, !excludedTagIds.isEmpty {
+            let hidden = hiddenTagIds
             result = result.filter { article in
-                article.tags.allSatisfy { !excludedTagIds.contains($0.id) }
+                article.tags.allSatisfy { !hidden.contains($0.id) }
             }
         }
 
@@ -346,7 +366,7 @@ final class ArticlesViewModel {
         } catch {
             // Network failed – serve from the local cache if available.
             let cached = await ArticleCacheService.shared.loadFiltered(
-                filter: selectedFilter, tagId: selectedTagId, showArchivedForTag: showArchivedInTagView)
+                filter: selectedFilter, tagIds: selectedTagScope, showArchivedForTag: showArchivedInTagView)
             if !cached.isEmpty {
                 articles  = cached
                 isOffline = true
@@ -415,8 +435,39 @@ final class ArticlesViewModel {
         return allTags.first(where: { $0.id == id })?.name
     }
 
+    /// Baumansicht der Tags (verschachtelte Tags, `Tag.parentId`).
+    var tagTree: TagTree { TagTree(allTags) }
+
+    /// Was die Einzel-Tag-Ansicht umfasst: der gewählte Tag plus seine
+    /// Unter-Tags (der Server filtert `tagId` genauso). `nil` = keine Tag-Ansicht.
+    var selectedTagScope: Set<Int>? {
+        selectedTagId.map { tagTree.scope(of: $0) }
+    }
+
+    /// Ausgeblendete Tags samt ihren Unter-Tags.
+    var hiddenTagIds: Set<Int> {
+        guard !excludedTagIds.isEmpty else { return [] }
+        let tree = tagTree
+        return excludedTagIds.reduce(into: Set<Int>()) { $0.formUnion(tree.scope(of: $1)) }
+    }
+
     func loadTags() async {
         allTags = (try? await MerlinAPI.shared.getTags()) ?? []
+    }
+
+    /// Hängt einen Tag samt Unter-Tags unter `parentId` (`nil` = oberste
+    /// Ebene) und lädt danach Tags und Liste neu, weil sich der Umfang einer
+    /// gerade geöffneten Tag-Ansicht ändern kann.
+    func moveTag(_ tagId: Int, under parentId: Int?) async {
+        guard tagTree.canMove(tagId, under: parentId) else { return }
+        do {
+            _ = try await MerlinAPI.shared.moveTag(id: tagId, parentId: parentId)
+        } catch {
+            self.error = error.localizedDescription
+            return
+        }
+        await loadTags()
+        if selectedTagId != nil { await load() }
     }
 
     /// Löscht einen Tag (samt Unter-Tags) auf dem Server und entfernt ihn
@@ -535,6 +586,21 @@ final class ArticlesViewModel {
 
     // MARK: – Mutations
 
+    /// Renames a file entry (file in Nextcloud and entry title). Returns an
+    /// error message for the rename alert, nil on success.
+    func renameFile(_ article: Article, to name: String) async -> String? {
+        do {
+            let updated = try await MerlinAPI.shared.renameFile(article.id, to: name)
+            applyListMembership(updated)
+            await ArticleCacheService.shared.upsert(updated)
+            return nil
+        } catch MerlinAPIError.serverError(409) {
+            return L("fileRename.errorExists")
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
     func toggleFavorite(_ article: Article, recordUndo: Bool = true) async {
         if recordUndo { lastUndoableAction = UndoableAction(kind: .toggleFavorite, article: article) }
 
@@ -636,7 +702,7 @@ final class ArticlesViewModel {
     /// `reinsertIfMissing` (to decide whether a rolled-back row needs
     /// restoring).
     private func shouldHide(_ article: Article) -> Bool {
-        !selectedFilter.matches(article, tagId: selectedTagId, showArchivedForTag: showArchivedInTagView)
+        !selectedFilter.matches(article, tagIds: selectedTagScope, showArchivedForTag: showArchivedInTagView)
     }
 
     /// Restores `article` to the list — in roughly sorted position — if the
