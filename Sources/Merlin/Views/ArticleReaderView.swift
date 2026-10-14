@@ -1762,9 +1762,7 @@ struct ArticleReaderView: View {
             // white areas bleed through above the top buttons or below the
             // bottom bar when dark / sepia mode is active. In Hell/Sepia liegt
             // hier auch die Papierstruktur; der HTML-Body ist dann transparent.
-            PaperBackground(color: readerBgColor, textured: showsPaperTexture,
-                            scrollOffset: scrollOffset)
-                .ignoresSafeArea()
+            readerBackground
             // MARK: Content – outer ScrollView owns all scrolling
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
@@ -1794,10 +1792,7 @@ struct ArticleReaderView: View {
                         PDFArticleView(sourceURL: pdfURL, availableWidth: viewportWidth)
                     } else if let content = current.content, !content.isEmpty {
                         ArticleWebView(
-                            html: buildReaderHTML(content: content, fontSize: fontSize,
-                                                  theme: theme, font: readerFont, lineHeight: lineHeight,
-                                                  transparentBackground: showsPaperTexture,
-                                                  developerMode: developerMode),
+                            html: readerHTML(content: content),
                             articleId:      current.id,
                             onLinkTapped:   { url in tappedLinkURL = url },
                             onHeightChange: { h in webViewHeight = max(200, h) },
@@ -2149,11 +2144,7 @@ struct ArticleReaderView: View {
         // YouTube-Karte geht dabei verloren, das Overlay hätte keine Position mehr.
         .onChange(of: appearanceKey) { _, _ in youtubePlayerState = nil }
         .sheet(isPresented: $showAppearance) {
-            AppearanceSheet(fontSize: $fontSize, theme: $theme, readerFont: $readerFont, lineHeight: $lineHeight,
-                            paperTexture: $paperTexture,
-                            onAccentColorChange: { pushAppearanceToServer() })
-                .presentationDetents([.height(520)])
-                .presentationDragIndicator(.visible)
+            appearanceSheet
         }
         .fullScreenCover(item: $lightboxState) { ls in
             ImageLightboxView(state: ls) { lightboxState = nil }
@@ -2174,9 +2165,6 @@ struct ArticleReaderView: View {
         .onChange(of: lineHeight)  { _, v in
             PreferencesStore.shared.lineHeight = v
             pushAppearanceToServer()
-        }
-        .onChange(of: paperTexture) { _, v in
-            PreferencesStore.shared.readerPaperTexture = v
         }
         .onAppear {
             localIsFavorite = article.isFavorite
@@ -2463,6 +2451,28 @@ struct ArticleReaderView: View {
 
     /// Papierstruktur nur in Hell/Sepia – Dunkel bleibt reines (OLED-)Schwarz.
     private var showsPaperTexture: Bool { paperTexture && !readerIsDark }
+
+    // Die folgenden drei sind eigene Properties, damit `body` für den Type-Checker
+    // klein genug bleibt (vgl. `youtubeOverlay`).
+
+    private var readerBackground: some View {
+        PaperBackground(color: readerBgColor, textured: showsPaperTexture, scrollOffset: scrollOffset)
+            .ignoresSafeArea()
+    }
+
+    private func readerHTML(content: String) -> String {
+        buildReaderHTML(content: content, fontSize: fontSize, theme: theme, font: readerFont,
+                        lineHeight: lineHeight, transparentBackground: showsPaperTexture,
+                        developerMode: developerMode)
+    }
+
+    private var appearanceSheet: some View {
+        AppearanceSheet(fontSize: $fontSize, theme: $theme, readerFont: $readerFont, lineHeight: $lineHeight,
+                        paperTexture: $paperTexture,
+                        onAccentColorChange: { pushAppearanceToServer() })
+            .presentationDetents([.height(520)])
+            .presentationDragIndicator(.visible)
+    }
 
     /// Lesbare Vordergrundfarbe auf der Akzentfläche (weiß, bei sehr hellen Akzenten dunkel).
     private var onAccentHex: String {
@@ -4239,6 +4249,9 @@ private struct AppearanceSheet: View {
         }
         .padding(20)
         .background(Color(.systemGroupedBackground))
+        .onChange(of: paperTexture) { _, v in
+            PreferencesStore.shared.readerPaperTexture = v
+        }
     }
 
     @ViewBuilder
