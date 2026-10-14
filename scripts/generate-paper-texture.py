@@ -4,7 +4,7 @@
 Ausgabe: Sources/Merlin/paper-texture.png (512×512, Graustufen). Die Kachel
 wird im Reader per Multiply über die Theme-Farbe gelegt (siehe
 `PaperBackground` in ArticleReaderView.swift), deshalb liegt sie knapp unter
-Weiß: Mittelwert ≈ 0.975, kaum Werte über 1.0 – das Blatt wird nur minimal
+Weiß: Mittelwert ≈ 0.945, kaum Werte über 1.0 – das Blatt wird etwas
 dunkler, Fasern und Korn schwanken um wenige Prozent.
 
 Das Rauschen wird im Frequenzraum gefiltert; die FFT ist periodisch, die
@@ -17,8 +17,8 @@ import numpy as np
 from PIL import Image
 
 N = 512
-MEAN = 0.975
-STD = 0.02
+MEAN = 0.945
+STD = 0.045
 rng = np.random.default_rng(7)
 
 fy = np.fft.fftfreq(N)[:, None]
