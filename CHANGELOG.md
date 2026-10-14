@@ -42,6 +42,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   opens the iOS "New Event" dialog filled in with title, date and time,
   place and the text as notes; you pick the calendar and save there. No
   calendar permission is needed.
+- Reader: the article background now has a subtle paper texture in the Light
+  and Sepia themes; the fibers scroll along with the text. It can be turned
+  off with "Paper texture" in the appearance sheet. Dark stays pure black.
 - Tags: tags can be nested like on Nextcloud. The side menu shows the tag
   tree with an arrow to expand or collapse sub-tags (remembered across
   launches); long-press a tag and choose "Move to…" to put it below another
@@ -161,6 +164,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comments: web addresses in comments are tappable links.
 
 ### Changed
+- Reader: the subscription/donation box is never placed directly after a
+  heading or a fully bold paragraph (an inline sub-heading); it moves to the
+  next fitting paragraph instead, like on Nextcloud.
 - Side menu: Pages, Videos and Audio are no longer three stacked groups.
   A segmented control at the top (Text · Video · Audio) picks the media
   type, and only its four views (Continue, Unread/Unseen/Not listened,

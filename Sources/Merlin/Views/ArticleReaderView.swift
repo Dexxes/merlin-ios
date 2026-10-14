@@ -412,7 +412,7 @@ private let merlinImageTapJS: String = #"""
   function wire(img,getAll){
     if(img.dataset.merlinTap)return;
     if(img.closest('.merlin-yt-embed'))return; // Thumbnail eines YouTube-Platzhalters — eigene Handhabung in merlinYoutubeTapJS
-    if(img.closest('merlin-support-box'))return; // Icon der Support-Infobox: kein Artikelbild, keine Lightbox
+    if(img.closest('merlin-support-box,merlin-author-box'))return; // Icon der Support-Infobox/Autorenfoto: kein Artikelbild, keine Lightbox
     img.dataset.merlinTap='1';
     img.style.cursor='pointer';
     img.addEventListener('click',function(e){
@@ -425,7 +425,7 @@ private let merlinImageTapJS: String = #"""
       window.webkit.messageHandlers.imageTap.postMessage({index:idx,srcs:srcs});
     });
   }
-  function all(){return Array.from(document.querySelectorAll('img')).filter(function(i){return !i.closest('.merlin-yt-embed')&&!i.closest('merlin-support-box')&&!i.closest('.merlin-inline-media--playable');});}
+  function all(){return Array.from(document.querySelectorAll('img')).filter(function(i){return !i.closest('.merlin-yt-embed')&&!i.closest('merlin-support-box,merlin-author-box')&&!i.closest('.merlin-inline-media--playable');});}
   all().forEach(function(img){wire(img,all);});
   new MutationObserver(function(ms){
     ms.forEach(function(m){
@@ -580,7 +580,7 @@ private let merlinDebugJS: String = #"""
 
   function addPanel(img){
     if(img.dataset.merlinDbg)return;
-    if(img.closest('merlin-support-box'))return; // Icon der Support-Infobox: kein Artikelbild
+    if(img.closest('merlin-support-box,merlin-author-box'))return; // Icon der Support-Infobox/Autorenfoto: kein Artikelbild
     img.dataset.merlinDbg='1';
     var wrap=document.createElement('div');
     wrap.className='mdbg-wrap';
@@ -859,6 +859,42 @@ private struct HighlightToolbarView: View {
         .padding(.bottom, dockTop ? 0 : edgeInset)
         .modifier(HighlightToolbarBackground(bgColor: bgColor))
     }
+}
+
+/// Reader-Hintergrund: Theme-Farbe, in Hell/Sepia optional mit Papierstruktur.
+/// Die Graustufen-Kachel (`paper-texture.png`, erzeugt von
+/// `scripts/generate-paper-texture.py`) liegt per Multiply über der Farbe, damit
+/// Sepia seinen Farbton behält. Die Ebene bleibt bildschirmfest (eine Fläche in
+/// Bildschirm- statt Artikellänge) und wird um `scrollOffset` modulo Kachelhöhe
+/// verschoben – die Fasern wandern so mit dem Text wie bei echtem Papier.
+private struct PaperBackground: View {
+    let color: Color
+    let textured: Bool
+    let scrollOffset: CGFloat
+
+    var body: some View {
+        color.overlay {
+            if textured, let tile = Self.tile {
+                GeometryReader { geo in
+                    let tileHeight = tile.size.height
+                    Image(uiImage: tile)
+                        .resizable(resizingMode: .tile)
+                        .frame(width: geo.size.width, height: geo.size.height + tileHeight)
+                        .offset(y: -scrollOffset.truncatingRemainder(dividingBy: tileHeight))
+                        .blendMode(.multiply)
+                }
+                .clipped()
+                .allowsHitTesting(false)
+            }
+        }
+    }
+
+    /// Einmal geladen, mit Skalierung 3, damit ein Texel einem Gerätepixel entspricht.
+    private static let tile: UIImage? = {
+        guard let url = Bundle.module.url(forResource: "paper-texture", withExtension: "png"),
+              let cg = UIImage(contentsOfFile: url.path)?.cgImage else { return nil }
+        return UIImage(cgImage: cg, scale: 3, orientation: .up)
+    }()
 }
 
 /// Ab iOS 26 echtes Liquid Glass; darunter eine flache, themenfarbige Fläche
@@ -1622,6 +1658,7 @@ struct ArticleReaderView: View {
     @State private var theme:         ReaderTheme  = PreferencesStore.shared.readerTheme
     @State private var readerFont:    ReaderFont   = PreferencesStore.shared.readerFont
     @State private var lineHeight:    Double        = PreferencesStore.shared.lineHeight
+    @State private var paperTexture:  Bool          = PreferencesStore.shared.readerPaperTexture
     @State private var progressEdge:  ProgressEdge = PreferencesStore.shared.progressEdge
     @State private var showSideMenu      = false
     @State private var showReminderSheet = false
@@ -1657,7 +1694,7 @@ struct ArticleReaderView: View {
 
     /// Fasst alle Einstellungen zusammen, die die Reader-HTML neu laden lassen.
     private var appearanceKey: String {
-        "\(fontSize)|\(theme.rawValue)|\(readerFont.rawValue)|\(lineHeight)"
+        "\(fontSize)|\(theme.rawValue)|\(readerFont.rawValue)|\(lineHeight)|\(showsPaperTexture)"
     }
 
     /// Inline-Player exakt über der angetippten Vorschaukarte. Der WebView scrollt nicht
@@ -1727,8 +1764,9 @@ struct ArticleReaderView: View {
 
             // Fill the entire screen with the reader background colour so no
             // white areas bleed through above the top buttons or below the
-            // bottom bar when dark / sepia mode is active.
-            readerBgColor.ignoresSafeArea()
+            // bottom bar when dark / sepia mode is active. In Hell/Sepia liegt
+            // hier auch die Papierstruktur; der HTML-Body ist dann transparent.
+            readerBackground
             // MARK: Content – outer ScrollView owns all scrolling
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
@@ -1764,12 +1802,9 @@ struct ArticleReaderView: View {
                         }
                     } else if let content = current.content, !content.isEmpty {
                         ArticleWebView(
-                            html: buildReaderHTML(content: current.fileId != nil
-                                                      ? RecognizedTextEvent.addingEventLink(to: content, label: L("fileText.createEvent"))
-                                                      : content,
-                                                  fontSize: fontSize,
-                                                  theme: theme, font: readerFont, lineHeight: lineHeight,
-                                                  developerMode: developerMode),
+                            html: readerHTML(content: current.fileId != nil
+                                             ? RecognizedTextEvent.addingEventLink(to: content, label: L("fileText.createEvent"))
+                                             : content),
                             articleId:      current.id,
                             onLinkTapped:   { url in
                                 if url == RecognizedTextEvent.linkURL {
@@ -2128,10 +2163,7 @@ struct ArticleReaderView: View {
         // YouTube-Karte geht dabei verloren, das Overlay hätte keine Position mehr.
         .onChange(of: appearanceKey) { _, _ in youtubePlayerState = nil }
         .sheet(isPresented: $showAppearance) {
-            AppearanceSheet(fontSize: $fontSize, theme: $theme, readerFont: $readerFont, lineHeight: $lineHeight,
-                            onAccentColorChange: { pushAppearanceToServer() })
-                .presentationDetents([.height(460)])
-                .presentationDragIndicator(.visible)
+            appearanceSheet
         }
         .fullScreenCover(item: $lightboxState) { ls in
             ImageLightboxView(state: ls) { lightboxState = nil }
@@ -2439,6 +2471,31 @@ struct ArticleReaderView: View {
     /// Effektives Hell/Dunkel des Readers (Theme-Override oder System).
     private var readerIsDark: Bool {
         (theme == .dark) || (theme == .auto && colorScheme == .dark)
+    }
+
+    /// Papierstruktur nur in Hell/Sepia – Dunkel bleibt reines (OLED-)Schwarz.
+    private var showsPaperTexture: Bool { paperTexture && !readerIsDark }
+
+    // Die folgenden drei sind eigene Properties, damit `body` für den Type-Checker
+    // klein genug bleibt (vgl. `youtubeOverlay`).
+
+    private var readerBackground: some View {
+        PaperBackground(color: readerBgColor, textured: showsPaperTexture, scrollOffset: scrollOffset)
+            .ignoresSafeArea()
+    }
+
+    private func readerHTML(content: String) -> String {
+        buildReaderHTML(content: content, fontSize: fontSize, theme: theme, font: readerFont,
+                        lineHeight: lineHeight, transparentBackground: showsPaperTexture,
+                        developerMode: developerMode)
+    }
+
+    private var appearanceSheet: some View {
+        AppearanceSheet(fontSize: $fontSize, theme: $theme, readerFont: $readerFont, lineHeight: $lineHeight,
+                        paperTexture: $paperTexture,
+                        onAccentColorChange: { pushAppearanceToServer() })
+            .presentationDetents([.height(520)])
+            .presentationDragIndicator(.visible)
     }
 
     /// Lesbare Vordergrundfarbe auf der Akzentfläche (weiß, bei sehr hellen Akzenten dunkel).
@@ -3714,7 +3771,7 @@ struct ArticleReaderView: View {
     /// JS für die Support-Infobox ("Dir gefällt der Artikel von …? Überlege ein Abo abzuschließen oder zu
     /// spenden"), gleiche Platzierungslogik wie `insertSupportBox` im Nextcloud-Web-Reader: nach einem
     /// pseudo-zufälligen Top-Level-`<p>` (Seed = Artikel-ID, damit die Position stabil bleibt), nur ab
-    /// 4 Absätzen. Als eigenes Element `<merlin-support-box>` gesetzt: der XPath-Zähler der Highlights
+    /// 4 Absätzen, nie direkt nach einer Überschrift oder einem komplett fetten Absatz. Als eigenes Element `<merlin-support-box>` gesetzt: der XPath-Zähler der Highlights
     /// (`getXPath`) zählt Geschwister je Tag-Name, ein unbekannter Tag verschiebt daher keinen Index
     /// des Artikeltextes und Highlights lösen weiter plattformübergreifend gleich auf.
     static func supportBoxScript(for box: SupportBox, seed: Int) -> String? {
@@ -3773,7 +3830,23 @@ struct ArticleReaderView: View {
           if(ps.length<4) return;
           var h=0x811c9dc5>>>0, s=cfg.seed;
           for(var i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,0x01000193);}
-          var idx=1+((h>>>0)%(ps.length-2));
+          // Nie direkt nach einer Zwischenüberschrift: Absätze mit Überschrift oder komplett fettem Text
+          // (<strong>/<b>) überspringen, ab der Seed-Position erst nach hinten, dann nach vorn suchen.
+          function headingLike(p){
+            if(p.querySelector('h1,h2,h3,h4,h5,h6'))return true;
+            var w=document.createTreeWalker(p,NodeFilter.SHOW_TEXT),n,any=false;
+            while((n=w.nextNode())){
+              if(n.data.trim()==='')continue;
+              any=true;
+              var b=n.parentElement.closest('strong,b');
+              if(!b||!p.contains(b))return false;
+            }
+            return any;
+          }
+          var start=1+((h>>>0)%(ps.length-2)), idx=-1, k;
+          for(k=start;k<=ps.length-2&&idx<0;k++){if(!headingLike(ps[k]))idx=k;}
+          for(k=start-1;k>=1&&idx<0;k--){if(!headingLike(ps[k]))idx=k;}
+          if(idx<0) return;
           var box=document.createElement('merlin-support-box');
           box.setAttribute('role','note');
           box.style.cssText='display:flex;align-items:stretch;gap:0.9em;margin:1.5em 0;padding:0.85em 1em;border-left:4px solid '+cfg.accent+';border-radius:0 8px 8px 0;background:rgba(128,128,128,0.1);background:color-mix(in srgb,'+cfg.accent+' 12%,transparent);font-size:0.93em;line-height:1.6;-webkit-user-select:none;user-select:none;';
@@ -3824,6 +3897,7 @@ struct ArticleReaderView: View {
                                  theme: ReaderTheme = .auto,
                                  font: ReaderFont = .system,
                                  lineHeight: Double = 1.6,
+                                 transparentBackground: Bool = false,
                                  developerMode: Bool = false) -> String {
         // Determine effective dark/light based on theme override or system setting
         let effectiveDark: Bool = {
@@ -3835,8 +3909,12 @@ struct ArticleReaderView: View {
         }()
         let isSepia = theme == .sepia
 
+        // Autorenboxen (Foto/Bio) am Artikelende; gibt es welche, ersetzen sie die Zeile „Autor, Medium“.
+        let authorBoxesHTML = AuthorBoxHTML.html(for: current.authors, accent: accentColorHex)
+
         // Am Ende des Artikels noch einmal „Autor, Medium“ (z. B. „Max Muster, taz.de“).
         let footerBylineHTML: String = {
+            guard authorBoxesHTML.isEmpty else { return authorBoxesHTML }
             // Mit Profil-Link (authorUrl) wird der Autorname verlinkt.
             func esc(_ s: String) -> String {
                 s.replacingOccurrences(of: "&", with: "&amp;")
@@ -3902,7 +3980,7 @@ struct ArticleReaderView: View {
             body {
               margin: 0;
               padding: 0 20px 40px;
-              background: \(bg);
+              background: \(transparentBackground ? "transparent" : bg);
               color: \(fg);
               font-family: \(font.cssValue);
               font-size: \(fontSize)px;
@@ -4067,6 +4145,7 @@ struct ArticleReaderView: View {
               font-size: 0.9em; font-style: italic; color: \(fgMuted);
             }
             .merlin-footer-byline a { color: inherit !important; }
+            \(AuthorBoxHTML.css)
             .merlin-mastodon-post + .merlin-mastodon-post { margin-top: 8px; }
             .merlin-mastodon-post__header {
               display: flex; align-items: center; gap: 10px;
@@ -4185,7 +4264,7 @@ struct ArticleReaderView: View {
               if (img.dataset.merlinPhAttached) return;
               // Icon der Support-Infobox: kein Artikelbild, hat einen eigenen Umgang mit Ladefehlern
               // (wird einfach entfernt, siehe supportBoxScript) statt des großen Platzhalters.
-              if (img.closest && img.closest('merlin-support-box')) return;
+              if (img.closest && img.closest('merlin-support-box,merlin-author-box')) return;
               img.dataset.merlinPhAttached = '1';
               if (img.complete && img.naturalWidth === 0 && img.src) {
                 makePlaceholder(img);
@@ -4218,6 +4297,7 @@ private struct AppearanceSheet: View {
     @Binding var theme:      ReaderTheme
     @Binding var readerFont: ReaderFont
     @Binding var lineHeight: Double
+    @Binding var paperTexture: Bool
     var onAccentColorChange: () -> Void = {}
 
     @AppStorage("merlin_accent_progress_color") private var accentColorHex: String = "#FF3B30"
@@ -4230,11 +4310,15 @@ private struct AppearanceSheet: View {
             themeRow
             fontRow
             lineHeightRow
+            paperTextureRow
             accentColorRow
             Spacer()
         }
         .padding(20)
         .background(Color(.systemGroupedBackground))
+        .onChange(of: paperTexture) { _, v in
+            PreferencesStore.shared.readerPaperTexture = v
+        }
     }
 
     @ViewBuilder
@@ -4329,6 +4413,20 @@ private struct AppearanceSheet: View {
                     .frame(width: 28, alignment: .trailing)
             }
         }
+    }
+
+    /// Wirkt nur in Hell/Sepia (siehe `showsPaperTexture`), daher im Dunkel-Theme ausgegraut.
+    @ViewBuilder
+    private var paperTextureRow: some View {
+        Toggle(isOn: $paperTexture) {
+            Label(L("articleReader.appearance.paperTexture"), systemImage: "doc.richtext")
+                .font(.subheadline)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .disabled(theme == .dark)
     }
 
     @ViewBuilder

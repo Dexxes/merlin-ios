@@ -13,6 +13,16 @@ struct SupportBox: Codable, Equatable {
     var iconUrl: String?
 }
 
+/// Ein Autor des Artikels (`authors` im API-JSON, merlin-nextcloud): Name, Profil-Link und – wenn der
+/// Content-Filter der Domain `<author-image>`/`<author-bio>` kennt – Foto und Kurzbiografie für die
+/// Autorenbox am Artikelende (siehe `AuthorBoxHTML`).
+struct ArticleAuthor: Codable, Equatable {
+    var name: String
+    var url: String?
+    var image: String?
+    var bio: String?
+}
+
 struct Article: Identifiable, Codable, Equatable {
     let id: Int
     var url: String
@@ -23,6 +33,8 @@ struct Article: Identifiable, Codable, Equatable {
     /// Link zum Autorenprofil bei der Quelle (`authorUrl`, Merlin-Server ab Migration 26). Nur bei genau
     /// einem Autor gesetzt; nil bei älteren Servern. Für die Anzeige `authorProfileURL` verwenden.
     var authorUrl: String?
+    /// Alle Autoren mit Profil-Link, Foto und Bio (nil bei älteren Servern oder ohne solche Angaben).
+    var authors: [ArticleAuthor]?
     var siteName: String?
     var imageUrl: String?
     var isFavorite: Bool
@@ -75,7 +87,7 @@ struct Article: Identifiable, Codable, Equatable {
     var fileMime: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, url, title, content, excerpt, author, authorUrl, siteName, imageUrl
+        case id, url, title, content, excerpt, author, authorUrl, authors, siteName, imageUrl
         case isFavorite, isArchived, readingTime, publishedAt, createdAt, updatedAt, archivedAt
         case tags, isProcessing, category, scrollProgress, scrollUpdatedAt
         case requiresLoginDomain, requiresLoginPage
@@ -94,6 +106,7 @@ struct Article: Identifiable, Codable, Equatable {
         excerpt = try c.decodeIfPresent(String.self, forKey: .excerpt)
         author = try c.decodeIfPresent(String.self, forKey: .author)
         authorUrl = try? c.decodeIfPresent(String.self, forKey: .authorUrl)
+        authors = try? c.decodeIfPresent([ArticleAuthor].self, forKey: .authors)
         siteName = try c.decodeIfPresent(String.self, forKey: .siteName)
         imageUrl = try c.decodeIfPresent(String.self, forKey: .imageUrl)
         isArchived = try c.decode(Bool.self, forKey: .isArchived)
@@ -137,6 +150,7 @@ struct Article: Identifiable, Codable, Equatable {
         try c.encodeIfPresent(excerpt, forKey: .excerpt)
         try c.encodeIfPresent(author, forKey: .author)
         try c.encodeIfPresent(authorUrl, forKey: .authorUrl)
+        try c.encodeIfPresent(authors, forKey: .authors)
         try c.encodeIfPresent(siteName, forKey: .siteName)
         try c.encodeIfPresent(imageUrl, forKey: .imageUrl)
         try c.encode(isArchived, forKey: .isArchived)

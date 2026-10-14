@@ -60,6 +60,7 @@
 "articleReader.appearance.font" = "Schriftart";
 "articleReader.appearance.fontSize" = "Schriftgröße";
 "articleReader.appearance.lineSpacing" = "Zeilenabstand";
+"articleReader.appearance.paperTexture" = "Papierstruktur";
 "articleReader.appearance.progressAndHighlights" = "Fortschrittsbalken & Hervorhebungen";
 "articleReader.appearance.theme" = "Design";
 "articleReader.comments.allComments" = "Alle Kommentare";
