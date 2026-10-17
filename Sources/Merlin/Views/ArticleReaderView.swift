@@ -3340,6 +3340,7 @@ struct ArticleReaderView: View {
                     let dx    = Self.actionArcRadius * cos(angle)
                     let dy    = -Self.actionArcRadius * sin(angle)
                     landscapeActionItem(action, accent: accent, onAccent: onAccent)
+                        .overlay(alignment: .leading) { landscapeActionLabel(action) }
                         .offset(x: dx, y: dy)
                         .transition(.offset(x: -dx, y: -dy)
                             .combined(with: .scale(scale: 0.4))
@@ -3395,6 +3396,25 @@ struct ArticleReaderView: View {
             .buttonStyle(.plain)
             .accessibilityLabel(action.label)
         }
+    }
+
+    /// Beschriftung links neben einem Fächer-Button (wie im Mockup). Rein
+    /// dekorativ: Treffer und VoiceOver laufen über den Button selbst.
+    private func landscapeActionLabel(_ action: LandscapeAction) -> some View {
+        Text(action.label.replacingOccurrences(of: "…", with: ""))
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(readerFgColor)
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4)
+            .background(Capsule().fill(readerBgColor.opacity(0.92)))
+            .overlay(Capsule().strokeBorder(readerFgColor.opacity(0.12), lineWidth: 0.5))
+            .shadow(color: .black.opacity(0.12), radius: 4, y: 2)
+            // Rechte Kante der Beschriftung 8 pt links vom Button.
+            .alignmentGuide(.leading) { d in d[.trailing] + 8 }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 
     private func performLandscapeAction(_ action: LandscapeAction) {
