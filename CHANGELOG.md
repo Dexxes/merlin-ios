@@ -13,8 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   colours or starts a comment; tapping a highlight offers its comments or
   removing it. Highlights are stored on the server as page + rectangles, so
   the web reader shows them in the same place, and work offline like text
-  highlights. Each PDF page is now shown by its own `PDFView` (still no
-  pinch zoom). Needs merlin-nextcloud 1.0.20.
+  highlights. Needs merlin-nextcloud 1.0.20.
+- PDFs can be pinch-zoomed in the reader (up to five times the page width).
+  The PDF now scrolls in its own viewer; the article header folds away while
+  scrolling down and returns at the top, file details open as a sheet. The
+  reading position of a PDF is the page: it is saved and synced as before
+  and reopens at the start of that page (zoom is not saved).
 - Share sheet: photos, videos, audio, PDFs and other files can be shared to
   Merlin. They are uploaded to the Nextcloud folder "Merlin files" (sorted
   into sub-folders by type, named in your Nextcloud language) and appear in

@@ -1602,6 +1602,10 @@ struct ArticleReaderView: View {
     /// Placement angewendet hat, darf der Save in `.onDisappear` laufen –
     /// sonst würde ein sofortiges Schließen ~0 mit neuerem Zeitstempel pushen.
     @State private var restoreApplied = false
+    /// PDF-Artikel: Kopf über dem PDF sichtbar (klappt beim Runterscrollen weg).
+    @State private var showPDFHeader = true
+    /// PDF aus „Merlin Dateien“: Metadaten-Sheet.
+    @State private var showPDFMetadata = false
     /// Height reported by WKWebView via JS (document.body.scrollHeight).
     @State private var webViewHeight:      CGFloat = 0
     /// Total height of the ScrollView content (header + webview + spacer).
@@ -1716,6 +1720,313 @@ struct ArticleReaderView: View {
         }
     }
 
+    // MARK: – Content
+
+    /// Artikel (HTML, Hinweise): der äußere ScrollView besitzt das ganze Scrollen; Fortschritt,
+    /// Positions-Wiederherstellung und das Ein-/Ausblenden der Leisten hängen an ihm.
+    @ViewBuilder
+    private var articleScrollView: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 0) {
+                // Restore saved reading position once content has loaded.
+                if initialFraction > 0.001 {
+                    ScrollPositionRestorer(targetFraction: initialFraction,
+                                           onApplied: { restoreApplied = true })
+                        .frame(width: 1, height: 1)
+                        .opacity(0)
+                        .allowsHitTesting(false)
+                }
+
+                articleHeader
+
+                if !current.isPDF, let source = audioSource {
+                    audioPlayerCard(source: source)
+                }
+
+                if NativeVideoHost.matches(current.url) {
+                    NativeVideoPlayerCard(articleId: current.id,
+                                          posterURL: current.imageUrl.flatMap(URL.init(string:)))
+                }
+
+                if let content = current.content, !content.isEmpty {
+                    ArticleWebView(
+                        html: readerHTML(content: current.fileId != nil
+                                         ? RecognizedTextEvent.addingEventLink(to: content, label: L("fileText.createEvent"))
+                                         : content),
+                        articleId:      current.id,
+                        onLinkTapped:   { url in
+                            if url == RecognizedTextEvent.linkURL {
+                                eventSuggestion = RecognizedTextEvent.recognizedText(in: content)
+                                    .flatMap { RecognizedTextEvent.detect(in: $0) }
+                            } else {
+                                tappedLinkURL = url
+                            }
+                        },
+                        onHeightChange: { h in webViewHeight = max(200, h) },
+                        onImageTapped:  { idx, srcs in
+                            lightboxState = LightboxState(initialIndex: idx, imageURLs: srcs)
+                        },
+                        onYouTubeTapped: { videoId, start, rect in
+                            youtubePlayerState = YouTubePlayerState(videoId: videoId, startSeconds: start, rect: rect)
+                        },
+                        onYouTubeRectChanged: { rect in
+                            youtubePlayerState?.rect = rect
+                        },
+                        onSelectionChanged: { rect, highlightId in
+                            let screenRect = CGRect(
+                                x: webViewScreenFrame.minX + rect.minX,
+                                y: webViewScreenFrame.minY + rect.minY,
+                                width: rect.width,
+                                height: rect.height)
+                            toolbarScrollBaseline = scrollOffset
+                            showHighlightToolbar(
+                                SelectionToolbarState(screenRect: screenRect, highlightId: highlightId),
+                                animation: .spring(response: 0.35, dampingFraction: 0.82))
+                        },
+                        onSelectionCleared: {
+                            toolbarScrollBaseline = nil
+                            hideHighlightToolbar()
+                        },
+                        actionHandler: highlightActions,
+                        scrollOffset: scrollOffset,
+                        supportBoxScript: supportBox.flatMap { Self.supportBoxScript(for: $0, seed: current.id) },
+                        onOpenComments: { highlightId, text in
+                            hideHighlightToolbar()
+                            commentFocus = CommentFocus(highlightId: highlightId, quote: text)
+                        },
+                        onCommentAnchor: { anchor in
+                            hideHighlightToolbar()
+                            commentFocus = CommentFocus(highlightId: nil, quote: anchor.highlightedText, anchor: anchor)
+                        },
+                        onHighlightsChanged: {
+                            Task { await comments.refresh() }
+                        },
+                        commentRevision: comments.revision,
+                        commentScript: { [comments] in comments.webViewScript() }
+                    )
+                    .frame(height: max(300, webViewHeight))
+                    // Inline-Player exakt über der angetippten Vorschaukarte. Der WebView
+                    // scrollt nicht selbst, das Overlay scrollt also mit dem Artikel mit.
+                    .overlay(alignment: .topLeading) { youtubeOverlay }
+                    .onGeometryChange(for: CGRect.self) { geo in
+                        geo.frame(in: .global)
+                    } action: { _, frame in
+                        webViewScreenFrame = frame
+                    }
+                } else if current.isProcessing {
+                    VStack(spacing: 16) {
+                        ProgressView()
+                        Text(L("articleReader.noContent.processing"))
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 300)
+                } else if let domain = current.requiresLoginDomain {
+                    VStack(spacing: 16) {
+                        Image(systemName: "lock.trianglebadge.exclamationmark")
+                            .font(.system(size: 48))
+                            .foregroundStyle(.orange)
+                        Text(String(format: L("articleReader.paywallBanner.message"), domain))
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 32)
+                        Button(L("articleReader.paywallBanner.connectButton")) {
+                            showSiteCredentialsSheet = true
+                        }
+                        .buttonStyle(.borderedProminent)
+                        Button {
+                            retryAfterPaywall()
+                        } label: {
+                            if isRetryingAfterPaywall {
+                                ProgressView()
+                            } else {
+                                Text(L("articleReader.paywallBanner.retryButton"))
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(isRetryingAfterPaywall)
+                        if let url = URL(string: current.url) {
+                            Link(L("articleReader.sideMenu.openInBrowser"), destination: url)
+                                .buttonStyle(.bordered)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 300)
+                } else if current.isPaywalled {
+                    VStack(spacing: 16) {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 48))
+                            .foregroundStyle(.orange)
+                        Text(L("articleReader.paywallSubscribeBanner.message"))
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 32)
+                        if let subscribeUrl = current.paywallSubscribeUrl, let url = URL(string: subscribeUrl) {
+                            Link(L("articleReader.paywallSubscribeBanner.subscribeButton"), destination: url)
+                                .buttonStyle(.borderedProminent)
+                        }
+                        Button(L("articleReader.paywallSubscribeBanner.archiveButton")) {
+                            archiveFromPaywallBanner()
+                        }
+                        .buttonStyle(.bordered)
+                        if let url = URL(string: current.url) {
+                            Link(L("articleReader.sideMenu.openInBrowser"), destination: url)
+                                .buttonStyle(.bordered)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 300)
+                } else if let domain = current.unsupportedSiteDomain {
+                    // UnsupportedSiteException server-seitig: die Domain liefert
+                    // grundsätzlich keinen scrapbaren Artikeltext (reine JS-SPA/
+                    // Bild-Viewer wie PressReader) - kein Retry-Button, da ein
+                    // erneuter Versuch am selben Ergebnis nichts ändert.
+                    VStack(spacing: 16) {
+                        Image(systemName: "xmark.octagon")
+                            .font(.system(size: 48))
+                            .foregroundStyle(.orange)
+                        Text(String(format: L("articleReader.unsupportedSiteBanner.message"), domain))
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 32)
+                        if let url = URL(string: current.url) {
+                            Link(L("articleReader.sideMenu.openInBrowser"), destination: url)
+                                .buttonStyle(.bordered)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 300)
+                } else {
+                    VStack(spacing: 16) {
+                        Image(systemName: "doc.text")
+                            .font(.system(size: 48))
+                            .foregroundStyle(.secondary)
+                        Text(L("articleReader.noContent.title"))
+                            .foregroundStyle(.secondary)
+                        Button(L("articleReader.noContent.retry")) {
+                            Task { await viewModel.retryExtraction(current) }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        if let url = URL(string: current.url) {
+                            Link(L("articleReader.sideMenu.openInBrowser"), destination: url)
+                                .buttonStyle(.bordered)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 300)
+                }
+
+                Color.clear.frame(height: 160) // bottom padding for action bar
+            }
+        }
+        .ignoresSafeArea()
+        .onScrollGeometryChange(for: CGFloat.self) { geo in
+            geo.contentOffset.y
+        } action: { _, newY in
+            let newOffset = max(0, newY)
+            let delta = newOffset - scrollOffset
+            let scrollable = totalContentHeight - viewportHeight
+            let isNearBottom = scrollable > 0 ? (scrollable - newOffset < 160) : true
+
+            if abs(delta) > 4 {
+                scrollingDown = delta > 0 && newOffset > 40
+                if scrollingDown && !isNearBottom {
+                    // Runterscrollen & nicht am Ende → Bar ausblenden
+                    withAnimation(.easeInOut(duration: 0.2)) { showBottomBar = false }
+                } else {
+                    // Hochscrollen oder am Ende → Bar einblenden
+                    withAnimation(.easeInOut(duration: 0.2)) { showBottomBar = true }
+                }
+            }
+            scrollOffset = newOffset
+            if scrollable > 0 {
+                scrollProgress = max(0, min(1, newOffset / scrollable))
+                nearBottom = isNearBottom
+                scheduleScrollProgressSave()
+            } else {
+                nearBottom = true
+            }
+
+            // Fold the highlight toolbar back in on the very first pixel of
+            // scroll after it appeared — it's screen-anchored, not
+            // document-anchored, so letting it ride along would mean it
+            // drifts away from the selection it belongs to.
+            if let baseline = toolbarScrollBaseline, newOffset != baseline {
+                toolbarScrollBaseline = nil
+                hideHighlightToolbar(animation: .spring(response: 0.3, dampingFraction: 0.85))
+            }
+        }
+        .onScrollGeometryChange(for: CGFloat.self) { geo in
+            geo.contentSize.height
+        } action: { _, h in
+            totalContentHeight = h
+        }
+    }
+
+    /// PDF-Artikel: ein eigener, zoombarer Viewer statt des äußeren ScrollViews. Leseposition ist
+    /// die Seite (`PDFArticleView.onPageChange`), gespeichert wie sonst über `scrollProgress`. Der
+    /// Kopf klappt beim Runterscrollen weg und kommt am Anfang der PDF wieder; die Metadaten von
+    /// Datei-Einträgen öffnen sich als Sheet.
+    private func pdfReader(_ pdfURL: URL) -> some View {
+        let metadata = current.fileId != nil ? current.content.flatMap(FileMetadataParser.parse) : nil
+        return VStack(spacing: 0) {
+            if showPDFHeader {
+                articleHeader
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                if let metadata {
+                    Button {
+                        showPDFMetadata = true
+                    } label: {
+                        Label(metadata.title, systemImage: "info.circle")
+                            .font(.subheadline.weight(.medium))
+                    }
+                    .buttonStyle(.bordered)
+                    .padding(.vertical, 8)
+                    .transition(.opacity)
+                }
+            }
+            PDFArticleView(
+                sourceURL: pdfURL,
+                articleId: current.id,
+                comments: comments,
+                onOpenComments: { highlightId, text in
+                    commentFocus = CommentFocus(highlightId: highlightId, quote: text)
+                },
+                onCommentAnchor: { anchor in
+                    commentFocus = CommentFocus(highlightId: nil, quote: anchor.highlightedText, anchor: anchor)
+                },
+                initialProgress: initialFraction,
+                onPageChange: { progress in
+                    scrollProgress = progress
+                    scheduleScrollProgressSave()
+                },
+                onRestored: { restoreApplied = true },
+                onScroll: { offset, down in
+                    if down && offset > 40 {
+                        if showBottomBar || showPDFHeader {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showBottomBar = false
+                                showPDFHeader = false
+                            }
+                        }
+                    } else if !down {
+                        let header = offset <= 1
+                        if !showBottomBar || (header && !showPDFHeader) {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showBottomBar = true
+                                if header { showPDFHeader = true }
+                            }
+                        }
+                    }
+                })
+        }
+        .ignoresSafeArea()
+        .sheet(isPresented: $showPDFMetadata) {
+            if let metadata {
+                ScrollView {
+                    FileMetadataSection(title: metadata.title, groups: metadata.groups)
+                        .padding(20)
+                }
+                .presentationDetents([.medium, .large])
+            }
+        }
+    }
+
     // MARK: – Highlight toolbar show/hide
     //
     // `selectionToolbar` is intentionally NOT set back to nil the moment the
@@ -1773,256 +2084,11 @@ struct ArticleReaderView: View {
             // bottom bar when dark / sepia mode is active. In Hell/Sepia liegt
             // hier auch die Papierstruktur; der HTML-Body ist dann transparent.
             readerBackground
-            // MARK: Content – outer ScrollView owns all scrolling
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 0) {
-                    // Restore saved reading position once content has loaded.
-                    if initialFraction > 0.001 {
-                        ScrollPositionRestorer(targetFraction: initialFraction,
-                                               onApplied: { restoreApplied = true })
-                            .frame(width: 1, height: 1)
-                            .opacity(0)
-                            .allowsHitTesting(false)
-                    }
-
-                    articleHeader
-
-                    if !current.isPDF, let source = audioSource {
-                        audioPlayerCard(source: source)
-                    }
-
-                    if NativeVideoHost.matches(current.url) {
-                        NativeVideoPlayerCard(articleId: current.id,
-                                              posterURL: current.imageUrl.flatMap(URL.init(string:)))
-                    }
-
-                    if current.isPDF, let pdfURL = current.pdfSourceURL {
-                        // PDF-Artikel: der Server speichert nur die URL; die PDF wird hier geladen und
-                        // seitenweise im äußeren ScrollView gerendert (Fortschritt/Restore bleiben so intakt).
-                        PDFArticleView(
-                            sourceURL: pdfURL,
-                            availableWidth: viewportWidth,
-                            articleId: current.id,
-                            comments: comments,
-                            onOpenComments: { highlightId, text in
-                                commentFocus = CommentFocus(highlightId: highlightId, quote: text)
-                            },
-                            onCommentAnchor: { anchor in
-                                commentFocus = CommentFocus(highlightId: nil, quote: anchor.highlightedText, anchor: anchor)
-                            })
-                        // Datei-Einträge: Metadaten aus dem Content (dort zeigt sie sonst die
-                        // Web-Ansicht, die bei PDFs nicht gerendert wird).
-                        if current.fileId != nil, let content = current.content,
-                           let metadata = FileMetadataParser.parse(content) {
-                            FileMetadataSection(title: metadata.title, groups: metadata.groups)
-                        }
-                    } else if let content = current.content, !content.isEmpty {
-                        ArticleWebView(
-                            html: readerHTML(content: current.fileId != nil
-                                             ? RecognizedTextEvent.addingEventLink(to: content, label: L("fileText.createEvent"))
-                                             : content),
-                            articleId:      current.id,
-                            onLinkTapped:   { url in
-                                if url == RecognizedTextEvent.linkURL {
-                                    eventSuggestion = RecognizedTextEvent.recognizedText(in: content)
-                                        .flatMap { RecognizedTextEvent.detect(in: $0) }
-                                } else {
-                                    tappedLinkURL = url
-                                }
-                            },
-                            onHeightChange: { h in webViewHeight = max(200, h) },
-                            onImageTapped:  { idx, srcs in
-                                lightboxState = LightboxState(initialIndex: idx, imageURLs: srcs)
-                            },
-                            onYouTubeTapped: { videoId, start, rect in
-                                youtubePlayerState = YouTubePlayerState(videoId: videoId, startSeconds: start, rect: rect)
-                            },
-                            onYouTubeRectChanged: { rect in
-                                youtubePlayerState?.rect = rect
-                            },
-                            onSelectionChanged: { rect, highlightId in
-                                let screenRect = CGRect(
-                                    x: webViewScreenFrame.minX + rect.minX,
-                                    y: webViewScreenFrame.minY + rect.minY,
-                                    width: rect.width,
-                                    height: rect.height)
-                                toolbarScrollBaseline = scrollOffset
-                                showHighlightToolbar(
-                                    SelectionToolbarState(screenRect: screenRect, highlightId: highlightId),
-                                    animation: .spring(response: 0.35, dampingFraction: 0.82))
-                            },
-                            onSelectionCleared: {
-                                toolbarScrollBaseline = nil
-                                hideHighlightToolbar()
-                            },
-                            actionHandler: highlightActions,
-                            scrollOffset: scrollOffset,
-                            supportBoxScript: supportBox.flatMap { Self.supportBoxScript(for: $0, seed: current.id) },
-                            onOpenComments: { highlightId, text in
-                                hideHighlightToolbar()
-                                commentFocus = CommentFocus(highlightId: highlightId, quote: text)
-                            },
-                            onCommentAnchor: { anchor in
-                                hideHighlightToolbar()
-                                commentFocus = CommentFocus(highlightId: nil, quote: anchor.highlightedText, anchor: anchor)
-                            },
-                            onHighlightsChanged: {
-                                Task { await comments.refresh() }
-                            },
-                            commentRevision: comments.revision,
-                            commentScript: { [comments] in comments.webViewScript() }
-                        )
-                        .frame(height: max(300, webViewHeight))
-                        // Inline-Player exakt über der angetippten Vorschaukarte. Der WebView
-                        // scrollt nicht selbst, das Overlay scrollt also mit dem Artikel mit.
-                        .overlay(alignment: .topLeading) { youtubeOverlay }
-                        .onGeometryChange(for: CGRect.self) { geo in
-                            geo.frame(in: .global)
-                        } action: { _, frame in
-                            webViewScreenFrame = frame
-                        }
-                    } else if current.isProcessing {
-                        VStack(spacing: 16) {
-                            ProgressView()
-                            Text(L("articleReader.noContent.processing"))
-                                .foregroundStyle(.secondary)
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 300)
-                    } else if let domain = current.requiresLoginDomain {
-                        VStack(spacing: 16) {
-                            Image(systemName: "lock.trianglebadge.exclamationmark")
-                                .font(.system(size: 48))
-                                .foregroundStyle(.orange)
-                            Text(String(format: L("articleReader.paywallBanner.message"), domain))
-                                .foregroundStyle(.secondary)
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal, 32)
-                            Button(L("articleReader.paywallBanner.connectButton")) {
-                                showSiteCredentialsSheet = true
-                            }
-                            .buttonStyle(.borderedProminent)
-                            Button {
-                                retryAfterPaywall()
-                            } label: {
-                                if isRetryingAfterPaywall {
-                                    ProgressView()
-                                } else {
-                                    Text(L("articleReader.paywallBanner.retryButton"))
-                                }
-                            }
-                            .buttonStyle(.bordered)
-                            .disabled(isRetryingAfterPaywall)
-                            if let url = URL(string: current.url) {
-                                Link(L("articleReader.sideMenu.openInBrowser"), destination: url)
-                                    .buttonStyle(.bordered)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 300)
-                    } else if current.isPaywalled {
-                        VStack(spacing: 16) {
-                            Image(systemName: "lock.fill")
-                                .font(.system(size: 48))
-                                .foregroundStyle(.orange)
-                            Text(L("articleReader.paywallSubscribeBanner.message"))
-                                .foregroundStyle(.secondary)
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal, 32)
-                            if let subscribeUrl = current.paywallSubscribeUrl, let url = URL(string: subscribeUrl) {
-                                Link(L("articleReader.paywallSubscribeBanner.subscribeButton"), destination: url)
-                                    .buttonStyle(.borderedProminent)
-                            }
-                            Button(L("articleReader.paywallSubscribeBanner.archiveButton")) {
-                                archiveFromPaywallBanner()
-                            }
-                            .buttonStyle(.bordered)
-                            if let url = URL(string: current.url) {
-                                Link(L("articleReader.sideMenu.openInBrowser"), destination: url)
-                                    .buttonStyle(.bordered)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 300)
-                    } else if let domain = current.unsupportedSiteDomain {
-                        // UnsupportedSiteException server-seitig: die Domain liefert
-                        // grundsätzlich keinen scrapbaren Artikeltext (reine JS-SPA/
-                        // Bild-Viewer wie PressReader) - kein Retry-Button, da ein
-                        // erneuter Versuch am selben Ergebnis nichts ändert.
-                        VStack(spacing: 16) {
-                            Image(systemName: "xmark.octagon")
-                                .font(.system(size: 48))
-                                .foregroundStyle(.orange)
-                            Text(String(format: L("articleReader.unsupportedSiteBanner.message"), domain))
-                                .foregroundStyle(.secondary)
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal, 32)
-                            if let url = URL(string: current.url) {
-                                Link(L("articleReader.sideMenu.openInBrowser"), destination: url)
-                                    .buttonStyle(.bordered)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 300)
-                    } else {
-                        VStack(spacing: 16) {
-                            Image(systemName: "doc.text")
-                                .font(.system(size: 48))
-                                .foregroundStyle(.secondary)
-                            Text(L("articleReader.noContent.title"))
-                                .foregroundStyle(.secondary)
-                            Button(L("articleReader.noContent.retry")) {
-                                Task { await viewModel.retryExtraction(current) }
-                            }
-                            .buttonStyle(.borderedProminent)
-                            if let url = URL(string: current.url) {
-                                Link(L("articleReader.sideMenu.openInBrowser"), destination: url)
-                                    .buttonStyle(.bordered)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 300)
-                    }
-
-                    Color.clear.frame(height: 160) // bottom padding for action bar
-                }
-            }
-            .ignoresSafeArea()
-            .onScrollGeometryChange(for: CGFloat.self) { geo in
-                geo.contentOffset.y
-            } action: { _, newY in
-                let newOffset = max(0, newY)
-                let delta = newOffset - scrollOffset
-                let scrollable = totalContentHeight - viewportHeight
-                let isNearBottom = scrollable > 0 ? (scrollable - newOffset < 160) : true
-
-                if abs(delta) > 4 {
-                    scrollingDown = delta > 0 && newOffset > 40
-                    if scrollingDown && !isNearBottom {
-                        // Runterscrollen & nicht am Ende → Bar ausblenden
-                        withAnimation(.easeInOut(duration: 0.2)) { showBottomBar = false }
-                    } else {
-                        // Hochscrollen oder am Ende → Bar einblenden
-                        withAnimation(.easeInOut(duration: 0.2)) { showBottomBar = true }
-                    }
-                }
-                scrollOffset = newOffset
-                if scrollable > 0 {
-                    scrollProgress = max(0, min(1, newOffset / scrollable))
-                    nearBottom = isNearBottom
-                    scheduleScrollProgressSave()
-                } else {
-                    nearBottom = true
-                }
-
-                // Fold the highlight toolbar back in on the very first pixel of
-                // scroll after it appeared — it's screen-anchored, not
-                // document-anchored, so letting it ride along would mean it
-                // drifts away from the selection it belongs to.
-                if let baseline = toolbarScrollBaseline, newOffset != baseline {
-                    toolbarScrollBaseline = nil
-                    hideHighlightToolbar(animation: .spring(response: 0.3, dampingFraction: 0.85))
-                }
-            }
-            .onScrollGeometryChange(for: CGFloat.self) { geo in
-                geo.contentSize.height
-            } action: { _, h in
-                totalContentHeight = h
+            // MARK: Content – PDFs scroll and zoom in their own view, everything else in the outer ScrollView
+            if current.isPDF, let pdfURL = current.pdfSourceURL {
+                pdfReader(pdfURL)
+            } else {
+                articleScrollView
             }
 
             // MARK: Right-edge swipe zone – invisible strip that opens the side menu
