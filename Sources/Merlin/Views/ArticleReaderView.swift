@@ -3464,11 +3464,9 @@ struct ArticleReaderView: View {
     //
     // Three icon-only buttons, equal width, separated by hairline dividers.
     //
-    //  ◀  |  ⬛  |  ⬛›
-    //  Back  Archive  Archive
-    //        + back   + next
-    //
-    // Button 3 is dimmed when no next article is available.
+    //  ◀  |  ⬛  |  ⇪
+    //  Back  Archive  Share
+    //        + back
 
     private var bottomBar: some View {
         // Glas in der Akzentfarbe des Users getönt; Icons in der dazu
@@ -3505,24 +3503,15 @@ struct ArticleReaderView: View {
 
             onAccent.opacity(0.25).frame(width: 0.5)
 
-            // ── Button 3: Archive + next article ──────────────────────────────
-            Button {
-                let snapshot = current
-                if !snapshot.isArchived {
-                    Task { await viewModel.toggleArchive(snapshot) }
-                }
-                onNavigateNext?()
-            } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "archivebox.fill")
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 14, weight: .bold))
-                }
-                .font(.system(size: 20, weight: .medium))
-                .foregroundStyle(onNavigateNext != nil ? onAccent : onAccent.opacity(0.35))
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // ── Button 3: Share ───────────────────────────────────────────────
+            ArticleShareLink(article: current) {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundStyle(onAccent)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .contentShape(Rectangle())
             }
-            .disabled(onNavigateNext == nil)
+            .accessibilityLabel(L("articleReader.sideMenu.share"))
         }
         .frame(height: 54)
         .padding(.bottom, piperTTS.hasContent ? 0 : safeAreaBottom)
