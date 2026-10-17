@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Reader in landscape on iPhone: instead of the bottom bar there is a small
+  round button in the bottom-right corner. Tapping it fans out Archive,
+  Share, Tags, Appearance (not for PDFs) and Back in a quarter circle.
+  Tapping the text switches the closed button between almost invisible and
+  the accent colour. Portrait and iPad keep the bottom bar.
 - Highlighting in PDFs: text in a saved PDF (link or file) can be selected
   in the reader. The same colour bar as in text articles highlights it in one of the five
   colours or starts a comment; tapping a highlight offers its comments or

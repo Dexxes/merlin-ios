@@ -897,6 +897,66 @@ private struct PaperBackground: View {
     }()
 }
 
+/// Setzt die Beschriftung eines Fächer-Buttons nach außen, weg vom Bogen, damit
+/// sie keinen Nachbarn verdeckt: ganz oben darüber, im oberen Teil des Bogens
+/// schräg links darüber, im unteren Teil links daneben.
+private struct ActionLabelPlacement<Label: View>: ViewModifier {
+    let degrees: Double
+    @ViewBuilder let label: () -> Label
+
+    func body(content: Content) -> some View {
+        if degrees < 100 {
+            content.overlay(alignment: .top) {
+                label().alignmentGuide(.top) { d in d[.bottom] + 6 }
+            }
+        } else if degrees < 150 {
+            content.overlay(alignment: .topLeading) {
+                label()
+                    .alignmentGuide(.leading) { d in d[.trailing] - 4 }
+                    .alignmentGuide(.top) { d in d[.bottom] - 4 }
+            }
+        } else {
+            content.overlay(alignment: .leading) {
+                label().alignmentGuide(.leading) { d in d[.trailing] + 8 }
+            }
+        }
+    }
+}
+
+/// Kreisförmiger Hintergrund des Querformat-Action-Buttons und seiner
+/// Fächer-Buttons. Ab iOS 26 Liquid Glass (mit `fill` getönt, `faint` = fast
+/// unsichtbar), darunter eine flache Kreisfläche.
+private struct ActionCircleBackground: ViewModifier {
+    let fill:    Color?
+    let faint:   Bool
+    let bgColor: Color
+    let fgColor: Color
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content
+                .glassEffect(glass, in: Circle())
+                .opacity(faint ? 0.45 : 1)
+        } else {
+            content
+                .background {
+                    Circle()
+                        .fill(fill.map { $0.opacity(0.97) } ?? (faint ? fgColor.opacity(0.06) : bgColor.opacity(0.97)))
+                        .overlay { Circle().strokeBorder(fgColor.opacity(faint ? 0.1 : 0.15), lineWidth: 0.5) }
+                        .shadow(color: .black.opacity(faint ? 0 : 0.18), radius: 8, y: 3)
+                }
+        }
+    }
+
+    @available(iOS 26.0, *)
+    private var glass: Glass {
+        // Ohne `.interactive()`: der Button selbst reagiert auf den Tipp,
+        // interaktives Glas fing ihn sonst teils ab.
+        if let fill { return .regular.tint(fill.opacity(0.6)) }
+        return faint ? .clear : .regular
+    }
+}
+
 /// Ab iOS 26 echtes Liquid Glass; darunter eine flache, themenfarbige Fläche
 /// (kein `regularMaterial` — das würde bei abweichendem App-Theme z. B. im
 /// Dark-Reader-Modus auf einem Light-System-Theme die falsche Tönung ziehen,
@@ -1581,6 +1641,9 @@ struct ArticleReaderView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scenePhase) private var scenePhase
+    /// `.compact` = iPhone im Querformat: dort ersetzt der Action Button
+    /// unten rechts die bottomBar (siehe `landscapeActionButton`).
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     /// Low damping on purpose — the highlight toolbar should bounce once on
     /// its way out (visually distinct from the plain slide-in), unlike the
@@ -1600,6 +1663,13 @@ struct ArticleReaderView: View {
     @State private var scrollingDown       = false
     @State private var showBottomBar            = true
     @State private var isAudioPlayerMinimized   = false
+    /// Querformat-Action-Button: ein Tipp auf den Text schaltet zwischen
+    /// fast unsichtbar (false) und farbig in der Akzentfarbe (true) um.
+    @State private var actionButtonProminent    = false
+    /// Querformat-Action-Button aufgefächert.
+    @State private var actionButtonExpanded     = false
+    /// Höhe des Piper-Panels, damit der Action Button darüber schwebt.
+    @State private var piperPanelHeight: CGFloat = 0
     @State private var showAppearance      = false
     @State private var scrollProgress:     CGFloat = 0
     @State private var scrollOffset:       CGFloat = 0
@@ -1767,6 +1837,7 @@ struct ArticleReaderView: View {
                                 tappedLinkURL = url
                             }
                         },
+                        onToggleUI:     { toggleActionButtonProminence() },
                         onHeightChange: { h in webViewHeight = max(200, h) },
                         onImageTapped:  { idx, srcs in
                             lightboxState = LightboxState(initialIndex: idx, imageURLs: srcs)
@@ -2027,7 +2098,8 @@ struct ArticleReaderView: View {
                         SelectionToolbarState(screenRect: rect, highlightId: nil),
                         animation: .spring(response: 0.35, dampingFraction: 0.82))
                 },
-                onSelectionCleared: { hideHighlightToolbar() })
+                onSelectionCleared: { hideHighlightToolbar() },
+                onTap: { toggleActionButtonProminence() })
         }
         .ignoresSafeArea()
         .sheet(isPresented: $showPDFMetadata) {
@@ -2150,6 +2222,17 @@ struct ArticleReaderView: View {
             // Light/Dark-Wechsel im Reader mitgehen.
             .environment(\.colorScheme, readerIsDark ? .dark : .light)
             .ignoresSafeArea(edges: .bottom)
+            // Zurück ins Hochformat: Fächer zu, damit er beim nächsten Drehen nicht offen steht.
+            .onChange(of: isCompactLandscape) { _, landscape in
+                if !landscape { actionButtonExpanded = false }
+            }
+
+            // MARK: Landscape action button – ersetzt im Querformat die bottomBar
+            if isCompactLandscape {
+                landscapeActionButton
+                    .environment(\.colorScheme, readerIsDark ? .dark : .light)
+                    .transition(.opacity)
+            }
 
             // MARK: Highlight toolbar – docks to whichever screen edge (top or
             // bottom) is farther from the current selection, so it never
@@ -3170,14 +3253,210 @@ struct ArticleReaderView: View {
     private var bottomAreaStack: some View {
         VStack(spacing: 0) {
             Spacer()
-            if showBottomBar {
+            // Im Querformat (iPhone) übernimmt der Action Button unten rechts.
+            if showBottomBar && !isCompactLandscape {
                 bottomBar
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
             if piperTTS.hasContent {
                 piperSpeechPanel
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { piperPanelHeight = $0 }
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
+        }
+    }
+
+    // MARK: – Landscape action button
+    //
+    // iPhone im Querformat: statt der bottomBar ein runder Button unten
+    // rechts, der sich in einem Viertelkreis nach links oben auffächert.
+    //
+    //   Archivieren
+    //        Teilen
+    //            Tags
+    //               Erscheinungsbild
+    //                     Zurück    (●)
+    //
+    // Ein Tipp auf den Text (toggleUI aus dem WebView bzw. Tipp ins PDF)
+    // schaltet den geschlossenen Button zwischen fast unsichtbar und farbig
+    // in der Akzentfarbe um.
+
+    private var isCompactLandscape: Bool { verticalSizeClass == .compact }
+
+    private func toggleActionButtonProminence() {
+        guard isCompactLandscape, !actionButtonExpanded else { return }
+        withAnimation(.easeInOut(duration: 0.2)) { actionButtonProminent.toggle() }
+    }
+
+    private func setActionButtonExpanded(_ expanded: Bool) {
+        withAnimation(.spring(response: 0.34, dampingFraction: 0.72)) {
+            actionButtonExpanded = expanded
+            if expanded { actionButtonProminent = true }
+        }
+    }
+
+    private enum LandscapeAction: CaseIterable, Identifiable {
+        case archive, share, tags, appearance, back
+        var id: Self { self }
+        var icon: String {
+            switch self {
+            case .archive:    return "archivebox.fill"
+            case .share:      return "square.and.arrow.up"
+            case .tags:       return "tag"
+            case .appearance: return "textformat.size"
+            case .back:       return "chevron.left"
+            }
+        }
+        var label: String {
+            switch self {
+            case .archive:    return L("articleReader.sideMenu.archive")
+            case .share:      return L("articleReader.sideMenu.share")
+            case .tags:       return L("articleReader.sideMenu.editTags")
+            case .appearance: return L("articleReader.sideMenu.appearance")
+            case .back:       return L("common.back")
+            }
+        }
+    }
+
+    /// PDF-Artikel haben keine Schrift-/Theme-Einstellungen (wie im Seitenmenü).
+    private var landscapeActions: [LandscapeAction] {
+        LandscapeAction.allCases.filter { $0 != .appearance || !current.isPDF }
+    }
+
+    private static let actionButtonSize: CGFloat = 54
+    private static let actionItemSize:   CGFloat = 46
+    private static let actionArcRadius:  CGFloat = 136
+
+    private var landscapeActionButton: some View {
+        let accent   = Color(hexString: accentColorHex) ?? .red
+        let onAccent = Color(hexString: onAccentHex) ?? .white
+        let actions  = landscapeActions
+        return ZStack(alignment: .bottomTrailing) {
+            if actionButtonExpanded {
+                Color.black.opacity(0.18)
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture { setActionButtonExpanded(false) }
+                    .transition(.opacity)
+            }
+
+            // Bewusst ohne GlassEffectContainer: darin rendert der Container das
+            // Glas selbst, ignoriert Opacity/Scale der Kinder und verschmilzt
+            // nahe Glasformen – die zugeklappten Fächer-Buttons schienen dann
+            // durch den Hauptbutton und schluckten dessen Tipp.
+            actionButtonCluster(actions, accent: accent, onAccent: onAccent)
+                .padding(.trailing, 16)
+                .padding(.bottom, piperTTS.hasContent ? piperPanelHeight + 12 : 12)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+    }
+
+    /// Hauptbutton + Fächer; jedes Element liegt zentriert auf dem
+    /// Hauptbutton und wird beim Auffächern auf den Bogen verschoben.
+    private func actionButtonCluster(_ actions: [LandscapeAction], accent: Color, onAccent: Color) -> some View {
+        let main = Self.actionButtonSize
+        return ZStack {
+            // Nur aufgefächert im View-Baum; die Transition lässt jeden Button
+            // aus der Mitte des Hauptbuttons auf seinen Platz am Bogen fliegen.
+            if actionButtonExpanded {
+                ForEach(Array(actions.enumerated()), id: \.element) { index, action in
+                    // Gleichmäßig von 90° (oben) bis 180° (links).
+                    let step  = actions.count > 1 ? 90.0 / Double(actions.count - 1) : 0
+                    let degrees = 90.0 + step * Double(index)
+                    let angle = degrees * .pi / 180
+                    let dx    = Self.actionArcRadius * cos(angle)
+                    let dy    = -Self.actionArcRadius * sin(angle)
+                    landscapeActionItem(action, accent: accent, onAccent: onAccent)
+                        .modifier(ActionLabelPlacement(degrees: degrees) { landscapeActionLabel(action) })
+                        .offset(x: dx, y: dy)
+                        .transition(.offset(x: -dx, y: -dy)
+                            .combined(with: .scale(scale: 0.4))
+                            .combined(with: .opacity))
+                }
+            }
+
+            Button {
+                setActionButtonExpanded(!actionButtonExpanded)
+            } label: {
+                Image(systemName: actionButtonExpanded ? "xmark" : "ellipsis")
+                    .font(.system(size: actionButtonExpanded ? 19 : 22, weight: .semibold))
+                    .contentTransition(.symbolEffect(.replace))
+                    .foregroundStyle(actionButtonExpanded
+                                     ? readerFgColor
+                                     : (actionButtonProminent ? onAccent : readerFgColor.opacity(0.3)))
+                    .frame(width: main, height: main)
+                    .modifier(ActionCircleBackground(
+                        fill: actionButtonExpanded ? nil : (actionButtonProminent ? accent : nil),
+                        faint: !actionButtonExpanded && !actionButtonProminent,
+                        bgColor: readerBgColor, fgColor: readerFgColor))
+                    // Ohne feste Trefferfläche zählen beim Glas (iOS 26) nur die
+                    // Punkte des Symbols; ein Tipp daneben ging an den WebView
+                    // durch und schaltete nur die Farbe um.
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(L("articleReader.actionButton"))
+        }
+        .frame(width: main, height: main)
+    }
+
+    @ViewBuilder
+    private func landscapeActionItem(_ action: LandscapeAction, accent: Color, onAccent: Color) -> some View {
+        let size = Self.actionItemSize
+        let icon = Image(systemName: action.icon)
+            .font(.system(size: 18, weight: .medium))
+            .foregroundStyle(onAccent)
+            .frame(width: size, height: size)
+            .modifier(ActionCircleBackground(fill: accent, faint: false,
+                                             bgColor: readerBgColor, fgColor: readerFgColor))
+            .contentShape(Circle())
+        switch action {
+        case .share:
+            ArticleShareLink(article: current) { icon }
+                .buttonStyle(.plain)
+                .simultaneousGesture(TapGesture().onEnded { setActionButtonExpanded(false) })
+                .accessibilityLabel(action.label)
+        default:
+            Button {
+                performLandscapeAction(action)
+            } label: { icon }
+            .buttonStyle(.plain)
+            .accessibilityLabel(action.label)
+        }
+    }
+
+    /// Beschriftung neben einem Fächer-Button (wie im Mockup), Platzierung
+    /// siehe `ActionLabelPlacement`. Rein dekorativ: Treffer und VoiceOver
+    /// laufen über den Button selbst.
+    private func landscapeActionLabel(_ action: LandscapeAction) -> some View {
+        Text(action.label.replacingOccurrences(of: "…", with: ""))
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(readerFgColor)
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4)
+            .background(Capsule().fill(readerBgColor.opacity(0.92)))
+            .overlay(Capsule().strokeBorder(readerFgColor.opacity(0.12), lineWidth: 0.5))
+            .shadow(color: .black.opacity(0.12), radius: 4, y: 2)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+
+    private func performLandscapeAction(_ action: LandscapeAction) {
+        setActionButtonExpanded(false)
+        switch action {
+        case .archive:
+            // Wie bisher der mittlere bottomBar-Button: archivieren und zurück.
+            let snapshot = current
+            if !snapshot.isArchived {
+                Task { await viewModel.toggleArchive(snapshot) }
+            }
+            dismiss()
+        case .tags:       showTagSheet = true
+        case .appearance: showAppearance = true
+        case .back:       dismiss()
+        case .share:      break // läuft über ArticleShareLink
         }
     }
 

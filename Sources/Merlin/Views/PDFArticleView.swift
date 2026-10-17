@@ -36,6 +36,9 @@ struct PDFArticleView: View {
     /// Text ausgewählt (Rechteck in Fensterkoordinaten) bzw. Auswahl weg.
     var onSelectionChanged: ((CGRect) -> Void)? = nil
     var onSelectionCleared: (() -> Void)? = nil
+    /// Tipp ins PDF, der weder eine Auswahl aufhebt noch eine Markierung trifft
+    /// (Querformat-Action-Button im Reader ein-/ausblenden).
+    var onTap: (() -> Void)? = nil
 
     private enum Phase {
         case loading
@@ -107,7 +110,8 @@ struct PDFArticleView: View {
                     onScroll: onScroll,
                     actions: actions,
                     onSelectionChanged: onSelectionChanged,
-                    onSelectionCleared: onSelectionCleared)
+                    onSelectionCleared: onSelectionCleared,
+                    onTap: onTap)
             }
         }
         .task(id: "\(sourceURL.absoluteString)#\(attempt)") {
@@ -302,6 +306,7 @@ private struct PDFDocumentRepresentable: UIViewRepresentable {
     let actions: HighlightActionHandler?
     let onSelectionChanged: ((CGRect) -> Void)?
     let onSelectionCleared: (() -> Void)?
+    let onTap: (() -> Void)?
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -331,6 +336,7 @@ private struct PDFDocumentRepresentable: UIViewRepresentable {
         coordinator.onScroll = onScroll
         coordinator.onSelectionChanged = onSelectionChanged
         coordinator.onSelectionCleared = onSelectionCleared
+        coordinator.onTap = onTap
         actions?.pdfApplyColor = { [weak coordinator] color in coordinator?.mark(color: color) }
         actions?.pdfComment = { [weak coordinator] in coordinator?.comment() }
         coordinator.apply(highlights)
@@ -352,6 +358,7 @@ private struct PDFDocumentRepresentable: UIViewRepresentable {
         var onScroll: ((CGFloat, Bool) -> Void)?
         var onSelectionChanged: ((CGRect) -> Void)?
         var onSelectionCleared: (() -> Void)?
+        var onTap: (() -> Void)?
 
         private weak var pdfView: ReaderPDFView?
         private var document: PDFDocument?
@@ -540,13 +547,14 @@ private struct PDFDocumentRepresentable: UIViewRepresentable {
                 }
                 return
             }
-            guard let page = pdfView.page(for: location, nearest: false) else { return }
+            guard let page = pdfView.page(for: location, nearest: false) else { onTap?(); return }
             let point = pdfView.convert(location, to: page)
             for (id, list) in annotations
             where list.contains(where: { $0.0 == page && $0.1.bounds.insetBy(dx: -2, dy: -2).contains(point) }) {
                 onTapHighlight?(id)
                 return
             }
+            onTap?()
         }
 
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
