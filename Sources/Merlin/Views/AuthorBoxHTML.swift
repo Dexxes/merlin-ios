@@ -52,7 +52,14 @@ enum AuthorBoxHTML {
       margin: 0 !important; object-fit: cover; border-radius: 50% !important;
     }
     merlin-author-box .merlin-author-name { font-weight: 600; margin: 0; }
-    merlin-author-box .merlin-author-bio { margin: 0.6em 0 0; text-align: left; white-space: pre-line; }
+    merlin-author-box .merlin-author-bio {
+      margin: 0.75em 0 0; font-size: 0.9em; text-align: left; white-space: pre-line;
+    }
+    /* Dezente Trennlinie zwischen Kopfzeile und Bio, zentriert in Akzentfarbe. */
+    merlin-author-box .merlin-author-bio::before {
+      content: ""; display: block; width: 40%; height: 1px; margin: 0 auto 0.6em;
+      background: var(--merlin-author-accent); opacity: 0.5;
+    }
     merlin-author-box a {
       color: inherit !important; text-decoration: underline;
       text-decoration-color: var(--merlin-author-accent);
