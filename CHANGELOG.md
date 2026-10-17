@@ -168,6 +168,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comments: web addresses in comments are tappable links.
 
 ### Changed
+- Reader: the subscription/donation box is never placed directly before or
+  after a quote (block quote, pull quote, or a paragraph that is entirely a
+  quotation), like on Nextcloud.
 - Reader: the subscription/donation box is never placed directly after a
   heading or a fully bold paragraph (an inline sub-heading); it moves to the
   next fitting paragraph instead, like on Nextcloud.
