@@ -3361,6 +3361,10 @@ struct ArticleReaderView: View {
                         fill: actionButtonExpanded ? nil : (actionButtonProminent ? accent : nil),
                         faint: !actionButtonExpanded && !actionButtonProminent,
                         bgColor: readerBgColor, fgColor: readerFgColor))
+                    // Ohne feste Trefferfläche zählen beim Glas (iOS 26) nur die
+                    // Punkte des Symbols; ein Tipp daneben ging an den WebView
+                    // durch und schaltete nur die Farbe um.
+                    .contentShape(Circle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(L("articleReader.actionButton"))
