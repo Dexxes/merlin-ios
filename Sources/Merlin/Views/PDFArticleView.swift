@@ -11,8 +11,9 @@ import UIKit
 /// **page**: reported as `page / (pageCount - 1)` through `onPageChange` and restored from
 /// `initialProgress` by jumping to that page. Zoom level and position within a page are not stored.
 ///
-/// Text can be selected natively; a small bar above the selection highlights it in the five colours
-/// or starts a comment. A PDF highlight is stored as page + rectangles (`Highlight.pdfPage`/`pdfRects`,
+/// Text can be selected natively; the reader then shows the same colour bar as for text articles
+/// (`onSelectionChanged`, actions through `HighlightActionHandler`) to highlight it in the five
+/// colours or start a comment. A PDF highlight is stored as page + rectangles (`Highlight.pdfPage`/`pdfRects`,
 /// normalised to the unrotated CropBox, origin top left – same as the web reader) and drawn as an
 /// in-memory `PDFAnnotation`; the cached file itself is never changed.
 struct PDFArticleView: View {
@@ -30,6 +31,11 @@ struct PDFArticleView: View {
     var onRestored: (() -> Void)? = nil
     /// Scrollen im PDF: Abstand vom Anfang und ob nach unten (Leisten ein-/ausblenden).
     var onScroll: ((CGFloat, Bool) -> Void)? = nil
+    /// Farbleiste des Readers: Knöpfe landen über `HighlightActionHandler` hier.
+    var actions: HighlightActionHandler? = nil
+    /// Text ausgewählt (Rechteck in Fensterkoordinaten) bzw. Auswahl weg.
+    var onSelectionChanged: ((CGRect) -> Void)? = nil
+    var onSelectionCleared: (() -> Void)? = nil
 
     private enum Phase {
         case loading
@@ -98,7 +104,10 @@ struct PDFArticleView: View {
                     onTapHighlight: { id in tapped = all.first { $0.id == id } },
                     onPageChange: onPageChange,
                     onRestored: onRestored,
-                    onScroll: onScroll)
+                    onScroll: onScroll,
+                    actions: actions,
+                    onSelectionChanged: onSelectionChanged,
+                    onSelectionCleared: onSelectionCleared)
             }
         }
         .task(id: "\(sourceURL.absoluteString)#\(attempt)") {
@@ -275,7 +284,7 @@ private final class ReaderPDFView: PDFView {
 }
 
 /// The whole document in one scrolling, pinch-zoomable `PDFView`: native text selection,
-/// highlights as in-memory annotations, a colour bar above the selection.
+/// highlights as in-memory annotations; the selection is reported to the reader for its colour bar.
 private struct PDFDocumentRepresentable: UIViewRepresentable {
     let document: PDFDocument
     let highlights: [Highlight]
@@ -290,6 +299,9 @@ private struct PDFDocumentRepresentable: UIViewRepresentable {
     let onPageChange: ((CGFloat) -> Void)?
     let onRestored: (() -> Void)?
     let onScroll: ((CGFloat, Bool) -> Void)?
+    let actions: HighlightActionHandler?
+    let onSelectionChanged: ((CGRect) -> Void)?
+    let onSelectionCleared: (() -> Void)?
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -317,6 +329,10 @@ private struct PDFDocumentRepresentable: UIViewRepresentable {
         coordinator.onPageChange = onPageChange
         coordinator.onRestored = onRestored
         coordinator.onScroll = onScroll
+        coordinator.onSelectionChanged = onSelectionChanged
+        coordinator.onSelectionCleared = onSelectionCleared
+        actions?.pdfApplyColor = { [weak coordinator] color in coordinator?.mark(color: color) }
+        actions?.pdfComment = { [weak coordinator] in coordinator?.comment() }
         coordinator.apply(highlights)
     }
 
@@ -334,6 +350,8 @@ private struct PDFDocumentRepresentable: UIViewRepresentable {
         var onPageChange: ((CGFloat) -> Void)?
         var onRestored: (() -> Void)?
         var onScroll: ((CGFloat, Bool) -> Void)?
+        var onSelectionChanged: ((CGRect) -> Void)?
+        var onSelectionCleared: (() -> Void)?
 
         private weak var pdfView: ReaderPDFView?
         private var document: PDFDocument?
@@ -343,7 +361,6 @@ private struct PDFDocumentRepresentable: UIViewRepresentable {
         private var fittedWidth: CGFloat = 0
         private var lastPageIndex: Int?
         private var lastOffset: CGFloat = 0
-        private var bar: UIView?
         /// Gezeichnete Annotationen je Markierungs-ID, mit ihrer Seite (Treffer-Test und Aufräumen).
         private var annotations: [Int: [(PDFPage, PDFAnnotation)]] = [:]
         private var drawnSignature = ""
@@ -378,9 +395,6 @@ private struct PDFDocumentRepresentable: UIViewRepresentable {
                 },
                 center.addObserver(forName: .PDFViewPageChanged, object: pdfView, queue: .main) { [weak self] _ in
                     MainActor.assumeIsolated { self?.pageChanged() }
-                },
-                center.addObserver(forName: .PDFViewScaleChanged, object: pdfView, queue: .main) { [weak self] _ in
-                    MainActor.assumeIsolated { self?.positionBar() }
                 },
                 center.addObserver(forName: .merlinRevealPDFHighlight, object: nil, queue: .main) { [weak self] note in
                     let id = note.userInfo?["id"] as? Int
@@ -460,7 +474,6 @@ private struct PDFDocumentRepresentable: UIViewRepresentable {
                 onScroll?(0, false)
                 lastOffset = offset
             }
-            positionBar()
         }
 
         /// Leseposition ist die Seite: erst nach der Wiederherstellung melden, damit der Sprung
@@ -517,8 +530,6 @@ private struct PDFDocumentRepresentable: UIViewRepresentable {
         @objc private func handleTap(_ gesture: UITapGestureRecognizer) {
             guard let pdfView else { return }
             let location = gesture.location(in: pdfView)
-            // Die Farbleiste behandelt ihre Knöpfe selbst.
-            if let bar, bar.frame.contains(location) { return }
             if let current = selectionPage() {
                 // Tippen neben die Auswahl hebt sie auf (PDFKit tut das nicht von selbst);
                 // in die Auswahl bleibt sie für das System-Menü stehen.
@@ -543,7 +554,7 @@ private struct PDFDocumentRepresentable: UIViewRepresentable {
             true
         }
 
-        // MARK: Selection bar
+        // MARK: Selection
 
         /// Die Seite, auf der die Auswahl beginnt; markiert wird nur dort (wie im Web).
         private func selectionPage() -> (PDFSelection, PDFPage, String)? {
@@ -554,72 +565,15 @@ private struct PDFDocumentRepresentable: UIViewRepresentable {
             return (selection, page, text)
         }
 
+        /// Meldet die Auswahl an den Reader, der dieselbe Farbleiste wie bei Text-Artikeln zeigt
+        /// (`HighlightToolbarView`, am Rand gegenüber der Auswahl; das System-Menü bleibt frei).
         private func selectionChanged() {
-            bar?.removeFromSuperview()
-            bar = nil
-            guard canMark, let pdfView, selectionPage() != nil else { return }
-            let bar = makeBar()
-            pdfView.addSubview(bar)
-            self.bar = bar
-            positionBar()
-        }
-
-        /// Am Bildschirmrand, der weiter von der Auswahl entfernt ist (wie die Leiste im Artikel):
-        /// das System-Menü „Kopieren“ sitzt direkt an der Auswahl, so überlagern sich beide nicht.
-        /// Bleibt beim Scrollen und Zoomen am passenden Rand.
-        private func positionBar() {
-            guard let bar, let pdfView, let current = selectionPage() else { return }
+            guard canMark, let pdfView, let current = selectionPage() else {
+                onSelectionCleared?()
+                return
+            }
             let bounds = pdfView.convert(current.0.bounds(for: current.1), from: current.1)
-            let size = bar.systemLayoutSizeFitting(UIView.layoutFittingCompressedSize)
-            // Der Reader legt den PDFView unter die Safe Area, daher die des Fensters.
-            let insets = pdfView.window?.safeAreaInsets ?? pdfView.safeAreaInsets
-            let visible = pdfView.bounds
-            let x = max(visible.minX + 8, visible.midX - size.width / 2)
-            let top = visible.minY + insets.top + 12
-            let bottom = visible.maxY - insets.bottom - size.height - 12
-            let dockTop = bounds.midY > visible.midY
-            bar.frame = CGRect(x: x, y: dockTop ? top : bottom, width: size.width, height: size.height)
-        }
-
-        private func makeBar() -> UIView {
-            let stack = UIStackView()
-            stack.axis = .horizontal
-            stack.spacing = 10
-            stack.alignment = .center
-            stack.isLayoutMarginsRelativeArrangement = true
-            stack.layoutMargins = UIEdgeInsets(top: 6, left: 10, bottom: 6, right: 10)
-            for (id, name) in PDFHighlightGeometry.colorNames() {
-                let button = UIButton(type: .custom)
-                button.backgroundColor = UIColor(Color(hexString: PDFHighlightGeometry.hex(for: id)) ?? .yellow)
-                button.layer.cornerRadius = 14
-                button.layer.borderWidth = 1
-                button.layer.borderColor = UIColor.black.withAlphaComponent(0.15).cgColor
-                button.accessibilityLabel = name
-                button.widthAnchor.constraint(equalToConstant: 28).isActive = true
-                button.heightAnchor.constraint(equalToConstant: 28).isActive = true
-                button.addAction(UIAction { [weak self] _ in self?.mark(color: id) }, for: .touchUpInside)
-                stack.addArrangedSubview(button)
-            }
-            if canComment {
-                let button = UIButton(type: .system)
-                button.setImage(UIImage(systemName: "text.bubble"), for: .normal)
-                button.tintColor = .label
-                button.accessibilityLabel = L("articleReader.comments.comment")
-                button.addAction(UIAction { [weak self] _ in self?.comment() }, for: .touchUpInside)
-                stack.addArrangedSubview(button)
-            }
-            let background = UIVisualEffectView(effect: UIBlurEffect(style: .systemThickMaterial))
-            background.layer.cornerRadius = 20
-            background.clipsToBounds = true
-            background.contentView.addSubview(stack)
-            stack.translatesAutoresizingMaskIntoConstraints = false
-            NSLayoutConstraint.activate([
-                stack.leadingAnchor.constraint(equalTo: background.contentView.leadingAnchor),
-                stack.trailingAnchor.constraint(equalTo: background.contentView.trailingAnchor),
-                stack.topAnchor.constraint(equalTo: background.contentView.topAnchor),
-                stack.bottomAnchor.constraint(equalTo: background.contentView.bottomAnchor),
-            ])
-            return background
+            onSelectionChanged?(pdfView.convert(bounds, to: nil))
         }
 
         /// Text, Seite und Rechtecke der aktuellen Auswahl; danach Auswahl und Leiste weg.
@@ -628,17 +582,17 @@ private struct PDFDocumentRepresentable: UIViewRepresentable {
             let (selection, page, text) = current
             let rects = PDFHighlightGeometry.normalizedRects(of: selection, on: page)
             pdfView.clearSelection()
-            bar?.removeFromSuperview()
-            bar = nil
             return rects.isEmpty ? nil : (text, document.index(for: page) + 1, rects)
         }
 
-        private func mark(color: String) {
+        /// Farbknopf der Reader-Leiste (`HighlightActionHandler.applyColor`).
+        func mark(color: String) {
             guard let taken = takeSelection() else { return }
             onMark?(color, taken.0, taken.1, taken.2)
         }
 
-        private func comment() {
+        /// Knopf „Kommentieren“ der Reader-Leiste.
+        func comment() {
             guard let taken = takeSelection() else { return }
             onComment?(taken.0, taken.1, taken.2)
         }
@@ -668,16 +622,6 @@ enum PDFHighlightGeometry {
         case "orange": return "#fed7aa"
         default: return "#fde68a"
         }
-    }
-
-    static func colorNames() -> [(String, String)] {
-        [
-            ("yellow", L("articleReader.pdf.highlight.yellow")),
-            ("green", L("articleReader.pdf.highlight.green")),
-            ("blue", L("articleReader.pdf.highlight.blue")),
-            ("pink", L("articleReader.pdf.highlight.pink")),
-            ("orange", L("articleReader.pdf.highlight.orange")),
-        ]
     }
 
     static func pageRect(_ rect: [Double], on page: PDFPage) -> CGRect? {

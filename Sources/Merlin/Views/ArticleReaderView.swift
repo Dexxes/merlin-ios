@@ -926,8 +926,12 @@ private struct HighlightToolbarBackground: ViewModifier {
 // HighlightToolbarView.
 @MainActor final class HighlightActionHandler {
     weak var webView: WKWebView?
+    /// PDF-Artikel (kein WebView): Farbe und Kommentar für die Auswahl im `PDFArticleView`.
+    var pdfApplyColor: ((String) -> Void)?
+    var pdfComment: (() -> Void)?
 
     func applyColor(_ colorId: String) {
+        if webView == nil, let pdfApplyColor { return pdfApplyColor(colorId) }
         webView?.evaluateJavaScript(
             "window.merlinApplyHighlightFromNative && window.merlinApplyHighlightFromNative('\(colorId)')")
     }
@@ -948,6 +952,7 @@ private struct HighlightToolbarBackground: ViewModifier {
 
     /// Knopf "Kommentieren" in der Leiste.
     func comment() {
+        if webView == nil, let pdfComment { return pdfComment() }
         webView?.evaluateJavaScript(
             "window.merlinCommentFromNative && window.merlinCommentFromNative()")
     }
@@ -1997,6 +2002,8 @@ struct ArticleReaderView: View {
                 },
                 onRestored: { restoreApplied = true },
                 onScroll: { offset, down in
+                    // Wie im Artikel: die Leiste ist am Rand verankert, nicht an der Auswahl.
+                    hideHighlightToolbar(animation: .spring(response: 0.3, dampingFraction: 0.85))
                     if down && offset > 40 {
                         if showBottomBar || showPDFHeader {
                             withAnimation(.easeInOut(duration: 0.2)) {
@@ -2013,7 +2020,14 @@ struct ArticleReaderView: View {
                             }
                         }
                     }
-                })
+                },
+                actions: highlightActions,
+                onSelectionChanged: { rect in
+                    showHighlightToolbar(
+                        SelectionToolbarState(screenRect: rect, highlightId: nil),
+                        animation: .spring(response: 0.35, dampingFraction: 0.82))
+                },
+                onSelectionCleared: { hideHighlightToolbar() })
         }
         .ignoresSafeArea()
         .sheet(isPresented: $showPDFMetadata) {
