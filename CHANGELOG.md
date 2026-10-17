@@ -59,7 +59,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reader: author boxes at the end of an article now have two rows: photo and
   name (or author link) centred on top, the biography left-aligned and
   slightly smaller below, separated by a subtle centred line in the accent
-  colour.
+  colour. The author link is in the accent colour and the coloured bar on
+  the left is gone.
 
 ### Fixed
 - Tags: archiving, restoring or (un)favoriting an article inside a tag view
