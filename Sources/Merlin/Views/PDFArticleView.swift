@@ -515,8 +515,20 @@ private struct PDFDocumentRepresentable: UIViewRepresentable {
         // MARK: Tap on a highlight
 
         @objc private func handleTap(_ gesture: UITapGestureRecognizer) {
-            guard let pdfView, pdfView.currentSelection?.string?.isEmpty != false else { return }
+            guard let pdfView else { return }
             let location = gesture.location(in: pdfView)
+            // Die Farbleiste behandelt ihre Knöpfe selbst.
+            if let bar, bar.frame.contains(location) { return }
+            if let current = selectionPage() {
+                // Tippen neben die Auswahl hebt sie auf (PDFKit tut das nicht von selbst);
+                // in die Auswahl bleibt sie für das System-Menü stehen.
+                let bounds = pdfView.convert(current.0.bounds(for: current.1), from: current.1)
+                if !bounds.insetBy(dx: -8, dy: -8).contains(location) {
+                    pdfView.clearSelection()
+                    selectionChanged()
+                }
+                return
+            }
             guard let page = pdfView.page(for: location, nearest: false) else { return }
             let point = pdfView.convert(location, to: page)
             for (id, list) in annotations
