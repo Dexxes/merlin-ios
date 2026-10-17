@@ -36,8 +36,7 @@ enum AuthorBoxHTML {
     merlin-author-boxes { display: block; margin: 2em 0 1.5em; -webkit-user-select: none; user-select: none; }
     merlin-author-box {
       display: block; margin: 1em 0; padding: 0.9em 1em;
-      border-left: 4px solid var(--merlin-author-accent);
-      border-radius: 0 8px 8px 0;
+      border-radius: 8px;
       background: rgba(128,128,128,0.1);
       background: color-mix(in srgb, var(--merlin-author-accent) 12%, transparent);
       font-size: 0.93em; line-height: 1.55;
@@ -65,6 +64,8 @@ enum AuthorBoxHTML {
       text-decoration-color: var(--merlin-author-accent);
       text-decoration-thickness: 2px; text-underline-offset: 2px;
     }
+    /* Autorenlink im Namen in Akzentfarbe. */
+    merlin-author-box .merlin-author-name a { color: var(--merlin-author-accent) !important; }
     """
 
     // MARK: – Intern
