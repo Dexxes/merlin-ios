@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Highlighting in PDFs: text in a saved PDF (link or file) can be selected
+  in the reader. A bar above the selection highlights it in one of the five
+  colours or starts a comment; tapping a highlight offers its comments or
+  removing it. Highlights are stored on the server as page + rectangles, so
+  the web reader shows them in the same place, and work offline like text
+  highlights. Each PDF page is now shown by its own `PDFView` (still no
+  pinch zoom). Needs merlin-nextcloud 1.0.20.
 - Share sheet: photos, videos, audio, PDFs and other files can be shared to
   Merlin. They are uploaded to the Nextcloud folder "Merlin files" (sorted
   into sub-folders by type, named in your Nextcloud language) and appear in

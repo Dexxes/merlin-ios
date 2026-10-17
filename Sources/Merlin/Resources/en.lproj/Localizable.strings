@@ -116,6 +116,12 @@
 "articleReader.pdf.badge" = "PDF";
 "articleReader.pdf.encrypted" = "This PDF is password-protected and can’t be displayed here.";
 "articleReader.pdf.failed" = "The PDF could not be loaded.";
+"articleReader.pdf.highlight.blue" = "Blue";
+"articleReader.pdf.highlight.green" = "Green";
+"articleReader.pdf.highlight.menu" = "Highlight";
+"articleReader.pdf.highlight.orange" = "Orange";
+"articleReader.pdf.highlight.pink" = "Pink";
+"articleReader.pdf.highlight.yellow" = "Yellow";
 "articleReader.pdf.loading" = "Loading PDF…";
 "articleReader.pdf.openBrowser" = "Open in browser";
 "articleReader.pdf.retry" = "Try again";

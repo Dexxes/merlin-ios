@@ -956,7 +956,11 @@ private struct HighlightToolbarBackground: ViewModifier {
     /// aufblinken. Der WebView scrollt nie selbst (siehe makeUIView); die
     /// Lage im Dokument wird daher in die äußere UIScrollView umgerechnet.
     func reveal(highlightId id: Int) async {
-        guard let webView else { return }
+        guard let webView else {
+            // PDF-Artikel haben keinen WebView: die Seite mit der Markierung scrollt selbst hin.
+            NotificationCenter.default.post(name: .merlinRevealPDFHighlight, object: nil, userInfo: ["id": id])
+            return
+        }
         let js = """
         (function(){var ms=document.querySelectorAll('mark.merlin-highlight[data-highlight-id="\(id)"]');if(!ms.length)return -1;\
         ms.forEach(function(m){m.style.outline='2px solid #f59e0b';m.style.outlineOffset='1px';});\
@@ -1795,7 +1799,17 @@ struct ArticleReaderView: View {
                     if current.isPDF, let pdfURL = current.pdfSourceURL {
                         // PDF-Artikel: der Server speichert nur die URL; die PDF wird hier geladen und
                         // seitenweise im äußeren ScrollView gerendert (Fortschritt/Restore bleiben so intakt).
-                        PDFArticleView(sourceURL: pdfURL, availableWidth: viewportWidth)
+                        PDFArticleView(
+                            sourceURL: pdfURL,
+                            availableWidth: viewportWidth,
+                            articleId: current.id,
+                            comments: comments,
+                            onOpenComments: { highlightId, text in
+                                commentFocus = CommentFocus(highlightId: highlightId, quote: text)
+                            },
+                            onCommentAnchor: { anchor in
+                                commentFocus = CommentFocus(highlightId: nil, quote: anchor.highlightedText, anchor: anchor)
+                            })
                         // Datei-Einträge: Metadaten aus dem Content (dort zeigt sie sonst die
                         // Web-Ansicht, die bei PDFs nicht gerendert wird).
                         if current.fileId != nil, let content = current.content,

@@ -116,6 +116,12 @@
 "articleReader.pdf.badge" = "PDF";
 "articleReader.pdf.encrypted" = "Diese PDF ist passwortgeschützt und kann hier nicht angezeigt werden.";
 "articleReader.pdf.failed" = "Die PDF konnte nicht geladen werden.";
+"articleReader.pdf.highlight.blue" = "Blau";
+"articleReader.pdf.highlight.green" = "Grün";
+"articleReader.pdf.highlight.menu" = "Markieren";
+"articleReader.pdf.highlight.orange" = "Orange";
+"articleReader.pdf.highlight.pink" = "Rosa";
+"articleReader.pdf.highlight.yellow" = "Gelb";
 "articleReader.pdf.loading" = "PDF wird geladen…";
 "articleReader.pdf.openBrowser" = "Im Browser öffnen";
 "articleReader.pdf.retry" = "Erneut versuchen";
