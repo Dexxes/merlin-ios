@@ -70,9 +70,19 @@ struct CommentAnchor: Equatable, Sendable {
     let startOffset: Int
     let endXpath: String
     let endOffset: Int
+    /// Stelle in einer PDF (siehe `Highlight.pdfPage`): dann statt der XPaths.
+    var pdfPage: Int? = nil
+    var pdfRects: [[Double]]? = nil
 
     var payload: [String: Any] {
-        [
+        if let pdfPage, let pdfRects {
+            return [
+                "highlightedText": highlightedText,
+                "pdfPage": pdfPage,
+                "pdfRects": pdfRects,
+            ]
+        }
+        return [
             "highlightedText": highlightedText,
             "startXpath": startXpath,
             "startOffset": startOffset,
