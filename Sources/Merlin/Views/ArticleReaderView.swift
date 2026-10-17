@@ -924,8 +924,10 @@ private struct ActionCircleBackground: ViewModifier {
 
     @available(iOS 26.0, *)
     private var glass: Glass {
-        if let fill { return .regular.tint(fill.opacity(0.6)).interactive() }
-        return faint ? .clear.interactive() : .regular.interactive()
+        // Ohne `.interactive()`: der Button selbst reagiert auf den Tipp,
+        // interaktives Glas fing ihn sonst teils ab.
+        if let fill { return .regular.tint(fill.opacity(0.6)) }
+        return faint ? .clear : .regular
     }
 }
 
@@ -3312,17 +3314,13 @@ struct ArticleReaderView: View {
                     .transition(.opacity)
             }
 
-            Group {
-                if #available(iOS 26.0, *) {
-                    GlassEffectContainer(spacing: 12) {
-                        actionButtonCluster(actions, accent: accent, onAccent: onAccent)
-                    }
-                } else {
-                    actionButtonCluster(actions, accent: accent, onAccent: onAccent)
-                }
-            }
-            .padding(.trailing, 16)
-            .padding(.bottom, piperTTS.hasContent ? piperPanelHeight + 12 : 12)
+            // Bewusst ohne GlassEffectContainer: darin rendert der Container das
+            // Glas selbst, ignoriert Opacity/Scale der Kinder und verschmilzt
+            // nahe Glasformen – die zugeklappten Fächer-Buttons schienen dann
+            // durch den Hauptbutton und schluckten dessen Tipp.
+            actionButtonCluster(actions, accent: accent, onAccent: onAccent)
+                .padding(.trailing, 16)
+                .padding(.bottom, piperTTS.hasContent ? piperPanelHeight + 12 : 12)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
     }
@@ -3332,16 +3330,21 @@ struct ArticleReaderView: View {
     private func actionButtonCluster(_ actions: [LandscapeAction], accent: Color, onAccent: Color) -> some View {
         let main = Self.actionButtonSize
         return ZStack {
-            ForEach(Array(actions.enumerated()), id: \.element) { index, action in
-                // Gleichmäßig von 90° (oben) bis 180° (links).
-                let step  = actions.count > 1 ? 90.0 / Double(actions.count - 1) : 0
-                let angle = (90.0 + step * Double(index)) * .pi / 180
-                let r     = actionButtonExpanded ? Self.actionArcRadius : 0
-                landscapeActionItem(action, accent: accent, onAccent: onAccent)
-                    .offset(x: r * cos(angle), y: -r * sin(angle))
-                    .scaleEffect(actionButtonExpanded ? 1 : 0.4)
-                    .opacity(actionButtonExpanded ? 1 : 0)
-                    .allowsHitTesting(actionButtonExpanded)
+            // Nur aufgefächert im View-Baum; die Transition lässt jeden Button
+            // aus der Mitte des Hauptbuttons auf seinen Platz am Bogen fliegen.
+            if actionButtonExpanded {
+                ForEach(Array(actions.enumerated()), id: \.element) { index, action in
+                    // Gleichmäßig von 90° (oben) bis 180° (links).
+                    let step  = actions.count > 1 ? 90.0 / Double(actions.count - 1) : 0
+                    let angle = (90.0 + step * Double(index)) * .pi / 180
+                    let dx    = Self.actionArcRadius * cos(angle)
+                    let dy    = -Self.actionArcRadius * sin(angle)
+                    landscapeActionItem(action, accent: accent, onAccent: onAccent)
+                        .offset(x: dx, y: dy)
+                        .transition(.offset(x: -dx, y: -dy)
+                            .combined(with: .scale(scale: 0.4))
+                            .combined(with: .opacity))
+                }
             }
 
             Button {
