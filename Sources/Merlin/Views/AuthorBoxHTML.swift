@@ -35,47 +35,59 @@ enum AuthorBoxHTML {
     static let css = """
     merlin-author-boxes { display: block; margin: 2em 0 1.5em; -webkit-user-select: none; user-select: none; }
     merlin-author-box {
-      display: flex; align-items: center; gap: 1em; margin: 1em 0; padding: 0.9em 1em;
-      border-left: 4px solid var(--merlin-author-accent);
-      border-radius: 0 8px 8px 0;
+      display: block; margin: 1em 0; padding: 0.9em 1em;
+      border-radius: 8px;
       background: rgba(128,128,128,0.1);
       background: color-mix(in srgb, var(--merlin-author-accent) 12%, transparent);
       font-size: 0.93em; line-height: 1.55;
+    }
+    /* Zeile 1: Foto und Name nebeneinander, zusammen zentriert; Zeile 2: Bio linksbündig. */
+    merlin-author-box .merlin-author-header {
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+      gap: 0.5em 1em; text-align: center;
     }
     merlin-author-box img.merlin-author-photo {
       display: block; flex: none; width: 4em !important; height: 4em !important; max-width: 4em !important;
       margin: 0 !important; object-fit: cover; border-radius: 50% !important;
     }
-    merlin-author-box .merlin-author-body { flex: 1; min-width: 0; }
     merlin-author-box .merlin-author-name { font-weight: 600; margin: 0; }
-    merlin-author-box .merlin-author-bio { margin: 0.25em 0 0; white-space: pre-line; }
+    merlin-author-box .merlin-author-bio {
+      margin: 0.75em 0 0; font-size: 0.9em; text-align: left; white-space: pre-line;
+    }
+    /* Dezente Trennlinie zwischen Kopfzeile und Bio, zentriert in Akzentfarbe. */
+    merlin-author-box .merlin-author-bio::before {
+      content: ""; display: block; width: 40%; height: 1px; margin: 0 auto 0.6em;
+      background: var(--merlin-author-accent); opacity: 0.5;
+    }
     merlin-author-box a {
       color: inherit !important; text-decoration: underline;
       text-decoration-color: var(--merlin-author-accent);
       text-decoration-thickness: 2px; text-underline-offset: 2px;
     }
+    /* Autorenlink im Namen in Akzentfarbe. */
+    merlin-author-box .merlin-author-name a { color: var(--merlin-author-accent) !important; }
     """
 
     // MARK: – Intern
 
     private static func box(for author: ArticleAuthor) -> String {
-        var html = "<merlin-author-box role=\"note\">"
+        var html = "<merlin-author-box role=\"note\"><div class=\"merlin-author-header\">"
         if let image = author.image {
             // Nicht ladbares Foto (Hotlink-Schutz, 404) einfach weglassen, Name und Bio bleiben.
             html += "<img class=\"merlin-author-photo\" alt=\"\" referrerpolicy=\"no-referrer\" loading=\"lazy\" "
                 + "src=\"\(escape(image))\" onerror=\"this.remove()\">"
         }
-        html += "<div class=\"merlin-author-body\"><div class=\"merlin-author-name\">"
+        html += "<div class=\"merlin-author-name\">"
         if let url = author.url {
             html += "<a href=\"\(escape(url))\">\(escape(author.name))</a>"
         } else {
             html += escape(author.name)
         }
-        html += "</div>"
+        html += "</div></div>"
         if let bio = author.bio {
             html += "<div class=\"merlin-author-bio\">\(linkified(bio))</div>"
         }
-        return html + "</div></merlin-author-box>"
+        return html + "</merlin-author-box>"
     }
 
     /// http(s)://… oder www.… bis zum nächsten Leerzeichen/Klammer/Anführungszeichen, oder ein
