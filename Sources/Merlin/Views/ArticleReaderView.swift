@@ -897,6 +897,32 @@ private struct PaperBackground: View {
     }()
 }
 
+/// Setzt die Beschriftung eines Fächer-Buttons nach außen, weg vom Bogen, damit
+/// sie keinen Nachbarn verdeckt: ganz oben darüber, im oberen Teil des Bogens
+/// schräg links darüber, im unteren Teil links daneben.
+private struct ActionLabelPlacement<Label: View>: ViewModifier {
+    let degrees: Double
+    @ViewBuilder let label: () -> Label
+
+    func body(content: Content) -> some View {
+        if degrees < 100 {
+            content.overlay(alignment: .top) {
+                label().alignmentGuide(.top) { d in d[.bottom] + 6 }
+            }
+        } else if degrees < 150 {
+            content.overlay(alignment: .topLeading) {
+                label()
+                    .alignmentGuide(.leading) { d in d[.trailing] - 4 }
+                    .alignmentGuide(.top) { d in d[.bottom] - 4 }
+            }
+        } else {
+            content.overlay(alignment: .leading) {
+                label().alignmentGuide(.leading) { d in d[.trailing] + 8 }
+            }
+        }
+    }
+}
+
 /// Kreisförmiger Hintergrund des Querformat-Action-Buttons und seiner
 /// Fächer-Buttons. Ab iOS 26 Liquid Glass (mit `fill` getönt, `faint` = fast
 /// unsichtbar), darunter eine flache Kreisfläche.
@@ -3299,7 +3325,7 @@ struct ArticleReaderView: View {
 
     private static let actionButtonSize: CGFloat = 54
     private static let actionItemSize:   CGFloat = 46
-    private static let actionArcRadius:  CGFloat = 124
+    private static let actionArcRadius:  CGFloat = 136
 
     private var landscapeActionButton: some View {
         let accent   = Color(hexString: accentColorHex) ?? .red
@@ -3336,11 +3362,12 @@ struct ArticleReaderView: View {
                 ForEach(Array(actions.enumerated()), id: \.element) { index, action in
                     // Gleichmäßig von 90° (oben) bis 180° (links).
                     let step  = actions.count > 1 ? 90.0 / Double(actions.count - 1) : 0
-                    let angle = (90.0 + step * Double(index)) * .pi / 180
+                    let degrees = 90.0 + step * Double(index)
+                    let angle = degrees * .pi / 180
                     let dx    = Self.actionArcRadius * cos(angle)
                     let dy    = -Self.actionArcRadius * sin(angle)
                     landscapeActionItem(action, accent: accent, onAccent: onAccent)
-                        .overlay(alignment: .leading) { landscapeActionLabel(action) }
+                        .modifier(ActionLabelPlacement(degrees: degrees) { landscapeActionLabel(action) })
                         .offset(x: dx, y: dy)
                         .transition(.offset(x: -dx, y: -dy)
                             .combined(with: .scale(scale: 0.4))
@@ -3398,8 +3425,9 @@ struct ArticleReaderView: View {
         }
     }
 
-    /// Beschriftung links neben einem Fächer-Button (wie im Mockup). Rein
-    /// dekorativ: Treffer und VoiceOver laufen über den Button selbst.
+    /// Beschriftung neben einem Fächer-Button (wie im Mockup), Platzierung
+    /// siehe `ActionLabelPlacement`. Rein dekorativ: Treffer und VoiceOver
+    /// laufen über den Button selbst.
     private func landscapeActionLabel(_ action: LandscapeAction) -> some View {
         Text(action.label.replacingOccurrences(of: "…", with: ""))
             .font(.caption.weight(.semibold))
@@ -3411,8 +3439,6 @@ struct ArticleReaderView: View {
             .background(Capsule().fill(readerBgColor.opacity(0.92)))
             .overlay(Capsule().strokeBorder(readerFgColor.opacity(0.12), lineWidth: 0.5))
             .shadow(color: .black.opacity(0.12), radius: 4, y: 2)
-            // Rechte Kante der Beschriftung 8 pt links vom Button.
-            .alignmentGuide(.leading) { d in d[.trailing] + 8 }
             .allowsHitTesting(false)
             .accessibilityHidden(true)
     }
