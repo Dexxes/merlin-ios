@@ -564,18 +564,21 @@ private struct PDFDocumentRepresentable: UIViewRepresentable {
             positionBar()
         }
 
-        /// Über der Auswahl, sonst darunter (Platz für das System-Menü „Kopieren“ bleibt); folgt
-        /// Scrollen und Zoomen.
+        /// Am Bildschirmrand, der weiter von der Auswahl entfernt ist (wie die Leiste im Artikel):
+        /// das System-Menü „Kopieren“ sitzt direkt an der Auswahl, so überlagern sich beide nicht.
+        /// Bleibt beim Scrollen und Zoomen am passenden Rand.
         private func positionBar() {
             guard let bar, let pdfView, let current = selectionPage() else { return }
             let bounds = pdfView.convert(current.0.bounds(for: current.1), from: current.1)
             let size = bar.systemLayoutSizeFitting(UIView.layoutFittingCompressedSize)
-            let area = pdfView.bounds.inset(by: pdfView.safeAreaInsets)
-            let x = min(max(area.minX + 8, bounds.midX - size.width / 2), max(area.minX + 8, area.maxX - size.width - 8))
-            var y = bounds.minY - size.height - 10
-            if y < area.minY + 4 { y = bounds.maxY + 10 }
-            y = min(max(area.minY + 4, y), area.maxY - size.height - 4)
-            bar.frame = CGRect(x: x, y: y, width: size.width, height: size.height)
+            // Der Reader legt den PDFView unter die Safe Area, daher die des Fensters.
+            let insets = pdfView.window?.safeAreaInsets ?? pdfView.safeAreaInsets
+            let visible = pdfView.bounds
+            let x = max(visible.minX + 8, visible.midX - size.width / 2)
+            let top = visible.minY + insets.top + 12
+            let bottom = visible.maxY - insets.bottom - size.height - 12
+            let dockTop = bounds.midY > visible.midY
+            bar.frame = CGRect(x: x, y: dockTop ? top : bottom, width: size.width, height: size.height)
         }
 
         private func makeBar() -> UIView {
