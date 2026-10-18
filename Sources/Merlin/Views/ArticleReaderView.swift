@@ -924,36 +924,27 @@ private struct ActionLabelPlacement<Label: View>: ViewModifier {
 }
 
 /// Kreisförmiger Hintergrund des Querformat-Action-Buttons und seiner
-/// Fächer-Buttons. Ab iOS 26 Liquid Glass (mit `fill` getönt, `faint` = fast
-/// unsichtbar), darunter eine flache Kreisfläche.
+/// Fächer-Buttons. Ab iOS 26 Liquid Glass in der Akzentfarbe getönt,
+/// darunter eine flache Kreisfläche.
 private struct ActionCircleBackground: ViewModifier {
-    let fill:    Color?
-    let faint:   Bool
-    let bgColor: Color
+    let tint:    Color
     let fgColor: Color
 
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
-            content
-                .glassEffect(glass, in: Circle())
-                .opacity(faint ? 0.45 : 1)
+            // Gleiche Tönung wie die bottomBar (ReaderBarGlassBackground).
+            // Ohne `.interactive()`: der Button selbst reagiert auf den Tipp,
+            // interaktives Glas fing ihn sonst teils ab.
+            content.glassEffect(.regular.tint(tint.opacity(0.45)), in: Circle())
         } else {
             content
                 .background {
                     Circle()
-                        .fill(fill.map { $0.opacity(0.97) } ?? (faint ? fgColor.opacity(0.06) : bgColor.opacity(0.97)))
-                        .overlay { Circle().strokeBorder(fgColor.opacity(faint ? 0.1 : 0.15), lineWidth: 0.5) }
-                        .shadow(color: .black.opacity(faint ? 0 : 0.18), radius: 8, y: 3)
+                        .fill(tint.opacity(0.97))
+                        .overlay { Circle().strokeBorder(fgColor.opacity(0.15), lineWidth: 0.5) }
+                        .shadow(color: .black.opacity(0.18), radius: 8, y: 3)
                 }
         }
-    }
-
-    @available(iOS 26.0, *)
-    private var glass: Glass {
-        // Ohne `.interactive()`: der Button selbst reagiert auf den Tipp,
-        // interaktives Glas fing ihn sonst teils ab.
-        if let fill { return .regular.tint(fill.opacity(0.6)) }
-        return faint ? .clear : .regular
     }
 }
 
@@ -1663,9 +1654,6 @@ struct ArticleReaderView: View {
     @State private var scrollingDown       = false
     @State private var showBottomBar            = true
     @State private var isAudioPlayerMinimized   = false
-    /// Querformat-Action-Button: ein Tipp auf den Text schaltet zwischen
-    /// fast unsichtbar (false) und farbig in der Akzentfarbe (true) um.
-    @State private var actionButtonProminent    = false
     /// Querformat-Action-Button aufgefächert.
     @State private var actionButtonExpanded     = false
     /// Höhe des Piper-Panels, damit der Action Button darüber schwebt.
@@ -1837,7 +1825,6 @@ struct ArticleReaderView: View {
                                 tappedLinkURL = url
                             }
                         },
-                        onToggleUI:     { toggleActionButtonProminence() },
                         onHeightChange: { h in webViewHeight = max(200, h) },
                         onImageTapped:  { idx, srcs in
                             lightboxState = LightboxState(initialIndex: idx, imageURLs: srcs)
@@ -2098,8 +2085,7 @@ struct ArticleReaderView: View {
                         SelectionToolbarState(screenRect: rect, highlightId: nil),
                         animation: .spring(response: 0.35, dampingFraction: 0.82))
                 },
-                onSelectionCleared: { hideHighlightToolbar() },
-                onTap: { toggleActionButtonProminence() })
+                onSelectionCleared: { hideHighlightToolbar() })
         }
         .ignoresSafeArea()
         .sheet(isPresented: $showPDFMetadata) {
@@ -3277,21 +3263,14 @@ struct ArticleReaderView: View {
     //               Erscheinungsbild
     //                     Zurück    (●)
     //
-    // Ein Tipp auf den Text (toggleUI aus dem WebView bzw. Tipp ins PDF)
-    // schaltet den geschlossenen Button zwischen fast unsichtbar und farbig
-    // in der Akzentfarbe um.
+    // Der Hauptbutton ist immer Glas in der Akzentfarbe, wie die bottomBar;
+    // ein Tipp auf den Text ändert an ihm nichts.
 
     private var isCompactLandscape: Bool { verticalSizeClass == .compact }
-
-    private func toggleActionButtonProminence() {
-        guard isCompactLandscape, !actionButtonExpanded else { return }
-        withAnimation(.easeInOut(duration: 0.2)) { actionButtonProminent.toggle() }
-    }
 
     private func setActionButtonExpanded(_ expanded: Bool) {
         withAnimation(.spring(response: 0.34, dampingFraction: 0.72)) {
             actionButtonExpanded = expanded
-            if expanded { actionButtonProminent = true }
         }
     }
 
@@ -3381,17 +3360,12 @@ struct ArticleReaderView: View {
                 Image(systemName: actionButtonExpanded ? "xmark" : "ellipsis")
                     .font(.system(size: actionButtonExpanded ? 19 : 22, weight: .semibold))
                     .contentTransition(.symbolEffect(.replace))
-                    .foregroundStyle(actionButtonExpanded
-                                     ? readerFgColor
-                                     : (actionButtonProminent ? onAccent : readerFgColor.opacity(0.3)))
+                    .foregroundStyle(onAccent)
                     .frame(width: main, height: main)
-                    .modifier(ActionCircleBackground(
-                        fill: actionButtonExpanded ? nil : (actionButtonProminent ? accent : nil),
-                        faint: !actionButtonExpanded && !actionButtonProminent,
-                        bgColor: readerBgColor, fgColor: readerFgColor))
+                    .modifier(ActionCircleBackground(tint: accent, fgColor: readerFgColor))
                     // Ohne feste Trefferfläche zählen beim Glas (iOS 26) nur die
                     // Punkte des Symbols; ein Tipp daneben ging an den WebView
-                    // durch und schaltete nur die Farbe um.
+                    // durch.
                     .contentShape(Circle())
             }
             .buttonStyle(.plain)
@@ -3407,8 +3381,7 @@ struct ArticleReaderView: View {
             .font(.system(size: 18, weight: .medium))
             .foregroundStyle(onAccent)
             .frame(width: size, height: size)
-            .modifier(ActionCircleBackground(fill: accent, faint: false,
-                                             bgColor: readerBgColor, fgColor: readerFgColor))
+            .modifier(ActionCircleBackground(tint: accent, fgColor: readerFgColor))
             .contentShape(Circle())
         switch action {
         case .share:
