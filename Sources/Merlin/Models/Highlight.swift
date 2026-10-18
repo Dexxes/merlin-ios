@@ -28,6 +28,20 @@ struct Highlight: Codable, Identifiable {
     var isPDF: Bool { pdfPage != nil }
 }
 
+extension Highlight {
+    /// Dieselbe Markierung mit neuer Stelle (länger/kürzer gezogen) und ggf.
+    /// neuer Farbe – für Cache und Anzeige, bis der Server sie bestätigt.
+    func updated(with change: HighlightUpdate) -> Highlight {
+        Highlight(
+            id: id, articleId: articleId, highlightedText: change.highlightedText,
+            startXpath: change.startXpath, startOffset: change.startOffset,
+            endXpath: change.endXpath, endOffset: change.endOffset,
+            color: change.color ?? color, createdAt: createdAt,
+            authorType: authorType, authorName: authorName, authorColor: authorColor,
+            pdfPage: change.pdfPage ?? pdfPage, pdfRects: change.pdfRects ?? pdfRects)
+    }
+}
+
 struct HighlightCreate: Codable {
     let highlightedText: String
     let startXpath: String
@@ -36,6 +50,22 @@ struct HighlightCreate: Codable {
     let endOffset: Int
     let color: String
     /// Nur in PDFs (siehe `Highlight.pdfPage`); fehlt sonst im JSON.
+    var pdfPage: Int? = nil
+    var pdfRects: [[Double]]? = nil
+}
+
+/// Änderung einer bestehenden Markierung (`PUT /highlights/{id}`, nur
+/// merlin-nextcloud): neue Stelle, optional neue Farbe. Die id bleibt, damit
+/// hängen die Kommentare weiter daran.
+struct HighlightUpdate: Codable, Equatable {
+    let highlightedText: String
+    let startXpath: String
+    let startOffset: Int
+    let endXpath: String
+    let endOffset: Int
+    /// Fehlt im JSON, wenn die Farbe bleibt.
+    var color: String? = nil
+    /// Nur in PDFs (siehe `Highlight.pdfPage`).
     var pdfPage: Int? = nil
     var pdfRects: [[Double]]? = nil
 }

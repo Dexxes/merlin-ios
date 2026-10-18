@@ -49,6 +49,9 @@ struct CommentsPayload: Codable, Sendable {
     let generatedAt: Int64?
     let comments: [Comment]
     let highlights: [Highlight]
+    /// Server kann Markierungen ändern (`PUT /highlights/{id}`). Fehlt bei
+    /// älteren Servern.
+    var highlightUpdate: Bool? = nil
 }
 
 /// Ereignis aus dem Push-Kanal (`/articles/{id}/comments/stream`).

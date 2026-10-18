@@ -131,9 +131,15 @@ private let merlinHighlightJS: String = #"""
       sel.removeAllRanges();
       sel.addRange(range);
     }catch(e){}
+    editing=canResize(id)?{id:String(id),range:null}:null;
   }
 
   function removeHighlightSpans(id){
+    id=String(id);
+    if(editing&&editing.id===id)editing=null;
+    delete pendingSaves[id];
+    delete localEdits[id];
+    serverHighlights=serverHighlights.filter(h=>String(h.id)!==id);
     document.querySelectorAll('mark.merlin-highlight[data-highlight-id="'+id+'"]').forEach(el=>{
       const p=el.parentNode;while(el.firstChild)p.insertBefore(el.firstChild,el);p.removeChild(el);p.normalize();
     });
@@ -162,6 +168,16 @@ private let merlinHighlightJS: String = #"""
   // `comment`: nach dem Speichern gleich den Kommentar-Dialog für die neue
   // Markierung öffnen (Knopf "Kommentieren" in der nativen Leiste).
   function applyHighlight(color,comment){
+    // Eigene Markierung angetippt: Farbe (und eine evtl. gezogene neue
+    // Länge) per Update ändern – id und Kommentare bleiben.
+    if(editing&&selectedHighlightId!==null&&String(selectedHighlightId)===editing.id){
+      pendingRange=null;
+      commitResize(color);
+      editing=null;selectedHighlightId=null;
+      window.getSelection()?.removeAllRanges();
+      flushSave();
+      return;
+    }
     const range=pendingRange;pendingRange=null;
     if(!range||range.collapsed)return;
     // If the user tapped an existing highlight and then chose a colour, delete
@@ -222,6 +238,7 @@ private let merlinHighlightJS: String = #"""
   // bekommt nur die Position und öffnet das Kommentarfeld. Erst der
   // abgeschickte Kommentar legt die (unterstrichene) Stelle an.
   window.merlinCommentFromNative=function(){
+    endEditing();
     if(selectedHighlightId!==null){
       const id=String(selectedHighlightId);
       selectedHighlightId=null;pendingRange=null;
@@ -248,6 +265,7 @@ private let merlinHighlightJS: String = #"""
   // instantly, on any scroll — by Swift; this call is purely a workaround
   // for WebKit's system menu.
   window.merlinCollapseSelectionForScroll=function(){
+    endEditing();
     const sel=window.getSelection();
     if(sel&&!sel.isCollapsed)sel.removeAllRanges();
     clearTimeout(selTimer);clearTimeout(hideTimer);
@@ -259,7 +277,7 @@ private let merlinHighlightJS: String = #"""
   // Track whether a finger is currently on screen. While touching, we must not
   // clear the selection state even if it briefly collapses (iOS does this when
   // the user drags a selection handle to extend the range).
-  document.addEventListener('touchstart',()=>{touching=true;},{passive:true});
+  document.addEventListener('touchstart',()=>{touching=true;clearTimeout(resizeTimer);},{passive:true});
   document.addEventListener('touchend',()=>{
     touching=false;
     // Keep the live selection intact on finger-lift — collapsing it here used
@@ -275,6 +293,8 @@ private let merlinHighlightJS: String = #"""
       clearTimeout(selTimer);
       selTimer=setTimeout(()=>{if(pendingRange)sendSelectionToNative();},200);
     }
+    // Griff einer eigenen Markierung losgelassen: Markierung neu setzen.
+    if(editing){clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>commitResize(),350);}
   },{passive:true});
   document.addEventListener('touchcancel',()=>{touching=false;},{passive:true});
 
@@ -295,6 +315,13 @@ private let merlinHighlightJS: String = #"""
         pendingRange=range.cloneRange();
         clearTimeout(selTimer);
         selTimer=setTimeout(()=>{if(pendingRange)sendSelectionToNative();},500);
+        if(editing){
+          // Letzte Auswahl merken: verschwindet sie gleich danach (Tipp
+          // daneben), gilt trotzdem die gezogene Länge.
+          editing.range=range.cloneRange();
+          clearTimeout(resizeTimer);
+          resizeTimer=setTimeout(()=>{if(!touching)commitResize();},600);
+        }
         return;
       }
     }
@@ -308,6 +335,7 @@ private let merlinHighlightJS: String = #"""
       // the toolbar never disappears in the first place.
       clearTimeout(hideTimer);
       hideTimer=setTimeout(()=>{
+        endEditing();
         pendingRange=null;selectedHighlightId=null;
         clearNativeSelectionToolbar();
         flushDeferred();
@@ -335,7 +363,7 @@ private let merlinHighlightJS: String = #"""
   let deferredHighlights=null,commentCounts={};
 
   function hasPendingWork(){
-    return pendingRange!==null||selectedHighlightId!==null||
+    return pendingRange!==null||selectedHighlightId!==null||Object.keys(pendingSaves).length>0||
       document.querySelector('mark.merlin-highlight[data-highlight-id^="tmp_"]')!==null;
   }
 
@@ -350,6 +378,16 @@ private let merlinHighlightJS: String = #"""
   }
 
   function renderHighlights(highlights){
+    serverHighlights=highlights;
+    // Eigene, noch nicht vom Server zurückgemeldete Änderungen gewinnen,
+    // bis die Liste sie enthält – sonst spränge eine gerade gezogene
+    // Markierung bei einem älteren Push kurz auf ihre alte Länge zurück.
+    highlights=highlights.map(h=>{
+      const e=localEdits[String(h.id)];if(!e)return h;
+      if(sameSpot(h,e)){delete localEdits[String(h.id)];return h;}
+      return Object.assign({},h,e);
+    });
+    currentHighlights=highlights;
     unwrapAllMarks();
     // In Erstellungsreihenfolge setzen (wie der Web-Reader): die XPaths einer
     // Markierung wurden im DOM berechnet, in dem alle älteren Markierungen
@@ -393,10 +431,166 @@ private let merlinHighlightJS: String = #"""
     if(highlights)window.merlinApplyHighlights(highlights);
     applyCommentCounts();
   };
+  // ── Markierung per Ziehgriff länger/kürzer ──────────────────────────
+  // Tippt man eine eigene Markierung an, liegt die iOS-Auswahl mit Griffen
+  // darüber (selectHighlight). Zieht man einen Griff und lässt los, wird
+  // die Markierung auf die neue Auswahl gesetzt; die Griffe bleiben. Das
+  // Speichern (PUT, id bleibt) ist entprellt: einmal nach einer Pause oder
+  // sobald die Auswahl endet. Nur eigene Farb-Markierungen und nur, wenn
+  // der Server Updates kann (merlinSetResizeEnabled).
+  let resizeEnabled=false,editing=null,resizeTimer=null;
+  let serverHighlights=[],currentHighlights=[],localEdits={};
+  let pendingSaves={},saveTimer=null;
+
+  window.merlinSetResizeEnabled=f=>{resizeEnabled=!!f;};
+
+  function canResize(id){
+    if(!resizeEnabled||!/^\d+$/.test(String(id)))return false;
+    const h=serverHighlights.find(x=>String(x.id)===String(id));
+    return !!h&&h.authorType!=='guest'&&h.color!==COMMENT_COLOR&&h.pdfPage==null;
+  }
+
+  function sameSpot(h,e){
+    return h.startXpath===e.startXpath&&h.startOffset===e.startOffset&&
+      h.endXpath===e.endXpath&&h.endOffset===e.endOffset&&(e.color===undefined||h.color===e.color);
+  }
+
+  // Position im Fließtext (Zeichen ab Anfang des <body>). Marks enthalten
+  // nur Text, darum bleibt sie beim Ein- und Auspacken gleich – anders als
+  // XPaths.
+  function textOffset(node,off){
+    try{const r=document.createRange();r.setStart(document.body,0);r.setEnd(node,off);return r.toString().length;}
+    catch(e){return -1;}
+  }
+  // Umkehrung: Textknoten und Offset. Am Anfang einer Range lieber den
+  // folgenden Knoten, am Ende den vorigen (wie eine Auswahl sie liefert).
+  function pointAt(target,atStart){
+    const w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
+    let acc=0,n,last=null;
+    while((n=w.nextNode())){
+      if(atStart?target<acc+n.length:target<=acc+n.length)return{node:n,offset:target-acc};
+      acc+=n.length;last=n;
+    }
+    return last?{node:last,offset:last.length}:null;
+  }
+  function spanOf(id){
+    const spans=document.querySelectorAll('mark.merlin-highlight[data-highlight-id="'+id+'"]');
+    if(!spans.length)return null;
+    const last=spans[spans.length-1];
+    return{start:textOffset(spans[0],0),end:textOffset(last,last.childNodes.length)};
+  }
+
+  // Neue Länge übernehmen. `color`: zugleich umfärben (dann auch ohne
+  // geänderte Länge speichern). `final`: die Auswahl endet gerade, die
+  // Griffe nicht wieder setzen.
+  function commitResize(color,final){
+    clearTimeout(resizeTimer);
+    if(!editing)return;
+    const id=editing.id;
+    // Eine eigene Markierung wartet noch auf ihre id: neu zeichnen ließe sie verschwinden.
+    if(document.querySelector('mark.merlin-highlight[data-highlight-id^="tmp_"]'))return;
+    const cur=spanOf(id);if(!cur)return;
+    let range=null;
+    const sel=window.getSelection();
+    if(sel&&!sel.isCollapsed&&sel.rangeCount>0)range=sel.getRangeAt(0);
+    else if(editing.range)range=editing.range;
+    let s=cur.start,e=cur.end;
+    if(range&&document.body.contains(range.commonAncestorContainer)){
+      const ns=textOffset(range.startContainer,range.startOffset),ne=textOffset(range.endContainer,range.endOffset);
+      if(ns>=0&&ne>ns){
+        // Ganz woanders ausgewählt (neue Auswahl statt gezogenem Griff): keine Änderung.
+        if(ns>cur.end||ne<cur.start){editing=null;selectedHighlightId=null;if(pendingRange)sendSelectionToNative();return;}
+        s=ns;e=ne;
+      }
+    }
+    // An Nachbar-Markierungen stoppen statt sie zu überlappen.
+    const seen=new Set([id]);
+    document.querySelectorAll('mark.merlin-highlight').forEach(m=>{
+      const oid=m.dataset.highlightId;if(seen.has(oid))return;seen.add(oid);
+      const o=spanOf(oid);if(!o||o.end<=s||o.start>=e)return;
+      if(o.start<cur.start)s=Math.max(s,o.end);else e=Math.min(e,o.start);
+    });
+    if(s>=e)return;
+    if(s===cur.start&&e===cur.end&&!color)return;
+    const a=pointAt(s,true),b=pointAt(e,false);if(!a||!b)return;
+    const tr=document.createRange();
+    try{tr.setStart(a.node,a.offset);tr.setEnd(b.node,b.offset);}catch(err){return;}
+    const text=tr.toString().trim();if(!text)return;
+    // Neu verankern. Die XPaths einer Markierung gelten im DOM, in dem nur
+    // die älteren (kleinere id) als <mark> stehen. Ändert sich die Länge
+    // dieser hier, verschieben sich darum auch die Textknoten, auf die
+    // jüngere Markierungen im selben Absatz zeigen. Also alle ab dieser in
+    // Erstellungsreihenfolge neu setzen: jede an ihrer bisherigen Stelle im
+    // Fließtext, die XPaths im DOM mit allen davor. Geänderte gehen mit.
+    const spans={};
+    currentHighlights.forEach(h=>{const sp=spanOf(h.id);if(sp)spans[String(h.id)]=sp;});
+    spans[id]={start:s,end:e};
+    const order=h=>{const n=Number(h.id);return Number.isFinite(n)?n:Infinity;};
+    const num=Number(id),changes={};
+    unwrapAllMarks();
+    currentHighlights.slice().sort((x,y)=>order(x)-order(y)).forEach(h=>{
+      const hid=String(h.id),sp=spans[hid];
+      if(order(h)<num||!sp){restoreHighlight(h);return;}
+      const p=pointAt(sp.start,true),q=pointAt(sp.end,false);
+      const sx=p?getXPath(p.node):null,ex=q?getXPath(q.node):null;
+      if(!sx||!ex){restoreHighlight(h);return;}
+      const anchor={startXpath:sx,startOffset:p.offset,endXpath:ex,endOffset:q.offset};
+      if(hid===id){
+        anchor.highlightedText=text;
+        if(color)anchor.color=color;
+        changes[hid]=anchor;
+      }else if(!sameSpot(h,anchor)){
+        changes[hid]=Object.assign({highlightedText:h.highlightedText},anchor);
+      }
+      restoreHighlight(Object.assign({},h,anchor));
+    });
+    if(!changes[id]){renderHighlights(serverHighlights);return;}
+    Object.keys(changes).forEach(k=>{localEdits[k]=Object.assign({},localEdits[k]||{},changes[k]);});
+    renderHighlights(serverHighlights);
+    // Griffe wieder über die neue Länge legen, damit man weiterziehen kann.
+    if(!color&&!final){
+      const first=document.querySelector('mark.merlin-highlight[data-highlight-id="'+id+'"]');
+      if(first){selectHighlight(first);if(editing)editing.range=null;}
+    }
+    scheduleSave(changes,color||final?0:1000);
+  }
+
+  // Je Markierung nur der letzte Stand; gesendet wird nach einer Pause.
+  function scheduleSave(changes,delay){
+    Object.keys(changes).forEach(k=>{pendingSaves[k]=Object.assign({},pendingSaves[k]||{},changes[k]);});
+    clearTimeout(saveTimer);
+    if(delay===0)flushSave();else saveTimer=setTimeout(flushSave,delay);
+  }
+  function flushSave(){
+    clearTimeout(saveTimer);
+    const all=pendingSaves;pendingSaves={};
+    Object.keys(all).forEach(k=>{
+      window.webkit.messageHandlers.highlights.postMessage({action:'update',id:k,data:all[k]});
+    });
+    flushDeferred();
+  }
+  // Auswahl endet (Tipp daneben, Scrollen, Kommentieren): letzte Länge
+  // übernehmen und gleich speichern.
+  function endEditing(){
+    if(editing)commitResize(null,true);
+    editing=null;
+    flushSave();
+  }
+  // Server hat die Änderung abgelehnt: wieder den Stand vom Server zeigen.
+  window.merlinResizeFailed=function(id){
+    delete localEdits[String(id)];
+    if(hasPendingWork())deferredHighlights=deferredHighlights||serverHighlights;
+    else renderHighlights(serverHighlights);
+  };
+
   // `saved`: die gerade gespeicherte Markierung – fehlt sie in einer
   // vorgemerkten (älteren) Liste, kommt sie dazu, statt kurz zu verschwinden.
   window.merlinUpdateTempId=(tempId,realId,saved)=>{
     document.querySelectorAll('mark.merlin-highlight[data-highlight-id="'+tempId+'"]').forEach(el=>{el.dataset.highlightId=String(realId);});
+    if(saved&&!serverHighlights.some(h=>String(h.id)===String(realId))){
+      serverHighlights=serverHighlights.concat([saved]);
+      currentHighlights=currentHighlights.concat([saved]);
+    }
     if(saved&&deferredHighlights!==null&&!deferredHighlights.some(h=>String(h.id)===String(realId))){
       deferredHighlights=deferredHighlights.concat([saved]);
     }
@@ -986,6 +1180,9 @@ private struct HighlightToolbarBackground: ViewModifier {
     /// PDF-Artikel (kein WebView): Farbe und Kommentar für die Auswahl im `PDFArticleView`.
     var pdfApplyColor: ((String) -> Void)?
     var pdfComment: (() -> Void)?
+    /// PDF: angetippte Markierung entfernen bzw. eine bestimmte (nach der Rückfrage).
+    var pdfDeleteSelected: (() -> Void)?
+    var pdfDelete: ((Int) -> Void)?
 
     func applyColor(_ colorId: String) {
         if webView == nil, let pdfApplyColor { return pdfApplyColor(colorId) }
@@ -994,6 +1191,7 @@ private struct HighlightToolbarBackground: ViewModifier {
     }
 
     func deleteSelected() {
+        if webView == nil, let pdfDeleteSelected { return pdfDeleteSelected() }
         webView?.evaluateJavaScript(
             "window.merlinDeleteSelectedHighlightFromNative && window.merlinDeleteSelectedHighlightFromNative()")
     }
@@ -1001,6 +1199,7 @@ private struct HighlightToolbarBackground: ViewModifier {
     /// Löscht eine bestimmte Markierung (nach der Rückfrage, ob ihre
     /// Kommentare mit verschwinden sollen – die Auswahl kann dann schon weg sein).
     func deleteHighlight(id: String) {
+        if webView == nil, let pdfDelete, let numeric = Int(id) { return pdfDelete(numeric) }
         guard let data = try? JSONEncoder().encode(id),
               let json = String(data: data, encoding: .utf8) else { return }
         webView?.evaluateJavaScript(
@@ -1392,6 +1591,51 @@ guard message.name == "highlights",
                     // instead of trying to delete a highlight that doesn't
                     // exist remotely (and would otherwise get resurrected).
                     OfflineHighlightQueue.shared.cancelPendingCreate(tempId: rawId, articleId: aid)
+                }
+
+            case "update":
+                // Markierung länger/kürzer gezogen oder umgefärbt (bzw. eine
+                // jüngere dadurch neu verankert): id bleibt, siehe
+                // commitResize in merlinHighlightJS.
+                guard let rawId      = body["id"]               as? String,
+                      let highlightId = Int(rawId),
+                      let data       = body["data"]             as? [String: Any],
+                      let text       = data["highlightedText"]  as? String,
+                      let startXpath = data["startXpath"]       as? String,
+                      let startOff   = data["startOffset"]      as? Int,
+                      let endXpath   = data["endXpath"]         as? String,
+                      let endOff     = data["endOffset"]        as? Int
+                else { return }
+                let change = HighlightUpdate(
+                    highlightedText: text,
+                    startXpath: startXpath,
+                    startOffset: startOff,
+                    endXpath: endXpath,
+                    endOffset: endOff,
+                    color: data["color"] as? String)
+                let aid = articleId
+                Task { [weak self, weak webView = message.webView] in
+                    do {
+                        let saved = try await MerlinAPI.shared.updateHighlight(highlightId, payload: change)
+                        await HighlightCacheService.shared.upsert(saved)
+                        DispatchQueue.main.async { [weak self] in self?.onHighlightsChanged?() }
+                    } catch {
+                        if case MerlinAPIError.networkError = error {
+                            // Offline: im Text steht schon die neue Länge;
+                            // Cache nachziehen und später senden.
+                            await HighlightCacheService.shared.apply(change, to: highlightId, articleId: aid)
+                            OfflineHighlightQueue.shared.enqueueUpdate(
+                                articleId: aid, highlightId: highlightId, change: change)
+                        } else {
+                            // Abgelehnt: wieder den Stand vom Server zeigen.
+                            await MainActor.run {
+                                webView?.evaluateJavaScript(
+                                    "window.merlinResizeFailed && window.merlinResizeFailed('\(highlightId)')",
+                                    completionHandler: nil)
+                            }
+                            DispatchQueue.main.async { [weak self] in self?.onHighlightsChanged?() }
+                        }
+                    }
                 }
 
             case "commentAnchor":
@@ -2086,9 +2330,9 @@ struct ArticleReaderView: View {
                     }
                 },
                 actions: highlightActions,
-                onSelectionChanged: { rect in
+                onSelectionChanged: { rect, highlightId in
                     showHighlightToolbar(
-                        SelectionToolbarState(screenRect: rect, highlightId: nil),
+                        SelectionToolbarState(screenRect: rect, highlightId: highlightId),
                         animation: .spring(response: 0.35, dampingFraction: 0.82))
                 },
                 onSelectionCleared: { hideHighlightToolbar() })

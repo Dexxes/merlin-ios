@@ -407,6 +407,14 @@ actor MerlinAPI {
         return try await perform(req)
     }
 
+    /// Stelle und ggf. Farbe ändern (nur merlin-nextcloud, siehe
+    /// `CommentStore.canUpdateHighlights`).
+    func updateHighlight(_ id: Int, payload: HighlightUpdate) async throws -> Highlight {
+        var req = try makeRequest("/highlights/\(id)", method: "PUT")
+        req.httpBody = try JSONEncoder().encode(payload)
+        return try await perform(req)
+    }
+
     func deleteHighlight(_ id: Int) async throws {
         let req = try makeRequest("/highlights/\(id)", method: "DELETE")
         _ = try await performRaw(req)

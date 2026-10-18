@@ -13,8 +13,10 @@ import UIKit
 ///
 /// Text can be selected natively; the reader then shows the same colour bar as for text articles
 /// (`onSelectionChanged`, actions through `HighlightActionHandler`) to highlight it in the five
-/// colours or start a comment. A PDF highlight is stored as page + rectangles (`Highlight.pdfPage`/`pdfRects`,
-/// normalised to the unrotated CropBox, origin top left – same as the web reader) and drawn as an
+/// colours or start a comment. Tapping a highlight puts the selection with its handles over it and
+/// shows the same bar (comments, remove); dragging the handles of an own highlight sets it to the
+/// new passage (`PUT /highlights/{id}`, when the server supports it). A PDF highlight is stored as
+/// page + rectangles (`Highlight.pdfPage`/`pdfRects`, normalised to the unrotated CropBox, origin top left – same as the web reader) and drawn as an
 /// in-memory `PDFAnnotation`; the cached file itself is never changed.
 struct PDFArticleView: View {
     let sourceURL: URL
@@ -33,8 +35,9 @@ struct PDFArticleView: View {
     var onScroll: ((CGFloat, Bool) -> Void)? = nil
     /// Farbleiste des Readers: Knöpfe landen über `HighlightActionHandler` hier.
     var actions: HighlightActionHandler? = nil
-    /// Text ausgewählt (Rechteck in Fensterkoordinaten) bzw. Auswahl weg.
-    var onSelectionChanged: ((CGRect) -> Void)? = nil
+    /// Text ausgewählt (Rechteck in Fensterkoordinaten, dazu die id einer angetippten
+    /// Markierung) bzw. Auswahl weg.
+    var onSelectionChanged: ((CGRect, String?) -> Void)? = nil
     var onSelectionCleared: (() -> Void)? = nil
     /// Tipp ins PDF, der weder eine Auswahl aufhebt noch eine Markierung trifft
     /// (Querformat-Action-Button im Reader ein-/ausblenden).
@@ -56,10 +59,9 @@ struct PDFArticleView: View {
     @State private var local: [Highlight] = []
     /// Gerade gelöscht – ausblenden, bis der Kommentar-Kanal nachzieht.
     @State private var removedIds: Set<Int> = []
-    /// Angetippte Markierung (Menü „Kommentare / Entfernen“).
-    @State private var tapped: Highlight?
-    /// Rückfrage vor dem Entfernen einer Markierung mit Kommentaren.
-    @State private var confirmDelete: Highlight?
+    /// Gerade gezogene oder umgefärbte Markierungen – gewinnen, bis Server bzw. Kommentar-Kanal
+    /// denselben Stand liefern (sonst spränge die Markierung kurz zurück).
+    @State private var edits: [Int: Highlight] = [:]
 
     /// Alle sichtbaren PDF-Markierungen: Kommentar-Kanal und lokale vereint (lokal gewinnt nicht –
     /// der Kanal trägt auch `authorColor`).
@@ -70,6 +72,7 @@ struct PDFArticleView: View {
             if byId[h.id] == nil { order.append(h.id) }
             byId[h.id] = h
         }
+        for (id, edited) in edits where byId[id] != nil { byId[id] = edited }
         return order.compactMap { byId[$0] }
     }
 
@@ -104,7 +107,19 @@ struct PDFArticleView: View {
                             highlightedText: text, startXpath: "", startOffset: 0,
                             endXpath: "", endOffset: 0, pdfPage: page, pdfRects: rects))
                     },
-                    onTapHighlight: { id in tapped = all.first { $0.id == id } },
+                    canResize: articleId != nil && comments?.canUpdateHighlights == true,
+                    onUpdate: { id, text, page, rects, color in
+                        update(id: id, text: text, page: page, rects: rects, color: color)
+                    },
+                    onOpenHighlight: { id in
+                        // Kommentar-Stelle angetippt oder „Kommentieren“ an einer Markierung.
+                        guard comments?.isAvailable == true, id > 0,
+                              let highlight = all.first(where: { $0.id == id }) else { return }
+                        onOpenComments?(highlight.id, highlight.highlightedText)
+                    },
+                    onDelete: { id in
+                        if let highlight = all.first(where: { $0.id == id }) { delete(highlight) }
+                    },
                     onPageChange: onPageChange,
                     onRestored: onRestored,
                     onScroll: onScroll,
@@ -120,42 +135,7 @@ struct PDFArticleView: View {
         .task(id: articleId) {
             await loadHighlights()
         }
-        .confirmationDialog(
-            tapped.map { "„\($0.highlightedText.prefix(80))“" } ?? "",
-            isPresented: .init(get: { tapped != nil }, set: { if !$0 { tapped = nil } }),
-            titleVisibility: .visible,
-            presenting: tapped
-        ) { highlight in
-            if comments?.isAvailable == true, highlight.id > 0, onOpenComments != nil {
-                let count = comments?.count(forHighlight: highlight.id) ?? 0
-                Button(count > 0
-                       ? String(format: L("articleReader.comments.countLabel"), count)
-                       : L("articleReader.comments.comment")) {
-                    onOpenComments?(highlight.id, highlight.highlightedText)
-                }
-            }
-            if articleId != nil {
-                Button(L("articleReader.comments.removeHighlight"), role: .destructive) {
-                    if (comments?.count(forHighlight: highlight.id) ?? 0) > 0 {
-                        confirmDelete = highlight
-                    } else {
-                        delete(highlight)
-                    }
-                }
-            }
-            Button(L("common.cancel"), role: .cancel) {}
-        }
-        .confirmationDialog(
-            L("articleReader.comments.deleteHighlightTitle"),
-            isPresented: .init(get: { confirmDelete != nil }, set: { if !$0 { confirmDelete = nil } }),
-            titleVisibility: .visible,
-            presenting: confirmDelete
-        ) { highlight in
-            Button(L("articleReader.comments.removeHighlight"), role: .destructive) { delete(highlight) }
-            Button(L("common.cancel"), role: .cancel) {}
-        } message: { _ in
-            Text(L("articleReader.comments.deleteHighlightMessage"))
-        }
+        .onChange(of: comments?.revision) { _, _ in dropConfirmedEdits() }
     }
 
     private func messageView(text: String, showRetry: Bool) -> some View {
@@ -244,6 +224,53 @@ struct PDFArticleView: View {
         }
     }
 
+    /// Markierung länger/kürzer gezogen oder umgefärbt: sofort zeigen, dann speichern (id bleibt).
+    /// Offline geht die Änderung in die `OfflineHighlightQueue`.
+    private func update(id: Int, text: String, page: Int, rects: [[Double]], color: String?) {
+        guard let articleId, let old = highlights.first(where: { $0.id == id }) else { return }
+        let change = HighlightUpdate(
+            highlightedText: text, startXpath: "", startOffset: 0, endXpath: "", endOffset: 0,
+            color: color, pdfPage: page, pdfRects: rects)
+        edits[id] = old.updated(with: change)
+        Task { @MainActor in
+            do {
+                let saved = try await MerlinAPI.shared.updateHighlight(id, payload: change)
+                await HighlightCacheService.shared.upsert(saved)
+                if let index = local.firstIndex(where: { $0.id == id }) { local[index] = saved }
+                await comments?.refresh()
+                dropConfirmedEdits()
+            } catch {
+                if case MerlinAPIError.networkError = error {
+                    await HighlightCacheService.shared.apply(change, to: id, articleId: articleId)
+                    OfflineHighlightQueue.shared.enqueueUpdate(articleId: articleId, highlightId: id, change: change)
+                } else {
+                    // Abgelehnt: wieder den Stand vom Server zeigen.
+                    edits[id] = nil
+                }
+            }
+        }
+    }
+
+    /// Änderungen vergessen, sobald Server bzw. Kommentar-Kanal sie zurückmelden.
+    private func dropConfirmedEdits() {
+        guard !edits.isEmpty else { return }
+        let sources = local + (comments?.highlights ?? [])
+        for (id, edited) in edits {
+            let confirmed = sources.contains {
+                $0.id == id && $0.color == edited.color && $0.pdfPage == edited.pdfPage
+                    && Self.sameRects($0.pdfRects, edited.pdfRects)
+            }
+            if confirmed { edits[id] = nil }
+        }
+    }
+
+    private static func sameRects(_ a: [[Double]]?, _ b: [[Double]]?) -> Bool {
+        guard let a, let b, a.count == b.count else { return a == nil && b == nil }
+        return zip(a, b).allSatisfy { x, y in
+            x.count == y.count && zip(x, y).allSatisfy { abs($0 - $1) < 0.0001 }
+        }
+    }
+
     private func delete(_ highlight: Highlight) {
         guard let articleId else { return }
         local.removeAll { $0.id == highlight.id }
@@ -299,12 +326,18 @@ private struct PDFDocumentRepresentable: UIViewRepresentable {
     let onMark: (String, String, Int, [[Double]]) -> Void
     /// Text, Seite (ab 1), Rechtecke.
     let onComment: (String, Int, [[Double]]) -> Void
-    let onTapHighlight: (Int) -> Void
+    /// Eigene Markierungen per Ziehgriff ändern (Server kann `PUT /highlights/{id}`).
+    let canResize: Bool
+    /// id, Text, Seite (ab 1), Rechtecke, neue Farbe (nil = bleibt).
+    let onUpdate: (Int, String, Int, [[Double]], String?) -> Void
+    /// Kommentare einer Markierung öffnen (Kommentar-Stelle angetippt, „Kommentieren“).
+    let onOpenHighlight: (Int) -> Void
+    let onDelete: (Int) -> Void
     let onPageChange: ((CGFloat) -> Void)?
     let onRestored: (() -> Void)?
     let onScroll: ((CGFloat, Bool) -> Void)?
     let actions: HighlightActionHandler?
-    let onSelectionChanged: ((CGRect) -> Void)?
+    let onSelectionChanged: ((CGRect, String?) -> Void)?
     let onSelectionCleared: (() -> Void)?
     let onTap: (() -> Void)?
 
@@ -330,7 +363,10 @@ private struct PDFDocumentRepresentable: UIViewRepresentable {
         coordinator.canComment = canComment
         coordinator.onMark = onMark
         coordinator.onComment = onComment
-        coordinator.onTapHighlight = onTapHighlight
+        coordinator.canResize = canResize
+        coordinator.onUpdate = onUpdate
+        coordinator.onOpenHighlight = onOpenHighlight
+        coordinator.onDelete = onDelete
         coordinator.onPageChange = onPageChange
         coordinator.onRestored = onRestored
         coordinator.onScroll = onScroll
@@ -339,6 +375,8 @@ private struct PDFDocumentRepresentable: UIViewRepresentable {
         coordinator.onTap = onTap
         actions?.pdfApplyColor = { [weak coordinator] color in coordinator?.mark(color: color) }
         actions?.pdfComment = { [weak coordinator] in coordinator?.comment() }
+        actions?.pdfDeleteSelected = { [weak coordinator] in coordinator?.deleteSelected() }
+        actions?.pdfDelete = { [weak coordinator] id in coordinator?.delete(id) }
         coordinator.apply(highlights)
     }
 
@@ -352,13 +390,29 @@ private struct PDFDocumentRepresentable: UIViewRepresentable {
         var canComment = false
         var onMark: ((String, String, Int, [[Double]]) -> Void)?
         var onComment: ((String, Int, [[Double]]) -> Void)?
-        var onTapHighlight: ((Int) -> Void)?
+        var canResize = false
+        var onUpdate: ((Int, String, Int, [[Double]], String?) -> Void)?
+        var onOpenHighlight: ((Int) -> Void)?
+        var onDelete: ((Int) -> Void)?
         var onPageChange: ((CGFloat) -> Void)?
         var onRestored: (() -> Void)?
         var onScroll: ((CGFloat, Bool) -> Void)?
-        var onSelectionChanged: ((CGRect) -> Void)?
+        var onSelectionChanged: ((CGRect, String?) -> Void)?
         var onSelectionCleared: (() -> Void)?
         var onTap: (() -> Void)?
+
+        /// Angetippte Markierung, über der die Auswahl liegt. `baseline` sind die Rechtecke, mit
+        /// denen sie zuletzt gespeichert wurde, `latest` Text und Rechtecke der aktuellen Auswahl.
+        private struct Selected {
+            let id: Int
+            let page: Int
+            let editable: Bool
+            var baseline: [[Double]]
+            var latest: (text: String, rects: [[Double]])?
+        }
+        private var selected: Selected?
+        private var byId: [Int: Highlight] = [:]
+        private var resizeTask: Task<Void, Never>?
 
         private weak var pdfView: ReaderPDFView?
         private var document: PDFDocument?
@@ -411,6 +465,7 @@ private struct PDFDocumentRepresentable: UIViewRepresentable {
         }
 
         func detach() {
+            resizeTask?.cancel()
             observers.forEach { NotificationCenter.default.removeObserver($0) }
             observers = []
             offsetObservation?.invalidate()
@@ -497,9 +552,11 @@ private struct PDFDocumentRepresentable: UIViewRepresentable {
         // MARK: Drawing
 
         func apply(_ highlights: [Highlight]) {
+            byId = Dictionary(highlights.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
             guard let document else { return }
+            // Mit den Rechtecken: eine gezogene Markierung (auch von einem anderen Gerät) neu zeichnen.
             let signature = highlights
-                .map { "\($0.id):\($0.color):\($0.authorColor ?? ""):\($0.pdfPage ?? 0)" }
+                .map { "\($0.id):\($0.color):\($0.authorColor ?? ""):\($0.pdfPage ?? 0):\($0.pdfRects ?? [])" }
                 .joined(separator: ",")
             guard signature != drawnSignature else { return }
             drawnSignature = signature
@@ -551,10 +608,36 @@ private struct PDFDocumentRepresentable: UIViewRepresentable {
             let point = pdfView.convert(location, to: page)
             for (id, list) in annotations
             where list.contains(where: { $0.0 == page && $0.1.bounds.insetBy(dx: -2, dy: -2).contains(point) }) {
-                onTapHighlight?(id)
+                // Kommentar-Stelle (unterstrichen): gleich die Kommentare, es gibt keine Farbe zu ändern.
+                if !canMark || byId[id]?.color == "comment" || !select(id) { onOpenHighlight?(id) }
                 return
             }
             onTap?()
+        }
+
+        /// Legt die Auswahl mit ihren Griffen über die Markierung; die Farbleiste erscheint mit
+        /// Kommentieren und Entfernen. Zieht man die Griffe einer eigenen Markierung, wird sie auf
+        /// die neue Auswahl gesetzt (`selectionChanged`).
+        @discardableResult
+        private func select(_ id: Int) -> Bool {
+            guard let pdfView, let document, let highlight = byId[id], let number = highlight.pdfPage,
+                  let page = document.page(at: number - 1), let rects = highlight.pdfRects else { return false }
+            var selection: PDFSelection?
+            for rect in rects {
+                guard let bounds = PDFHighlightGeometry.pageRect(rect, on: page) else { continue }
+                // Etwas eingerückt, damit Nachbarzeilen und -zeichen nicht mit ausgewählt werden.
+                let inner = bounds.insetBy(dx: min(1, bounds.width / 4), dy: bounds.height / 4)
+                guard let part = page.selection(for: inner) else { continue }
+                if let selection { selection.add(part) } else { selection = part }
+            }
+            guard let selection else { return false }
+            let editable = canResize && id > 0 && !highlight.isGuest && highlight.color != "comment"
+            selected = Selected(
+                id: id, page: number, editable: editable,
+                baseline: PDFHighlightGeometry.normalizedRects(of: selection, on: page))
+            pdfView.setCurrentSelection(selection, animate: false)
+            selectionChanged()
+            return true
         }
 
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
@@ -576,12 +659,61 @@ private struct PDFDocumentRepresentable: UIViewRepresentable {
         /// Meldet die Auswahl an den Reader, der dieselbe Farbleiste wie bei Text-Artikeln zeigt
         /// (`HighlightToolbarView`, am Rand gegenüber der Auswahl; das System-Menü bleibt frei).
         private func selectionChanged() {
-            guard canMark, let pdfView, let current = selectionPage() else {
+            guard canMark, let pdfView, let document, let current = selectionPage() else {
+                // Auswahl weg (Tipp daneben): eine gezogene Länge gilt trotzdem.
+                commitResize()
+                selected = nil
                 onSelectionCleared?()
                 return
             }
+            if var sel = selected {
+                let (selection, page, text) = current
+                let rects = PDFHighlightGeometry.normalizedRects(of: selection, on: page)
+                if document.index(for: page) + 1 != sel.page || !Self.overlaps(rects, sel.baseline) {
+                    // Woanders neu ausgewählt statt einen Griff gezogen: nicht mehr die Markierung.
+                    commitResize()
+                    selected = nil
+                } else if sel.editable {
+                    sel.latest = (text, rects)
+                    selected = sel
+                    scheduleResize()
+                }
+            }
             let bounds = pdfView.convert(current.0.bounds(for: current.1), from: current.1)
-            onSelectionChanged?(pdfView.convert(bounds, to: nil))
+            onSelectionChanged?(pdfView.convert(bounds, to: nil), selected.map { String($0.id) })
+        }
+
+        /// Erst nach einer kurzen Pause übernehmen, nicht bei jedem Schritt des Griffs.
+        private func scheduleResize() {
+            resizeTask?.cancel()
+            resizeTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .milliseconds(500))
+                guard !Task.isCancelled else { return }
+                self?.commitResize()
+            }
+        }
+
+        /// Neue Länge der angetippten Markierung speichern, wenn sie sich geändert hat.
+        private func commitResize(color: String? = nil) {
+            resizeTask?.cancel()
+            resizeTask = nil
+            guard var sel = selected, sel.editable else { return }
+            let rects = sel.latest?.rects ?? sel.baseline
+            guard color != nil || rects != sel.baseline, !rects.isEmpty else { return }
+            let text = sel.latest?.text ?? byId[sel.id]?.highlightedText ?? ""
+            guard !text.isEmpty else { return }
+            sel.baseline = rects
+            selected = sel
+            onUpdate?(sel.id, text, sel.page, rects, color)
+        }
+
+        /// Zwei Rechteck-Listen derselben Seite berühren oder überlappen sich.
+        private static func overlaps(_ a: [[Double]], _ b: [[Double]]) -> Bool {
+            func rect(_ r: [Double]) -> CGRect? {
+                r.count == 4 ? CGRect(x: r[0], y: r[1], width: r[2], height: r[3]).insetBy(dx: -0.002, dy: -0.002) : nil
+            }
+            let rb = b.compactMap(rect)
+            return a.compactMap(rect).contains { x in rb.contains { $0.intersects(x) } }
         }
 
         /// Text, Seite und Rechtecke der aktuellen Auswahl; danach Auswahl und Leiste weg.
@@ -595,14 +727,45 @@ private struct PDFDocumentRepresentable: UIViewRepresentable {
 
         /// Farbknopf der Reader-Leiste (`HighlightActionHandler.applyColor`).
         func mark(color: String) {
+            if let sel = selected, sel.editable {
+                // Eigene Markierung angetippt: umfärben (mit einer evtl. gezogenen Länge), id bleibt.
+                commitResize(color: color)
+                selected = nil
+                pdfView?.clearSelection()
+                return
+            }
+            selected = nil
             guard let taken = takeSelection() else { return }
             onMark?(color, taken.0, taken.1, taken.2)
         }
 
-        /// Knopf „Kommentieren“ der Reader-Leiste.
+        /// Knopf „Kommentieren“ der Reader-Leiste: an einer angetippten Markierung ihre Kommentare.
         func comment() {
+            if let sel = selected {
+                commitResize()
+                selected = nil
+                pdfView?.clearSelection()
+                onOpenHighlight?(sel.id)
+                return
+            }
             guard let taken = takeSelection() else { return }
             onComment?(taken.0, taken.1, taken.2)
+        }
+
+        /// Knopf „Entfernen“ der Reader-Leiste an einer angetippten Markierung.
+        func deleteSelected() {
+            guard let sel = selected else { return }
+            delete(sel.id)
+        }
+
+        /// Markierung entfernen (auch nach der Rückfrage wegen ihrer Kommentare).
+        func delete(_ id: Int) {
+            if selected?.id == id {
+                resizeTask?.cancel()
+                selected = nil
+                pdfView?.clearSelection()
+            }
+            onDelete?(id)
         }
 
         // MARK: Reveal

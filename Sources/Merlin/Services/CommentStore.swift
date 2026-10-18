@@ -23,6 +23,9 @@ final class CommentStore {
     private(set) var highlights: [Highlight] = []
     /// true, sobald der Server Kommentare unterstützt (erster Abruf geklappt).
     private(set) var isAvailable = false
+    /// true, wenn der Server Markierungen ändern kann: dann setzt Ziehen an
+    /// den Griffen einer eigenen Markierung sie neu.
+    private(set) var canUpdateHighlights = false
     /// Zählt jede inhaltliche Änderung hoch – Signal für den WebView, die
     /// Markierungen und Kommentar-Zähler im Text neu zu setzen.
     private(set) var revision = 0
@@ -69,6 +72,7 @@ final class CommentStore {
             signature = ""
             generatedAt = 0
             isAvailable = false
+            canUpdateHighlights = false
             revision += 1
         }
         self.articleId = articleId
@@ -144,6 +148,7 @@ final class CommentStore {
             guard at >= generatedAt else { return }
             generatedAt = at
         }
+        canUpdateHighlights = payload.highlightUpdate == true
         guard payload.signature != signature else { return }
         signature = payload.signature
         threads = payload.comments
@@ -195,6 +200,7 @@ final class CommentStore {
         let counts = Dictionary(uniqueKeysWithValues: countsByHighlight.map { (String($0.key), $0.value) })
         guard let cData = try? JSONEncoder().encode(counts),
               let cJSON = String(data: cData, encoding: .utf8) else { return nil }
-        return "window.merlinSetCommentState && window.merlinSetCommentState(\(hJSON), \(cJSON))"
+        return "window.merlinSetResizeEnabled && window.merlinSetResizeEnabled(\(canUpdateHighlights));"
+            + "window.merlinSetCommentState && window.merlinSetCommentState(\(hJSON), \(cJSON))"
     }
 }
