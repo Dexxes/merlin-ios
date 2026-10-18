@@ -4448,6 +4448,8 @@ struct ArticleReaderView: View {
             /* Bildquelle (vom Server als <cite> markiert): nicht fett, kursiv, halbtransparent */
             figcaption cite { font-weight: 400; font-style: italic; opacity: 0.5; }
             figcaption cite * { font-weight: inherit; font-style: inherit; }
+            /* Links in Bildunterschriften wie der übrige Caption-Text: gleiche Farbe, nicht unterstrichen */
+            figcaption a { color: inherit !important; text-decoration: none; }
             body > figure:first-child::after {
               content: ""; display: block; height: 44px;
               background: linear-gradient(to bottom,
