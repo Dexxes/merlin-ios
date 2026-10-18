@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Resize highlights: tap an own highlight in an article or PDF and drag the
+  selection handles; when you let go, the highlight takes the new length and
+  the handles stay so you can keep dragging. It is saved in place (same id),
+  so comments stay attached and their quote follows. Changing the colour of
+  a tapped highlight now works the same way instead of deleting and
+  re-creating it, so commented highlights keep their comments. In PDFs,
+  tapping a highlight now shows the handles and the colour bar (comments,
+  remove) instead of a menu. Guest highlights and comment underlines are not
+  resized. Works offline like other highlight changes. Needs merlin-nextcloud
+  1.0.21; with older servers highlights behave as before.
 - Article list: scrolling down in the card or list view now loads older
   articles, 50 at a time, instead of stopping after the newest 50. A spinner
   shows at the end of the list while they load; if loading fails, a button

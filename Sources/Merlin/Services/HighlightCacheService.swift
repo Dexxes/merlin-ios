@@ -62,6 +62,16 @@ actor HighlightCacheService {
         saveToDisk()
     }
 
+    /// Applies a change (dragged longer/shorter or recoloured) to a cached
+    /// highlight — used while the update waits offline in the queue.
+    func apply(_ change: HighlightUpdate, to id: Int, articleId: Int) {
+        loadFromDiskIfNeeded()
+        guard let idx = cache[articleId]?.firstIndex(where: { $0.id == id }),
+              let old = cache[articleId]?[idx] else { return }
+        cache[articleId]?[idx] = old.updated(with: change)
+        saveToDisk()
+    }
+
     /// Removes a single highlight (e.g. after a delete succeeds or replays).
     func remove(id: Int, articleId: Int) {
         loadFromDiskIfNeeded()

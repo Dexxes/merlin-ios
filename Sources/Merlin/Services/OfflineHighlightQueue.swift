@@ -6,6 +6,7 @@ import Network
 enum PendingHighlightKind: String, Codable {
     case create
     case delete
+    case update
 }
 
 struct PendingHighlightMutation: Codable, Identifiable {
@@ -20,17 +21,22 @@ struct PendingHighlightMutation: Codable, Identifiable {
     let tempId: String?
     /// `.create` only — the payload to send once back online.
     let payload: HighlightCreate?
-    /// `.delete` only — the server-confirmed highlight id to remove.
+    /// `.delete`/`.update` — the server-confirmed highlight id.
     let highlightId: Int?
+    /// `.update` only — the new passage (and colour) to send once back online.
+    /// Optional so entries persisted by older builds still decode.
+    var change: HighlightUpdate? = nil
 
     init(articleId: Int, kind: PendingHighlightKind,
-         tempId: String? = nil, payload: HighlightCreate? = nil, highlightId: Int? = nil) {
+         tempId: String? = nil, payload: HighlightCreate? = nil, highlightId: Int? = nil,
+         change: HighlightUpdate? = nil) {
         self.id          = UUID()
         self.articleId   = articleId
         self.kind        = kind
         self.tempId      = tempId
         self.payload     = payload
         self.highlightId = highlightId
+        self.change      = change
     }
 }
 
@@ -78,8 +84,26 @@ final class OfflineHighlightQueue: @unchecked Sendable {
         save()
     }
 
+    /// Only the latest change per highlight is kept; a colour set by an
+    /// earlier, still queued change carries over.
+    func enqueueUpdate(articleId: Int, highlightId: Int, change: HighlightUpdate) {
+        lock.withLock {
+            var change = change
+            if change.color == nil,
+               let earlier = _pending.last(where: { $0.kind == .update && $0.highlightId == highlightId })?.change {
+                change.color = earlier.color
+            }
+            _pending.removeAll { $0.kind == .update && $0.highlightId == highlightId }
+            _pending.append(PendingHighlightMutation(
+                articleId: articleId, kind: .update, highlightId: highlightId, change: change))
+        }
+        save()
+    }
+
     func enqueueDelete(articleId: Int, highlightId: Int) {
         lock.withLock {
+            // Deleted anyway: a queued change would only fail with 404.
+            _pending.removeAll { $0.kind == .update && $0.highlightId == highlightId }
             _pending.append(PendingHighlightMutation(
                 articleId: articleId, kind: .delete, highlightId: highlightId))
         }
@@ -121,11 +145,19 @@ final class OfflineHighlightQueue: @unchecked Sendable {
                     guard let highlightId = mutation.highlightId else { continue }
                     try await MerlinAPI.shared.deleteHighlight(highlightId)
                     await HighlightCacheService.shared.remove(id: highlightId, articleId: mutation.articleId)
+
+                case .update:
+                    guard let highlightId = mutation.highlightId, let change = mutation.change else { continue }
+                    let saved = try await MerlinAPI.shared.updateHighlight(highlightId, payload: change)
+                    await HighlightCacheService.shared.upsert(saved)
                 }
             } catch {
                 if mutation.kind == .delete, case MerlinAPIError.notFound = error, let hid = mutation.highlightId {
                     // Already gone server-side — treat as success.
                     await HighlightCacheService.shared.remove(id: hid, articleId: mutation.articleId)
+                } else if mutation.kind == .update, !Self.isNetworkError(error) {
+                    // Rejected (highlight deleted elsewhere, older server …):
+                    // retrying won't help; the next fetch restores the truth.
                 } else {
                     failed.append(mutation)
                 }
@@ -136,6 +168,11 @@ final class OfflineHighlightQueue: @unchecked Sendable {
             lock.withLock { _pending.append(contentsOf: failed) }
             save()
         }
+    }
+
+    private static func isNetworkError(_ error: Error) -> Bool {
+        if case MerlinAPIError.networkError = error { return true }
+        return false
     }
 
     // MARK: – Network monitoring
