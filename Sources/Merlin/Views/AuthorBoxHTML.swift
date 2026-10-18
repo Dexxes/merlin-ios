@@ -64,8 +64,10 @@ enum AuthorBoxHTML {
       text-decoration-color: var(--merlin-author-accent);
       text-decoration-thickness: 2px; text-underline-offset: 2px;
     }
-    /* Autorenlink im Namen in Akzentfarbe. */
-    merlin-author-box .merlin-author-name a { color: var(--merlin-author-accent) !important; }
+    /* Autorenlink im Namen in Akzentfarbe, ohne Unterstreichung. */
+    merlin-author-box .merlin-author-name a {
+      color: var(--merlin-author-accent) !important; text-decoration: none;
+    }
     """
 
     // MARK: – Intern
