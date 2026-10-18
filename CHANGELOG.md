@@ -83,6 +83,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   step shows the full-width bar docked to the screen edge with the five
   colours, Comment and Remove. The highlighted phrase now also shows in
   German.
+- Card view: cards no longer react to swipes (no share on the left, no
+  favorite/archive/delete on the right, no full-swipe archive). All these
+  actions stay in the long-press menu; the list view keeps its swipe
+  actions. The tour's "Share Articles" step now only appears in list view.
 
 ### Fixed
 - Tags: archiving, restoring or (un)favoriting an article inside a tag view

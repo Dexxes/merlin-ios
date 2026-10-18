@@ -27,7 +27,7 @@ extension View {
 private enum TourPhase: Equatable {
     case list        // actual app shows through dim
     case leftFlyout  // demo left flyout rendered
-    case cardSwipe   // demo card/row swiped right to reveal share
+    case cardSwipe   // demo list row swiped right to reveal share
     case reader      // demo article reader + right flyout rendered
     case highlights  // demo reader + highlighted text + color toolbar
 }
@@ -41,11 +41,14 @@ private struct TourStep {
     let anchorKey: String?
     /// Zeigt in der Karte die Auswahl der Akzentfarbe (letzter Schritt).
     var showsAccentPicker: Bool = false
+    /// Nur in der Listenansicht zeigen (Wischgesten gibt es nur dort).
+    var isListViewOnly: Bool = false
 }
 
 /// Text des Löschfrist-Schritts hängt von den Fristen des Servers ab
 /// (`RetentionStore.summaryText`), deshalb werden die Schritte pro Anzeige gebaut.
-private func makeTourSteps(retentionBody: String) -> [TourStep] { [
+/// Teilen per Wischen gibt es nur in der Listenansicht, Karten haben keine Wischgesten.
+private func makeTourSteps(retentionBody: String, isCardView: Bool) -> [TourStep] { [
     TourStep(systemImage: "hand.wave",
              title: L("onboarding.step1.title"),
              body: L("onboarding.step1.body"),
@@ -69,7 +72,7 @@ private func makeTourSteps(retentionBody: String) -> [TourStep] { [
     TourStep(systemImage: "square.and.arrow.up",
              title: L("onboarding.step6.title"),
              body: L("onboarding.step6.body"),
-             phase: .cardSwipe, anchorKey: "cardShareArea"),
+             phase: .cardSwipe, anchorKey: "cardShareArea", isListViewOnly: true),
 
     TourStep(systemImage: "sidebar.right",
              title: L("onboarding.step7.title"),
@@ -116,7 +119,7 @@ private func makeTourSteps(retentionBody: String) -> [TourStep] { [
              body: L("onboarding.accentColor.body"),
              phase: .list, anchorKey: nil,
              showsAccentPicker: true),
-] }
+].filter { !(isCardView && $0.isListViewOnly) } }
 
 /// Vorschläge für die Akzentfarbe im letzten Tour-Schritt; der Standard
 /// (`#FF3B30`) steht vorn. Jede andere Farbe gibt es über den ColorPicker.
@@ -234,100 +237,6 @@ private struct DemoLeftFlyout: View {
 
     private var menuDivider: some View {
         Divider().padding(.horizontal, 20).padding(.vertical, 3)
-    }
-}
-
-// MARK: - Demo: Card with Share Swipe
-
-private struct DemoCardSwipe: View {
-    private let shareWidth:  CGFloat = 72
-    private let cardHeight:  CGFloat = 248
-
-    @State private var animOffset: CGFloat = 0
-
-    /// Real safe area top — read from UIKit because the outer GeometryReader
-    /// runs with ignoresSafeArea() and would report 0 otherwise.
-    private var safeTop: CGFloat {
-        UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .first?.windows.first(where: { $0.isKeyWindow })?.safeAreaInsets.top ?? 44
-    }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            Color.clear.frame(height: safeTop + 62)
-
-            // Leading: share pill button, card animated right
-            ZStack(alignment: .leading) {
-                demoPill(icon: "square.and.arrow.up", tint: .blue, label: L("articleActions.share"))
-                    .frame(width: shareWidth, height: cardHeight)
-                    .tourAnchor("cardShareArea")
-
-                cardBody
-                    .padding(.trailing, 12)
-                    .offset(x: animOffset)
-            }
-            .frame(height: cardHeight)
-            .clipped()
-
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemGroupedBackground).ignoresSafeArea())
-        // Swipe demo animation — loops: slide in → pause → slide back → pause
-        .task {
-            animOffset = 0
-            try? await Task.sleep(for: .seconds(0.5))
-            while !Task.isCancelled {
-                withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) {
-                    animOffset = shareWidth
-                }
-                try? await Task.sleep(for: .seconds(1.4))
-                withAnimation(.spring(response: 0.42, dampingFraction: 0.9)) {
-                    animOffset = 0
-                }
-                try? await Task.sleep(for: .seconds(1.0))
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func demoPill(icon: String, tint: Color, label: String) -> some View {
-        VStack(spacing: 3) {
-            Image(systemName: icon)
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 44, height: 44)
-                .background(tint)
-                .clipShape(Circle())
-                .shadow(color: .black.opacity(0.18), radius: 4, x: 0, y: 2)
-                .shadow(color: .black.opacity(0.10), radius: 1, x: 0, y: 1)
-            Text(label)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    private var cardBody: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            LinearGradient(
-                colors: [Color(red: 0.18, green: 0.42, blue: 0.62),
-                         Color(red: 0.42, green: 0.18, blue: 0.54)],
-                startPoint: .topLeading, endPoint: .bottomTrailing)
-            .aspectRatio(16 / 9, contentMode: .fit)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(L("onboarding.demo.sampleArticle.title"))
-                    .font(.subheadline.weight(.semibold)).lineLimit(2)
-                Text(L("onboarding.demo.sampleArticle.meta"))
-                    .font(.caption2).foregroundStyle(.secondary)
-            }
-            .padding(10)
-        }
-        .background(Color(.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12)
-            .strokeBorder(Color(.separator).opacity(0.4), lineWidth: 0.5))
     }
 }
 
@@ -727,7 +636,8 @@ struct OnboardingTourView: View {
     /// against an already-dark background.
     private var dimOpacity: Double { colorScheme == .dark ? 0.55 : 0.72 }
 
-    private var tourSteps: [TourStep] { makeTourSteps(retentionBody: RetentionStore.shared.summaryText) }
+    private var tourSteps: [TourStep] { makeTourSteps(retentionBody: RetentionStore.shared.summaryText,
+                                                    isCardView: isCardView) }
     private var step: TourStep { tourSteps[stepIndex] }
     private var isLast: Bool   { stepIndex == tourSteps.count - 1 }
 
@@ -898,7 +808,7 @@ struct OnboardingTourView: View {
             }
 
         case .cardSwipe:
-            if isCardView { DemoCardSwipe() } else { DemoRowSwipe() }
+            DemoRowSwipe()
 
         case .reader:
             DemoReaderView(showHighlights: false,
