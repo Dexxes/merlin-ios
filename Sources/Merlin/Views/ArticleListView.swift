@@ -445,24 +445,29 @@ struct ArticleListView: View {
         // .refreshable in Kombination mit .searchable (Ladeindikator sprang
         // über die Suchleiste). Mit echten, mehreren List-Zeilen pro Artikel
         // – wie in articleList – verhält sich der Refresh-Control korrekt.
-        List(viewModel.filteredArticles) { article in
-            ArticleCardView(
-                article: article,
-                onToggleFavorite: { Task { await viewModel.toggleFavorite(article) } },
-                onToggleArchive:  { Task { await viewModel.toggleArchive(article) } },
-                onDelete:         { Task { await viewModel.delete(article) } },
-                onEditTags:       { tagSheetArticle = article },
-                onRename:         { renameArticle = article },
-                onTap:            { selectedArticle = article },
-                showFavoriteAction: viewModel.selectedFilter.kind != .favorites,
-                showArchiveAction:  !isArchiveView,
-                showArchivedState:  !isArchiveView
-            )
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .listRowInsets(EdgeInsets())
-            .listRowSeparator(.hidden)
-            .listRowBackground(Color.clear)
+        List {
+            ForEach(viewModel.filteredArticles) { article in
+                ArticleCardView(
+                    article: article,
+                    onToggleFavorite: { Task { await viewModel.toggleFavorite(article) } },
+                    onToggleArchive:  { Task { await viewModel.toggleArchive(article) } },
+                    onDelete:         { Task { await viewModel.delete(article) } },
+                    onEditTags:       { tagSheetArticle = article },
+                    onRename:         { renameArticle = article },
+                    onTap:            { selectedArticle = article },
+                    showFavoriteAction: viewModel.selectedFilter.kind != .favorites,
+                    showArchiveAction:  !isArchiveView,
+                    showArchivedState:  !isArchiveView
+                )
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .listRowInsets(EdgeInsets())
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+                .onAppear { viewModel.loadMoreIfNeeded(currentItem: article) }
+            }
+            loadMoreFooter
+                .listRowBackground(Color.clear)
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
@@ -510,28 +515,56 @@ struct ArticleListView: View {
     }
 
     private var articleList: some View {
-        List(viewModel.filteredArticles) { article in
-            Button {
-                selectedArticle = article
-            } label: {
-                ArticleRowView(
-                    article: article,
-                    activeSwipeId: $activeSwipeId,
-                    showThumbnail:      true,
-                    onToggleFavorite:   { Task { await viewModel.toggleFavorite(article) } },
-                    onToggleArchive:    { Task { await viewModel.toggleArchive(article) } },
-                    onDelete:           { Task { await viewModel.delete(article) } },
-                    onEditTags:         { tagSheetArticle = article },
-                    onRename:           { renameArticle = article },
-                    showFavoriteAction: viewModel.selectedFilter.kind != .favorites,
-                    showArchiveAction:  !isArchiveView,
-                    showArchivedState:  !isArchiveView
-                )
+        List {
+            ForEach(viewModel.filteredArticles) { article in
+                Button {
+                    selectedArticle = article
+                } label: {
+                    ArticleRowView(
+                        article: article,
+                        activeSwipeId: $activeSwipeId,
+                        showThumbnail:      true,
+                        onToggleFavorite:   { Task { await viewModel.toggleFavorite(article) } },
+                        onToggleArchive:    { Task { await viewModel.toggleArchive(article) } },
+                        onDelete:           { Task { await viewModel.delete(article) } },
+                        onEditTags:         { tagSheetArticle = article },
+                        onRename:           { renameArticle = article },
+                        showFavoriteAction: viewModel.selectedFilter.kind != .favorites,
+                        showArchiveAction:  !isArchiveView,
+                        showArchivedState:  !isArchiveView
+                    )
+                }
+                .buttonStyle(.plain)
+                .onAppear { viewModel.loadMoreIfNeeded(currentItem: article) }
             }
-            .buttonStyle(.plain)
+            loadMoreFooter
         }
         .listStyle(.plain)
         .refreshable { await viewModel.load() }
+    }
+
+    /// Letzte Zeile der Card- und Listenansicht, solange der Server ältere
+    /// Artikel hat: Spinner beim Nachladen, nach einem Fehler ein Button
+    /// zum erneuten Versuch. `.task(id:)` stößt das Nachladen auch dann an,
+    /// wenn die Zeile nach einer Seite sichtbar bleibt (z. B. weil Tag-Filter,
+    /// Suche oder „Weiterlesen“ alle neuen Artikel ausblenden) – `onAppear` der Artikelzeilen
+    /// feuert dann nicht erneut.
+    @ViewBuilder
+    private var loadMoreFooter: some View {
+        if viewModel.loadMoreFailed {
+            Button(L("articleList.loadMore.retryButton")) {
+                viewModel.retryLoadMore()
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .listRowSeparator(.hidden)
+        } else if viewModel.hasMoreArticles {
+            ProgressView()
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .listRowSeparator(.hidden)
+                .task(id: "\(viewModel.articles.count)|\(viewModel.rawOffset)") { viewModel.loadMore() }
+        }
     }
 
     private var emptyView: some View {

@@ -241,6 +241,14 @@ final class ArticlesViewModel {
     var error: String? = nil
     var counts = ArticleCounts()
 
+    /// Nachladen älterer Artikel beim Runterscrollen (Card- und Listenansicht).
+    /// `true`, solange der Server die letzte Seite voll geliefert hat.
+    private(set) var hasMoreArticles = false
+    private(set) var isLoadingMore = false
+    /// Letztes Nachladen schlug fehl – die Liste zeigt dann „Erneut versuchen“
+    /// statt automatisch weiter zu laden.
+    private(set) var loadMoreFailed = false
+
     /// Tag-IDs, deren Artikel aus der Liste ausgeblendet werden.
     /// Wird automatisch in UserDefaults persistiert.
     var excludedTagIds: Set<Int> = PreferencesStore.shared.excludedTagIds {
@@ -331,8 +339,36 @@ final class ArticlesViewModel {
 
     // MARK: – Load
 
+    /// Artikel pro Server-Abruf (Erstladen und jedes Nachladen).
+    static let pageSize = 50
+
     /// Laufender Netzwerkabruf von `load()`; wird von `continueOffline()` abgebrochen.
-    private var fetchTask: Task<(articles: [Article], counts: ArticleCounts), Error>?
+    private var fetchTask: Task<(page: ArticlePage, counts: ArticleCounts), Error>?
+    private var loadMoreTask: Task<Void, Never>?
+    /// Wird bei jedem `load()` erhöht, damit ein noch laufendes Nachladen
+    /// für eine alte Ansicht seine Seite verwirft statt sie anzuhängen.
+    private var loadGeneration = 0
+    /// Server-Offset für die nächste Seite. Nur in „Weiterlesen“ relevant,
+    /// wo client-seitig gefiltert wird – sonst ist `articles.count` der Offset,
+    /// siehe `nextOffset`. Lesbar für die Liste, damit sie auch nach einer
+    /// Seite ohne neue sichtbare Artikel weiter nachlädt.
+    private(set) var rawOffset = 0
+    /// Ansicht, für die `articles` geladen wurde. Ein Reload derselben Ansicht
+    /// (Pull-to-Refresh, Rückkehr aus dem Hintergrund, Undo) holt so viele
+    /// Artikel wie schon nachgeladen waren, statt die Liste auf die erste
+    /// Seite zu kürzen.
+    private var loadedViewKey: String?
+
+    private var currentViewKey: String {
+        "\(selectedFilter.rawValue)|\(selectedTagId.map { String($0) } ?? "-")|\(showArchivedInTagView)"
+    }
+
+    /// Eine Server-Seite: die (ggf. client-seitig gefilterten) Artikel und
+    /// wie viele der Server geliefert hat – daran hängt, ob es weitere gibt.
+    private struct ArticlePage {
+        let articles: [Article]
+        let rawCount: Int
+    }
 
     /// Bricht einen hängenden Ladevorgang ab, damit `load()` sofort auf den
     /// lokalen Cache zurückfällt (Splash-Screen: "Im Offlinemodus starten?").
@@ -342,21 +378,33 @@ final class ArticlesViewModel {
 
     func load() async {
         prefetchTask?.cancel()
+        loadMoreTask?.cancel()
+        loadGeneration += 1
+        isLoadingMore = false
+        loadMoreFailed = false
         isLoading = true
         error = nil
         let filter = selectedFilter
+        let viewKey = currentViewKey
+        let alreadyLoaded = loadedViewKey == viewKey
+            ? (filter.kind == .continue && selectedTagId == nil ? rawOffset : articles.count)
+            : 0
+        let limit = max(Self.pageSize, alreadyLoaded)
         let task = Task { [self] in
-            let fetched = try await fetchForFilter(filter)
+            let page = try await fetchForFilter(filter, limit: limit, offset: 0)
             let newCounts = try await MerlinAPI.shared.getCounts()
-            return (articles: fetched, counts: newCounts)
+            return (page: page, counts: newCounts)
         }
         fetchTask = task
         do {
             let result  = try await task.value
-            let fetched = result.articles
+            let fetched = result.page.articles
             counts      = result.counts
             articles    = fetched
             isOffline   = false
+            rawOffset       = result.page.rawCount
+            hasMoreArticles = result.page.rawCount >= limit
+            loadedViewKey   = viewKey
             // Persist to cache so offline reads work later.
             await ArticleCacheService.shared.upsert(fetched)
             prefetchImages(for: fetched)
@@ -364,6 +412,9 @@ final class ArticlesViewModel {
             // Replay any mutations that were queued while offline.
             await OfflineMutationQueue.shared.drain()
         } catch {
+            // Offline gibt es nichts nachzuladen – der Cache liefert alles auf einmal.
+            hasMoreArticles = false
+            loadedViewKey   = nil
             // Network failed – serve from the local cache if available.
             let cached = await ArticleCacheService.shared.loadFiltered(
                 filter: selectedFilter, tagIds: selectedTagScope, showArchivedForTag: showArchivedInTagView)
@@ -383,39 +434,117 @@ final class ArticlesViewModel {
         isLoading = false
     }
 
-    private func fetchForFilter(_ filter: ArticleFilter) async throws -> [Article] {
+    /// Wird von den Zeilen der Card- und Listenansicht beim Erscheinen
+    /// aufgerufen: nähert sich der Nutzer dem Ende der Liste, wird die
+    /// nächste Seite älterer Artikel geholt.
+    func loadMoreIfNeeded(currentItem article: Article) {
+        let visible = filteredArticles
+        guard let idx = visible.firstIndex(where: { $0.id == article.id }),
+              idx >= visible.count - 5 else { return }
+        loadMore()
+    }
+
+    /// Holt die nächste Seite. Mehrfachaufrufe während eines laufenden
+    /// Abrufs sind ein No-op; nach einem Fehler nur noch über `retryLoadMore()`.
+    func loadMore() {
+        guard hasMoreArticles, !isLoading, !isLoadingMore, !loadMoreFailed, !isOffline else { return }
+        isLoadingMore = true
+        let generation = loadGeneration
+        let filter = selectedFilter
+        let offset = nextOffset
+        loadMoreTask = Task { [self] in
+            do {
+                let page = try await fetchForFilter(filter, limit: Self.pageSize, offset: offset)
+                guard generation == loadGeneration else { return }
+                let known = Set(articles.map(\.id))
+                let fresh = page.articles.filter { !known.contains($0.id) }
+                articles = sortedForFilter(filter, articles + fresh)
+                rawOffset += page.rawCount
+                hasMoreArticles = page.rawCount >= Self.pageSize
+                isLoadingMore = false
+                await ArticleCacheService.shared.upsert(fresh)
+                Task.detached(priority: .utility) {
+                    await ImageCacheService.shared.prefetch(for: fresh)
+                }
+                startProcessingListenerIfNeeded()
+            } catch {
+                guard generation == loadGeneration else { return }
+                isLoadingMore = false
+                if !Task.isCancelled { loadMoreFailed = true }
+            }
+        }
+    }
+
+    func retryLoadMore() {
+        loadMoreFailed = false
+        loadMore()
+    }
+
+    /// Offset der nächsten Server-Seite. Außerhalb von „Weiterlesen“ deckt
+    /// sich `articles` 1:1 mit der Server-Abfrage; ein archivierter oder
+    /// gelöschter Artikel fehlt dann auch auf dem Server, die Zahl der
+    /// geladenen Artikel ist also der richtige Offset und nichts wird
+    /// übersprungen. Doppelte (z. B. noch nicht synchronisierte Offline-
+    /// Änderungen) fängt der ID-Abgleich in `loadMore()` ab.
+    private var nextOffset: Int {
+        selectedTagId == nil && selectedFilter.kind == .continue ? rawOffset : articles.count
+    }
+
+    private func fetchForFilter(_ filter: ArticleFilter, limit: Int, offset: Int) async throws -> ArticlePage {
         if let tagId = selectedTagId {
             // In der Einzel-Tag-Ansicht blendet `showArchivedInTagView` archivierte
             // Artikel standardmäßig aus (sonst mischt der Server Archiv + Aktiv,
             // da `isArchived` beim Tag-Filter sonst gar nicht gesetzt wird).
-            return try await MerlinAPI.shared.getArticles(
-                isArchived: showArchivedInTagView ? nil : false, tagId: tagId)
+            let fetched = try await MerlinAPI.shared.getArticles(
+                isArchived: showArchivedInTagView ? nil : false, tagId: tagId,
+                limit: limit, offset: offset)
+            return ArticlePage(articles: fetched, rawCount: fetched.count)
         }
         let contentType = filter.group.contentType
+        let fetched: [Article]
         switch filter.kind {
         case .continue:
             // Angefangene, aber weder fertig gelesene/geschaute noch archivierte
             // Inhalte – nutzt den bereits geräteübergreifend synchronisierten
             // `scrollProgress` (siehe ProgressSyncQueue), keine eigene Server-Anfrage.
-            let fetched = try await MerlinAPI.shared.getArticles(isArchived: false, contentType: contentType)
-            return fetched
-                .filter { article in
-                    guard let progress = article.scrollProgress else { return false }
-                    return progress > 0 && progress < 1
-                }
-                .sorted { ($0.scrollUpdatedAt ?? 0) > ($1.scrollUpdatedAt ?? 0) }
+            let raw = try await MerlinAPI.shared.getArticles(
+                isArchived: false, contentType: contentType, limit: limit, offset: offset)
+            let started = raw.filter { article in
+                guard let progress = article.scrollProgress else { return false }
+                return progress > 0 && progress < 1
+            }
+            return ArticlePage(articles: sortedForFilter(filter, started), rawCount: raw.count)
         case .unread:
-            return try await MerlinAPI.shared.getArticles(isArchived: false, contentType: contentType)
+            fetched = try await MerlinAPI.shared.getArticles(
+                isArchived: false, contentType: contentType, limit: limit, offset: offset)
         case .favorites:
             // Bewusst OHNE isArchived-Filter: Favoriten sollen unabhängig vom
-            // Archiv-Status angezeigt werden. Chronologisch nach
-            // Favorisierungszeitpunkt sortieren (Server sortiert bereits so,
-            // client-seitig hier abgesichert – analog zum .archive-Fall unten).
-            let fetched = try await MerlinAPI.shared.getArticles(isFavorite: true, contentType: contentType)
-            return fetched.sorted { ($0.favoritedAt ?? "") > ($1.favoritedAt ?? "") }
+            // Archiv-Status angezeigt werden.
+            fetched = try await MerlinAPI.shared.getArticles(
+                isFavorite: true, contentType: contentType, limit: limit, offset: offset)
         case .archive:
-            let fetched = try await MerlinAPI.shared.getArticles(isArchived: true, contentType: contentType)
-            return fetched.sorted { ($0.archivedAt ?? "") > ($1.archivedAt ?? "") }
+            fetched = try await MerlinAPI.shared.getArticles(
+                isArchived: true, contentType: contentType, limit: limit, offset: offset)
+        }
+        return ArticlePage(articles: sortedForFilter(filter, fetched), rawCount: fetched.count)
+    }
+
+    /// Client-seitige Sortierung je Ansicht. Favoriten chronologisch nach
+    /// Favorisierungszeitpunkt, Archiv nach Archivierungszeitpunkt (der Server
+    /// sortiert bereits so, hier abgesichert), „Weiterlesen“ nach zuletzt
+    /// gelesen. Auch auf die zusammengeführte Liste nach dem Nachladen
+    /// angewendet, damit eine neue Seite nicht außer der Reihe landet.
+    private func sortedForFilter(_ filter: ArticleFilter, _ list: [Article]) -> [Article] {
+        guard selectedTagId == nil else { return list }
+        switch filter.kind {
+        case .continue:
+            return list.sorted { ($0.scrollUpdatedAt ?? 0) > ($1.scrollUpdatedAt ?? 0) }
+        case .favorites:
+            return list.sorted { ($0.favoritedAt ?? "") > ($1.favoritedAt ?? "") }
+        case .archive:
+            return list.sorted { ($0.archivedAt ?? "") > ($1.archivedAt ?? "") }
+        case .unread:
+            return list
         }
     }
 

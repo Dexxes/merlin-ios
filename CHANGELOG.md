@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Article list: scrolling down in the card or list view now loads older
+  articles, 50 at a time, instead of stopping after the newest 50. A spinner
+  shows at the end of the list while they load; if loading fails, a button
+  there tries again. Pull-to-refresh and returning to the app keep the
+  articles already loaded. Works in every view (Unread, Continue, Favourites,
+  Archive, tag view); offline, the cached articles are shown as before.
 - Reader in landscape on iPhone: instead of the bottom bar there is a small
   round button in the bottom-right corner. Tapping it fans out Archive,
   Share, Tags, Appearance (not for PDFs) and Back in a quarter circle.
