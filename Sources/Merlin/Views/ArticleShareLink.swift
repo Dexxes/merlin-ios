@@ -19,20 +19,6 @@ struct ArticleShareLink<Label: View>: View {
     }
 }
 
-/// `UIActivityViewController` for places that open the share sheet from a
-/// plain button (swipe actions on cards). Links only; file entries go
-/// through `FileSharePresenter`.
-struct ArticleShareSheet: UIViewControllerRepresentable {
-    let article: Article
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        let items: [Any] = URL(string: article.url).map { [$0, article.displayTitle] } ?? [article.displayTitle]
-        return UIActivityViewController(activityItems: items, applicationActivities: nil)
-    }
-
-    func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
-}
-
 /// Downloads a file entry's file and then opens the share sheet with the
 /// local file. Presents from the top view controller, so it also works from
 /// context menus, which are gone by the time the download finishes. While

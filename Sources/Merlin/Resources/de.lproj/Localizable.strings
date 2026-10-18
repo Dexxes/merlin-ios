@@ -458,12 +458,14 @@
 "onboarding.demo.leftFlyout.settings" = "Einstellungen";
 "onboarding.demo.leftFlyout.tags" = "Tags";
 "onboarding.demo.leftFlyout.unread" = "Ungelesen (12)";
-"onboarding.demo.readerMenu.close" = "Schließen";
 "onboarding.demo.sampleArticle.body" = "Schlechte Wasserqualität und dicht bebaute Ufer: Lange galten Fischotter in Berlin als ausgerottet, seit den 60ern stehen sie unter strengem Schutz, in den 90er Jahren nehmen die Bestände wieder zu. Ebenso wurden die Tiere im 18. und 19. Jahrhundert intensiv bejagt, da sie als Nahrungskonkurrent zum Menschen gesehen wurden und ihr Fell begehrt war. In den vergangenen Jahren konnte sich ihre Population dank Tier- und Naturschutz wieder erholen und wurde vor allem im Ostteil Berlins gesichtet. Der moderne urbane Raum birgt allerdings für Fischotter auch viele Gefahren.";
-"onboarding.demo.sampleArticle.byline" = "Von Julian von Bülow · rbb|24 · 8 Min. · Mai 2026";
+"onboarding.demo.sampleArticle.byline" = "Von Julian von Bülow · 8 min · 12.05.26";
 "onboarding.demo.sampleArticle.meta" = "rbb|24 · 8 Min.";
+"onboarding.demo.sampleArticle.tag" = "Natur";
+"onboarding.demo.sampleArticle.teaser" = "Lange galten sie als ausgerottet, jetzt werden sie vor allem im Osten der Stadt wieder gesichtet.";
 "onboarding.demo.sampleArticle.title" = "Fischotter könnte in Berlin wieder heimisch werden";
 "onboarding.demo.sampleHighlight" = "In einer Zeit endlosen Scrollens wirkt langsames Lesen fast schon radikal. Doch eine wachsende Zahl an Studien legt nahe, dass tiefes, bewusstes Lesen eine der wertvollsten Fähigkeiten sein könnte, die wir kultivieren können.";
+"onboarding.demo.sampleHighlight.phrase" = "tiefes, bewusstes Lesen eine der wertvollsten Fähigkeiten sein könnte, die wir kultivieren können";
 "onboarding.retention.articlesKept" = "Archivierte Artikel werden nicht automatisch gelöscht.";
 "onboarding.retention.bodyUnknown" = "Archivierte Artikel können nach einer Frist automatisch vom Server gelöscht werden, gezählt ab dem Archivieren. Die Frist wählst du in den Einstellungen, dein Server kann eine Höchstdauer vorgeben.";
 "onboarding.retention.favoritesKept" = "Archivierte Favoriten bleiben erhalten.";
@@ -477,7 +479,7 @@
 "onboarding.step10.title" = "Erinnerungen";
 "onboarding.step11.body" = "Fehlerhafte Formatierung gefunden? Melde den Artikel, damit wir das beheben können.";
 "onboarding.step11.title" = "Artikel melden";
-"onboarding.step12.body" = "Markiere beim Lesen Text, um ihn in einer von fünf Farben hervorzuheben. Hervorhebungen werden mit deinem Konto synchronisiert.";
+"onboarding.step12.body" = "Markiere beim Lesen Text: In der Leiste am Bildschirmrand hebst du ihn in einer von fünf Farben hervor oder kommentierst ihn. Hervorhebungen werden mit deinem Konto synchronisiert.";
 "onboarding.step12.title" = "Hervorhebungen";
 "onboarding.step13.body" = "Versehentlich etwas archiviert oder gelöscht? Schüttle einfach dein Telefon, um die letzte Aktion rückgängig zu machen.";
 "onboarding.step13.title" = "Schütteln zum Rückgängigmachen";
@@ -487,8 +489,6 @@
 "onboarding.step3.title" = "Navigationsmenü";
 "onboarding.step4.body" = "Bevorzugst du eine kompakte Liste oder Karten? Wechsle jederzeit über das Navigationsmenü zwischen Listen- und Kartenansicht.";
 "onboarding.step4.title" = "Ansicht wechseln";
-"onboarding.step5.body" = "Wische einen Artikel nach links, um ihn zu archivieren, als Favorit zu markieren oder zu löschen.";
-"onboarding.step5.title" = "Schnellaktionen";
 "onboarding.step6.body" = "Wische einen Artikel nach rechts, um ihn schnell mit Freunden zu teilen oder an eine andere App zu senden.";
 "onboarding.step6.title" = "Artikel teilen";
 "onboarding.step7.body" = "Wische beim Lesen vom rechten Rand, um zu teilen, Tags zu bearbeiten, Erinnerungen zu setzen und mehr.";

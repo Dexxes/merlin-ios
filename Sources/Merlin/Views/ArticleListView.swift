@@ -448,7 +448,6 @@ struct ArticleListView: View {
         List(viewModel.filteredArticles) { article in
             ArticleCardView(
                 article: article,
-                activeSwipeId: $activeSwipeId,
                 onToggleFavorite: { Task { await viewModel.toggleFavorite(article) } },
                 onToggleArchive:  { Task { await viewModel.toggleArchive(article) } },
                 onDelete:         { Task { await viewModel.delete(article) } },

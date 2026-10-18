@@ -27,7 +27,7 @@ extension View {
 private enum TourPhase: Equatable {
     case list        // actual app shows through dim
     case leftFlyout  // demo left flyout rendered
-    case cardSwipe   // demo card with swipe actions rendered
+    case cardSwipe   // demo list row swiped right to reveal share
     case reader      // demo article reader + right flyout rendered
     case highlights  // demo reader + highlighted text + color toolbar
 }
@@ -41,11 +41,14 @@ private struct TourStep {
     let anchorKey: String?
     /// Zeigt in der Karte die Auswahl der Akzentfarbe (letzter Schritt).
     var showsAccentPicker: Bool = false
+    /// Nur in der Listenansicht zeigen (Wischgesten gibt es nur dort).
+    var isListViewOnly: Bool = false
 }
 
 /// Text des Löschfrist-Schritts hängt von den Fristen des Servers ab
 /// (`RetentionStore.summaryText`), deshalb werden die Schritte pro Anzeige gebaut.
-private func makeTourSteps(retentionBody: String) -> [TourStep] { [
+/// Teilen per Wischen gibt es nur in der Listenansicht, Karten haben keine Wischgesten.
+private func makeTourSteps(retentionBody: String, isCardView: Bool) -> [TourStep] { [
     TourStep(systemImage: "hand.wave",
              title: L("onboarding.step1.title"),
              body: L("onboarding.step1.body"),
@@ -66,15 +69,10 @@ private func makeTourSteps(retentionBody: String) -> [TourStep] { [
              body: L("onboarding.step4.body"),
              phase: .leftFlyout, anchorKey: "menuViewToggle"),
 
-    TourStep(systemImage: "hand.point.left",
-             title: L("onboarding.step5.title"),
-             body: L("onboarding.step5.body"),
-             phase: .cardSwipe, anchorKey: "cardSwipeArea"),
-
     TourStep(systemImage: "square.and.arrow.up",
              title: L("onboarding.step6.title"),
              body: L("onboarding.step6.body"),
-             phase: .cardSwipe, anchorKey: "cardShareArea"),
+             phase: .cardSwipe, anchorKey: "cardShareArea", isListViewOnly: true),
 
     TourStep(systemImage: "sidebar.right",
              title: L("onboarding.step7.title"),
@@ -121,7 +119,7 @@ private func makeTourSteps(retentionBody: String) -> [TourStep] { [
              body: L("onboarding.accentColor.body"),
              phase: .list, anchorKey: nil,
              showsAccentPicker: true),
-] }
+].filter { !(isCardView && $0.isListViewOnly) } }
 
 /// Vorschläge für die Akzentfarbe im letzten Tour-Schritt; der Standard
 /// (`#FF3B30`) steht vorn. Jede andere Farbe gibt es über den ColorPicker.
@@ -242,136 +240,113 @@ private struct DemoLeftFlyout: View {
     }
 }
 
-// MARK: - Demo: Card with Swipe Actions
+// MARK: - Demo: Hero image
 
-private struct DemoCardSwipe: View {
-    var showShare: Bool = false
-
-    private let actionWidth: CGFloat = 72
-    private let shareWidth:  CGFloat = 72
-    private let cardHeight:  CGFloat = 248
-
-    @State private var animOffset: CGFloat = 0
-
-    /// Real safe area top — read from UIKit because the outer GeometryReader
-    /// runs with ignoresSafeArea() and would report 0 otherwise.
-    private var safeTop: CGFloat {
-        UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .first?.windows.first(where: { $0.isKeyWindow })?.safeAreaInsets.top ?? 44
-    }
-
+/// Titelbild des Beispielartikels: gezeichnete Flusslandschaft am Morgen mit
+/// einem Fischotter im Wasser. Ohne Bilddatei, damit die Tour keine Fotorechte
+/// braucht und in jeder Größe scharf bleibt (Listen-Vorschau und Reader).
+private struct DemoHeroImage: View {
     var body: some View {
-        VStack(spacing: 0) {
-            Color.clear.frame(height: safeTop + 62)
+        Canvas { ctx, size in
+            let w = size.width, h = size.height
 
-            if showShare {
-                // Leading: share pill button, card animated right
-                ZStack(alignment: .leading) {
-                    demoPill(icon: "square.and.arrow.up", tint: .blue, label: L("articleActions.share"))
-                        .frame(width: shareWidth, height: cardHeight)
-                        .tourAnchor("cardShareArea")
+            // Himmel
+            ctx.fill(Path(CGRect(origin: .zero, size: size)),
+                     with: .linearGradient(
+                        Gradient(colors: [Color(red: 0.55, green: 0.72, blue: 0.88),
+                                          Color(red: 0.98, green: 0.84, blue: 0.68)]),
+                        startPoint: .zero, endPoint: CGPoint(x: 0, y: h * 0.55)))
 
-                    cardBody
-                        .padding(.trailing, 12)
-                        .offset(x: animOffset)
-                }
-                .frame(height: cardHeight)
-                .clipped()
-            } else {
-                // Trailing: favorite / archive / delete pill buttons, card shifted left.
-                // animOffset is driven by the .task loop below.
-                ZStack(alignment: .trailing) {
-                    VStack(spacing: 8) {
-                        demoPill(icon: "star.fill",       tint: Color(red: 1.0, green: 0.8, blue: 0.0), label: L("articleActions.favoriteAdd"))
-                        demoPill(icon: "archivebox.fill", tint: .orange,                                 label: L("articleActions.archiveAdd"))
-                        demoPill(icon: "trash.fill",      tint: .red,                                   label: L("common.delete"))
-                    }
-                    .frame(width: actionWidth, height: cardHeight)
+            // Sonne
+            ctx.fill(Path(ellipseIn: CGRect(x: w * 0.70, y: h * 0.12, width: h * 0.22, height: h * 0.22)),
+                     with: .color(Color(red: 1.0, green: 0.93, blue: 0.70)))
 
-                    cardBody
-                        .offset(x: animOffset)
-                }
-                .frame(height: cardHeight)
-                .clipped()
-                .tourAnchor("cardSwipeArea")
+            // Hügel und Uferwald im Hintergrund
+            ctx.fill(wave(w: w, h: h, baseY: 0.46, amp: 0.06, freq: 1.3, phase: 0.4),
+                     with: .color(Color(red: 0.40, green: 0.55, blue: 0.52)))
+            ctx.fill(wave(w: w, h: h, baseY: 0.54, amp: 0.035, freq: 3.1, phase: 1.2),
+                     with: .color(Color(red: 0.24, green: 0.42, blue: 0.33)))
+
+            // Fluss
+            ctx.fill(Path(CGRect(x: 0, y: h * 0.60, width: w, height: h * 0.40)),
+                     with: .linearGradient(
+                        Gradient(colors: [Color(red: 0.36, green: 0.58, blue: 0.70),
+                                          Color(red: 0.16, green: 0.34, blue: 0.48)]),
+                        startPoint: CGPoint(x: 0, y: h * 0.60), endPoint: CGPoint(x: 0, y: h)))
+
+            // Lichtreflexe auf dem Wasser
+            let lineWidth = max(1, h * 0.012)
+            for (y, x0, len) in [(0.66, 0.62, 0.22), (0.86, 0.66, 0.20), (0.93, 0.24, 0.18)] {
+                var line = Path()
+                line.move(to: CGPoint(x: w * x0, y: h * y))
+                line.addLine(to: CGPoint(x: w * (x0 + len), y: h * y))
+                ctx.stroke(line, with: .color(.white.opacity(0.35)),
+                           style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
             }
 
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemGroupedBackground).ignoresSafeArea())
-        // Swipe demo animation — loops: slide in → pause → slide back → pause
-        // Works for both trailing actions (showShare=false) and share (showShare=true).
-        .task(id: showShare) {
-            animOffset = 0
-            let target: CGFloat = showShare ? shareWidth : -actionWidth
-            try? await Task.sleep(for: .seconds(0.5))
-            while !Task.isCancelled {
-                withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) {
-                    animOffset = target
-                }
-                try? await Task.sleep(for: .seconds(1.4))
-                withAnimation(.spring(response: 0.42, dampingFraction: 0.9)) {
-                    animOffset = 0
-                }
-                try? await Task.sleep(for: .seconds(1.0))
+            // Fischotter: flacher Kopf und Rücken knapp über dem Wasser, Bugwelle dahinter
+            let cx = w * 0.50, cy = h * 0.74, r = h * 0.07
+            var wake = Path()
+            wake.move(to: CGPoint(x: cx - r * 3.3, y: cy + r * 0.5))
+            wake.addLine(to: CGPoint(x: cx - r * 6.6, y: cy - r * 0.2))
+            wake.move(to: CGPoint(x: cx - r * 3.3, y: cy + r * 0.7))
+            wake.addLine(to: CGPoint(x: cx - r * 6.2, y: cy + r * 1.8))
+            ctx.stroke(wake, with: .color(.white.opacity(0.55)),
+                       style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+
+            func oval(_ x0: CGFloat, _ y0: CGFloat, _ x1: CGFloat, _ y1: CGFloat) -> Path {
+                Path(ellipseIn: CGRect(x: cx + r * x0, y: cy + r * y0,
+                                       width: r * (x1 - x0), height: r * (y1 - y0)))
+            }
+            let fur = Color(red: 0.36, green: 0.25, blue: 0.17)
+            ctx.fill(oval(-3.2, -0.15, -0.8, 0.55), with: .color(fur))   // Rücken
+            ctx.fill(oval(-1.5, -0.75, 1.1, 0.6), with: .color(fur))     // Kopf
+            ctx.fill(oval(-0.95, -0.85, -0.6, -0.5), with: .color(fur))  // Ohr
+            ctx.fill(oval(0.2, -0.3, 1.6, 0.5),
+                     with: .color(Color(red: 0.62, green: 0.49, blue: 0.38)))  // Schnauze
+            ctx.fill(oval(1.3, -0.25, 1.65, 0.02), with: .color(.black))  // Nase
+            ctx.fill(oval(0.05, -0.45, 0.3, -0.2), with: .color(.black))  // Auge
+            var waterline = Path()
+            waterline.move(to: CGPoint(x: cx - r * 3.4, y: cy + r * 0.5))
+            waterline.addLine(to: CGPoint(x: cx + r * 1.7, y: cy + r * 0.5))
+            ctx.stroke(waterline, with: .color(.white.opacity(0.35)),
+                       style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+
+            // Schilf im Vordergrund links
+            for i in 0..<7 {
+                let x = w * (0.02 + Double(i) * 0.022)
+                let top = h * (0.50 + Double(i % 3) * 0.06)
+                var reed = Path()
+                reed.move(to: CGPoint(x: x, y: h))
+                reed.addQuadCurve(to: CGPoint(x: x + w * 0.02, y: top),
+                                  control: CGPoint(x: x - w * 0.01, y: (h + top) / 2))
+                ctx.stroke(reed, with: .color(Color(red: 0.30, green: 0.40, blue: 0.20)),
+                           style: StrokeStyle(lineWidth: max(1, h * 0.014), lineCap: .round))
             }
         }
     }
 
-    @ViewBuilder
-    private func demoPill(icon: String, tint: Color, label: String) -> some View {
-        VStack(spacing: 3) {
-            Image(systemName: icon)
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 44, height: 44)
-                .background(tint)
-                .clipShape(Circle())
-                .shadow(color: .black.opacity(0.18), radius: 4, x: 0, y: 2)
-                .shadow(color: .black.opacity(0.10), radius: 1, x: 0, y: 1)
-            Text(label)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.secondary)
+    /// Fläche unter einer Sinuslinie (Anteile von Breite/Höhe) bis zum unteren Rand.
+    private func wave(w: CGFloat, h: CGFloat, baseY: Double, amp: Double,
+                      freq: Double, phase: Double) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: 0, y: h))
+        let steps = 40
+        for i in 0...steps {
+            let t = Double(i) / Double(steps)
+            p.addLine(to: CGPoint(x: w * t, y: h * (baseY + amp * sin(t * freq * 2 * .pi + phase))))
         }
-    }
-
-    private var cardBody: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            LinearGradient(
-                colors: [Color(red: 0.18, green: 0.42, blue: 0.62),
-                         Color(red: 0.42, green: 0.18, blue: 0.54)],
-                startPoint: .topLeading, endPoint: .bottomTrailing)
-            .aspectRatio(16 / 9, contentMode: .fit)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(L("onboarding.demo.sampleArticle.title"))
-                    .font(.subheadline.weight(.semibold)).lineLimit(2)
-                Text(L("onboarding.demo.sampleArticle.meta"))
-                    .font(.caption2).foregroundStyle(.secondary)
-            }
-            .padding(10)
-        }
-        .background(Color(.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12)
-            .strokeBorder(Color(.separator).opacity(0.4), lineWidth: 0.5))
+        p.addLine(to: CGPoint(x: w, y: h))
+        p.closeSubpath()
+        return p
     }
 }
 
-// MARK: - Demo: List Row with Swipe Actions
+// MARK: - Demo: List Row with Share Swipe
 
 private struct DemoRowSwipe: View {
-    var showShare: Bool = false
-
-    /// Width of each trailing action button — 3 buttons shown side-by-side,
-    /// matching the iOS .swipeActions rendering in ArticleRowView.
-    private let btnW:      CGFloat = 68
     private let shareWidth: CGFloat = 72
     private let rowHeight:  CGFloat = 74   // matches actual ArticleRowView height
-
-    private var trailingW: CGFloat { btnW * 3 }
 
     @State private var animOffset: CGFloat = 0
 
@@ -385,46 +360,28 @@ private struct DemoRowSwipe: View {
         VStack(spacing: 0) {
             Color.clear.frame(height: safeTop + 62)
 
-            if showShare {
-                // Leading: blue circle-pill share button (matches ArticleRowView leading swipe)
-                ZStack(alignment: .leading) {
-                    VStack(spacing: 3) {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .frame(width: 44, height: 44)
-                            .background(Color.blue)
-                            .clipShape(Circle())
-                            .shadow(color: .black.opacity(0.18), radius: 4, x: 0, y: 2)
-                            .shadow(color: .black.opacity(0.10), radius: 1, x: 0, y: 1)
-                        Text(L("articleActions.share"))
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(width: shareWidth, height: rowHeight)
-                    .tourAnchor("cardShareArea")
-
-                    rowBody.offset(x: animOffset)
+            // Leading: blue circle-pill share button (matches ArticleRowView leading swipe)
+            ZStack(alignment: .leading) {
+                VStack(spacing: 3) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 44)
+                        .background(Color.blue)
+                        .clipShape(Circle())
+                        .shadow(color: .black.opacity(0.18), radius: 4, x: 0, y: 2)
+                        .shadow(color: .black.opacity(0.10), radius: 1, x: 0, y: 1)
+                    Text(L("articleActions.share"))
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.secondary)
                 }
-                .frame(height: rowHeight)
-                .clipped()
-            } else {
-                // Trailing: iOS-native swipe action style — 3 horizontal colored cells
-                // matching .swipeActions(edge: .trailing) in ArticleRowView.
-                ZStack(alignment: .trailing) {
-                    HStack(spacing: 0) {
-                        actionBtn(icon: "star",        label: L("articleActions.favoriteAdd"),  bg: Color(red: 1, green: 0.8, blue: 0))
-                        actionBtn(icon: "archivebox",  label: L("articleActions.archiveAdd"),   bg: .orange)
-                        actionBtn(icon: "trash",       label: L("common.delete"),  bg: .red)
-                    }
-                    .frame(width: trailingW, height: rowHeight)
+                .frame(width: shareWidth, height: rowHeight)
+                .tourAnchor("cardShareArea")
 
-                    rowBody.offset(x: animOffset)
-                }
-                .frame(height: rowHeight)
-                .clipped()
-                .tourAnchor("cardSwipeArea")
+                rowBody.offset(x: animOffset)
             }
+            .frame(height: rowHeight)
+            .clipped()
 
             Divider()
             Spacer()
@@ -432,14 +389,12 @@ private struct DemoRowSwipe: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemBackground).ignoresSafeArea())
         // Swipe demo animation — loops: slide in → pause → slide back → pause
-        // Works for both trailing actions (showShare=false) and share (showShare=true).
-        .task(id: showShare) {
+        .task {
             animOffset = 0
-            let target: CGFloat = showShare ? shareWidth : -trailingW
             try? await Task.sleep(for: .seconds(0.5))
             while !Task.isCancelled {
                 withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) {
-                    animOffset = target
+                    animOffset = shareWidth
                 }
                 try? await Task.sleep(for: .seconds(1.4))
                 withAnimation(.spring(response: 0.42, dampingFraction: 0.9)) {
@@ -450,33 +405,12 @@ private struct DemoRowSwipe: View {
         }
     }
 
-    /// Single trailing action cell: colored background + icon + label,
-    /// identical to what iOS renders for .swipeActions buttons.
-    @ViewBuilder
-    private func actionBtn(icon: String, label: String, bg: Color) -> some View {
-        bg.overlay(
-            VStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(.white)
-                Text(label)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.white)
-            }
-        )
-        .frame(width: btnW)
-        .frame(maxHeight: .infinity)
-    }
-
     private var rowBody: some View {
         HStack(spacing: 12) {
             // Thumbnail — 72×54 matching ArticleRowView
-            RoundedRectangle(cornerRadius: 8)
-                .fill(LinearGradient(
-                    colors: [Color(red: 0.18, green: 0.42, blue: 0.62),
-                             Color(red: 0.42, green: 0.18, blue: 0.54)],
-                    startPoint: .topLeading, endPoint: .bottomTrailing))
+            DemoHeroImage()
                 .frame(width: 72, height: 54)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(L("onboarding.demo.sampleArticle.title"))
@@ -515,7 +449,7 @@ private struct DemoRightFlyout: View {
             VStack(alignment: .leading, spacing: 0) {
                 Color.clear.frame(height: 50)
 
-                flyoutRow(icon: "chevron.left",           label: L("onboarding.demo.readerMenu.close"))
+                flyoutRow(icon: "chevron.left",           label: L("common.back"))
                 menuDivider
                 flyoutRow(icon: "star",                   label: L("articleReader.sideMenu.addFavorite"))
                 flyoutRow(icon: "speaker.wave.2",         label: L("articleReader.sideMenu.startReadAloud"))
@@ -590,48 +524,61 @@ private struct DemoReaderView: View {
     var showFlyout: Bool = true
     var flyoutAnimated: Bool = false
 
-    private let highlightColors: [Color] = [
-        Color(red: 0.99, green: 0.91, blue: 0.54),
-        Color(red: 0.73, green: 0.97, blue: 0.81),
-        Color(red: 0.75, green: 0.86, blue: 0.99),
-        Color(red: 0.98, green: 0.81, blue: 0.91),
-        Color(red: 0.99, green: 0.85, blue: 0.67),
-    ]
+    /// Dieselbe Akzentfarbe wie im Reader: Kopffläche und Tonstufen.
+    @AppStorage("merlin_accent_progress_color") private var accentColorHex: String = "#FF3B30"
+
+    /// Spiegelt `HighlightToolbarView.colors` im Reader.
+    private let highlightColors = ["#fde68a", "#bbf7d0", "#bfdbfe", "#fbcfe8", "#fed7aa"]
+
+    /// Tonstufen Akzent → Hintergrund wie `ArticleReaderView.accentSteps`.
+    private let accentSteps: [(height: CGFloat, amount: Double)] =
+        [(14, 0.75), (12, 0.55), (10, 0.35), (8, 0.15)]
+
+    private var safeTop: CGFloat {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?.windows.first(where: { $0.isKeyWindow })?.safeAreaInsets.top ?? 44
+    }
+
+    private var screenWidth: CGFloat {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?.windows.first(where: { $0.isKeyWindow })?.bounds.width ?? 390
+    }
+
+    private var accent: Color { Color(hexString: accentColorHex) ?? .red }
+
+    /// Lesbare Vordergrundfarbe auf der Akzentfläche (wie `onAccentHex` im Reader).
+    private var onAccent: Color {
+        let s = accentColorHex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        guard s.count >= 6, let v = UInt32(s.prefix(6), radix: 16) else { return .white }
+        func lin(_ c: UInt32) -> Double {
+            let x = Double(c) / 255
+            return x <= 0.03928 ? x / 12.92 : pow((x + 0.055) / 1.055, 2.4)
+        }
+        let l = 0.2126 * lin(v >> 16 & 0xff) + 0.7152 * lin(v >> 8 & 0xff) + 0.0722 * lin(v & 0xff)
+        return l > 0.35 ? Color(red: 0.11, green: 0.11, blue: 0.12) : .white
+    }
 
     var body: some View {
         ZStack(alignment: .trailing) {
             // Article content (non-scrollable for predictable spotlight positions)
-            VStack(alignment: .leading, spacing: 0) {
-                Color.clear.frame(height: 52)
-
-                // Hero image placeholder
-                LinearGradient(
-                    colors: [Color(red: 0.18, green: 0.38, blue: 0.58),
-                             Color(red: 0.38, green: 0.18, blue: 0.52)],
-                    startPoint: .topLeading, endPoint: .bottomTrailing)
-                .frame(maxWidth: .infinity)
-                .aspectRatio(16 / 9, contentMode: .fit)
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(L("onboarding.demo.sampleArticle.title"))
-                        .font(.title2.bold())
-                    Text(L("onboarding.demo.sampleArticle.byline"))
-                        .font(.caption).foregroundStyle(.secondary)
-
-                    Divider().padding(.vertical, 2)
-
-                    if showHighlights {
-                        highlightScene
-                    } else {
+            Group {
+                if showHighlights {
+                    highlightScene
+                } else {
+                    VStack(alignment: .leading, spacing: 0) {
+                        articleHeader
                         Text(L("onboarding.demo.sampleArticle.body"))
                             .font(.body).lineSpacing(4)
+                            .padding(.horizontal, 20)
+                            // Der Text weicht, nicht der Kopf: er wird unten abgeschnitten.
+                            .layoutPriority(-1)
+                        Spacer(minLength: 0)
                     }
                 }
-                .padding(20)
-
-                Spacer()
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(Color(.systemBackground))
 
             // Right flyout visible in reader phase, hidden for highlights.
@@ -640,65 +587,139 @@ private struct DemoReaderView: View {
                 DemoRightFlyout(animated: flyoutAnimated)
             }
         }
-        // Fake navigation bar
-        .overlay(alignment: .top) {
-            HStack {
-                ZStack {
-                    Circle().fill(Color(.secondarySystemBackground))
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.primary)
-                }
-                .frame(width: 38, height: 38)
-                .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
-                .padding(.leading, 16)
-                Spacer()
-            }
-            .frame(height: 50)
-            .padding(.top, 8)
-        }
         .ignoresSafeArea()
     }
 
+    // Plakat-Header wie `ArticleReaderView.articleHeader`: Akzentfläche mit
+    // Topline, Titel, Teaser und Metazeile, darunter das Titelbild randlos auf
+    // der Fläche und die Tonstufen zum Text.
+    private var articleHeader: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text("rbb|24")
+                    Spacer(minLength: 0)
+                    Text(L("onboarding.demo.sampleArticle.tag")).lineLimit(1)
+                }
+                .font(.system(size: 11, weight: .bold))
+                .tracking(2.0)
+                .padding(.bottom, 8)
+                .overlay(alignment: .bottom) { onAccent.frame(height: 2) }
+
+                Text(L("onboarding.demo.sampleArticle.title"))
+                    .font(.system(size: 32, weight: .heavy))
+                    .tracking(-1)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(L("onboarding.demo.sampleArticle.teaser"))
+                    .font(.system(size: 16, weight: .medium))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(L("onboarding.demo.sampleArticle.byline"))
+                    .font(.system(size: 11, weight: .bold))
+                    .tracking(1.0)
+                    .lineLimit(1)
+                    .padding(.top, 8)
+                    .overlay(alignment: .top) { onAccent.frame(height: 2) }
+            }
+            .foregroundStyle(onAccent)
+            .padding(.horizontal, 20)
+            .padding(.top, safeTop + 28)
+            .padding(.bottom, 22)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(accent)
+
+            // Feste Höhe statt aspectRatio: der Canvas ist sonst beliebig
+            // stauchbar und wurde vom überlangen Text darunter auf 0 gedrückt.
+            DemoHeroImage()
+                .frame(maxWidth: .infinity)
+                .frame(height: screenWidth * 9 / 16)
+                .clipped()
+            .padding(.bottom, 14)
+            .background(accent)
+
+            ForEach(accentSteps.indices, id: \.self) { i in
+                Rectangle()
+                    .fill(accent.mix(with: Color(.systemBackground),
+                                     by: 1 - accentSteps[i].amount, in: .perceptual))
+                    .frame(height: accentSteps[i].height)
+            }
+            Color.clear.frame(height: 16)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
     private var highlightedSampleText: AttributedString {
-        let full = L("onboarding.demo.sampleHighlight")
-        var str = AttributedString(full)
-        let phrase = "deep, intentional reading may be one of the most valuable skills we can cultivate"
-        if let range = str.range(of: phrase) {
-            str[range].backgroundColor = UIColor(red: 0.99, green: 0.91, blue: 0.54, alpha: 1)
+        var str = AttributedString(L("onboarding.demo.sampleHighlight"))
+        if let range = str.range(of: L("onboarding.demo.sampleHighlight.phrase")) {
+            str[range].backgroundColor = UIColor(Color(hexString: highlightColors[0]) ?? .yellow)
         }
         return str
     }
 
-    // Text with yellow highlight + floating color toolbar
+    // Mitten im Artikel gescrollt: Text mit gelber Markierung, darüber die
+    // Leiste am oberen Bildschirmrand wie `HighlightToolbarView` (die Auswahl
+    // liegt in der unteren Hälfte, deshalb dockt sie oben an).
     private var highlightScene: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(highlightedSampleText)
-                .font(.body)
-                .lineSpacing(4)
+        VStack(alignment: .leading, spacing: 0) {
+            highlightToolbar
+                .tourAnchor("highlightToolbar")
 
-            // Color picker toolbar
-            HStack(spacing: 8) {
-                ForEach(highlightColors.indices, id: \.self) { i in
+            VStack(alignment: .leading, spacing: 16) {
+                Text(L("onboarding.demo.sampleArticle.body"))
+                    .lineLimit(4)
+                    .foregroundStyle(.secondary)
+                Text(highlightedSampleText)
+            }
+            .font(.body)
+            .lineSpacing(4)
+            .padding(.horizontal, 20)
+            .padding(.top, 28)
+
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var highlightToolbar: some View {
+        let diameter: CGFloat = 40
+        return VStack(spacing: 10) {
+            Text(L("articleReader.highlightToolbar.title"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 14) {
+                ForEach(highlightColors, id: \.self) { hex in
                     Circle()
-                        .fill(highlightColors[i])
-                        .frame(width: 30, height: 30)
-                        .overlay(Circle().stroke(Color.white.opacity(0.25), lineWidth: 2))
+                        .fill(Color(hexString: hex) ?? .yellow)
+                        .frame(width: diameter, height: diameter)
+                        .overlay(Circle().stroke(.white.opacity(0.35), lineWidth: 2.5))
                 }
                 Rectangle()
-                    .fill(Color.white.opacity(0.2))
-                    .frame(width: 1, height: 22)
-                Text("✕")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(Color(red: 1, green: 0.27, blue: 0.23))
-                    .frame(width: 30, height: 30)
-                    .background(Circle().fill(Color(white: 0.25)))
+                    .fill(Color(.separator))
+                    .frame(width: 1, height: diameter * 0.625)
+                toolbarButton(icon: "text.bubble", tint: .primary, diameter: diameter)
+                toolbarButton(icon: "xmark", tint: .red, diameter: diameter)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(RoundedRectangle(cornerRadius: 10).fill(Color(white: 0.12)))
-            .tourAnchor("highlightToolbar")
+            .padding(.horizontal, 16)
         }
+        .frame(maxWidth: .infinity)
+        .padding(.top, safeTop + 14)
+        .padding(.bottom, 18)
+        .background(
+            Color(.systemBackground)
+                .shadow(color: .black.opacity(0.18), radius: 12, y: 4)
+        )
+    }
+
+    private func toolbarButton(icon: String, tint: Color, diameter: CGFloat) -> some View {
+        Circle()
+            .fill(Color(.systemGray5))
+            .frame(width: diameter, height: diameter)
+            .overlay(
+                Image(systemName: icon)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(tint)
+            )
     }
 }
 
@@ -722,7 +743,8 @@ struct OnboardingTourView: View {
     /// against an already-dark background.
     private var dimOpacity: Double { colorScheme == .dark ? 0.55 : 0.72 }
 
-    private var tourSteps: [TourStep] { makeTourSteps(retentionBody: RetentionStore.shared.summaryText) }
+    private var tourSteps: [TourStep] { makeTourSteps(retentionBody: RetentionStore.shared.summaryText,
+                                                    isCardView: isCardView) }
     private var step: TourStep { tourSteps[stepIndex] }
     private var isLast: Bool   { stepIndex == tourSteps.count - 1 }
 
@@ -893,8 +915,7 @@ struct OnboardingTourView: View {
             }
 
         case .cardSwipe:
-            let share = step.anchorKey == "cardShareArea"
-            if isCardView { DemoCardSwipe(showShare: share) } else { DemoRowSwipe(showShare: share) }
+            DemoRowSwipe()
 
         case .reader:
             DemoReaderView(showHighlights: false,

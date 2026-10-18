@@ -458,12 +458,14 @@
 "onboarding.demo.leftFlyout.settings" = "Settings";
 "onboarding.demo.leftFlyout.tags" = "Tags";
 "onboarding.demo.leftFlyout.unread" = "Unread (12)";
-"onboarding.demo.readerMenu.close" = "Close";
 "onboarding.demo.sampleArticle.body" = "Poor water quality and densely built riverbanks: otters were long considered extinct in Berlin. Since the 1960s they've been under strict protection, and since the 1990s their numbers have been rising again. In the 18th and 19th centuries they were heavily hunted, seen as competitors for food and prized for their fur. In recent years, thanks to wildlife and nature conservation, their population has recovered and they've increasingly been spotted in eastern Berlin. The modern urban environment, however, still poses many dangers for otters.";
-"onboarding.demo.sampleArticle.byline" = "By Julian von Bülow · rbb|24 · 8 min · May 2026";
+"onboarding.demo.sampleArticle.byline" = "BY Julian von Bülow · 8 min · 5/12/26";
 "onboarding.demo.sampleArticle.meta" = "rbb|24 · 8 min";
+"onboarding.demo.sampleArticle.tag" = "Nature";
+"onboarding.demo.sampleArticle.teaser" = "Long thought extinct, they are being spotted again, especially in the east of the city.";
 "onboarding.demo.sampleArticle.title" = "Otters could become native to Berlin again";
 "onboarding.demo.sampleHighlight" = "In an era of endless scrolling, slow reading feels almost radical. But a growing body of research suggests that deep, intentional reading may be one of the most valuable skills we can cultivate.";
+"onboarding.demo.sampleHighlight.phrase" = "deep, intentional reading may be one of the most valuable skills we can cultivate";
 "onboarding.retention.articlesKept" = "Archived articles are not deleted automatically.";
 "onboarding.retention.bodyUnknown" = "Archived articles can be deleted from the server automatically after a set period, counted from when you archive them. You choose the period in Settings, and your server can set a maximum.";
 "onboarding.retention.favoritesKept" = "Archived favorites are kept.";
@@ -477,7 +479,7 @@
 "onboarding.step10.title" = "Reminders";
 "onboarding.step11.body" = "Found broken formatting? Report the article so we can fix that.";
 "onboarding.step11.title" = "Report Articles";
-"onboarding.step12.body" = "Select any text while reading to highlight it in one of five colors. Highlights are synced with your account.";
+"onboarding.step12.body" = "Select text while reading: the bar at the edge of the screen highlights it in one of five colors or lets you comment on it. Highlights are synced with your account.";
 "onboarding.step12.title" = "Highlights";
 "onboarding.step13.body" = "Archived or deleted something by accident? Just shake your phone to undo your last action.";
 "onboarding.step13.title" = "Shake to Undo";
@@ -487,8 +489,6 @@
 "onboarding.step3.title" = "Navigation Menu";
 "onboarding.step4.body" = "Prefer a compact list or visual cards? Toggle between List and Card View anytime from the navigation menu.";
 "onboarding.step4.title" = "Switch View";
-"onboarding.step5.body" = "Swipe any article to the left to archive it, mark it as a favorite, or delete it.";
-"onboarding.step5.title" = "Quick Actions";
 "onboarding.step6.body" = "Swipe right on any article to quickly share it with friends or send it to another app.";
 "onboarding.step6.title" = "Share Articles";
 "onboarding.step7.body" = "Swipe from the right edge while reading to share, edit article tags, set reminders, and more.";
