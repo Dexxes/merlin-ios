@@ -540,6 +540,12 @@ private struct DemoReaderView: View {
             .first?.windows.first(where: { $0.isKeyWindow })?.safeAreaInsets.top ?? 44
     }
 
+    private var screenWidth: CGFloat {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?.windows.first(where: { $0.isKeyWindow })?.bounds.width ?? 390
+    }
+
     private var accent: Color { Color(hexString: accentColorHex) ?? .red }
 
     /// Lesbare Vordergrundfarbe auf der Akzentfläche (wie `onAccentHex` im Reader).
@@ -566,6 +572,8 @@ private struct DemoReaderView: View {
                         Text(L("onboarding.demo.sampleArticle.body"))
                             .font(.body).lineSpacing(4)
                             .padding(.horizontal, 20)
+                            // Der Text weicht, nicht der Kopf: er wird unten abgeschnitten.
+                            .layoutPriority(-1)
                         Spacer(minLength: 0)
                     }
                 }
@@ -621,9 +629,11 @@ private struct DemoReaderView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(accent)
 
+            // Feste Höhe statt aspectRatio: der Canvas ist sonst beliebig
+            // stauchbar und wurde vom überlangen Text darunter auf 0 gedrückt.
             DemoHeroImage()
                 .frame(maxWidth: .infinity)
-                .aspectRatio(16 / 9, contentMode: .fit)
+                .frame(height: screenWidth * 9 / 16)
                 .clipped()
             .padding(.bottom, 14)
             .background(accent)
@@ -636,6 +646,7 @@ private struct DemoReaderView: View {
             }
             Color.clear.frame(height: 16)
         }
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     private var highlightedSampleText: AttributedString {
