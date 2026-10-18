@@ -256,19 +256,26 @@ struct PDFArticleView: View {
         guard !edits.isEmpty else { return }
         let sources = local + (comments?.highlights ?? [])
         for (id, edited) in edits {
-            let confirmed = sources.contains {
-                $0.id == id && $0.color == edited.color && $0.pdfPage == edited.pdfPage
-                    && Self.sameRects($0.pdfRects, edited.pdfRects)
+            for source in sources where source.id == id {
+                guard source.color == edited.color, source.pdfPage == edited.pdfPage else { continue }
+                if Self.sameRects(source.pdfRects, edited.pdfRects) {
+                    edits[id] = nil
+                    break
+                }
             }
-            if confirmed { edits[id] = nil }
         }
     }
 
     private static func sameRects(_ a: [[Double]]?, _ b: [[Double]]?) -> Bool {
-        guard let a, let b, a.count == b.count else { return a == nil && b == nil }
-        return zip(a, b).allSatisfy { x, y in
-            x.count == y.count && zip(x, y).allSatisfy { abs($0 - $1) < 0.0001 }
+        guard let a, let b else { return a == nil && b == nil }
+        guard a.count == b.count else { return false }
+        for (x, y) in zip(a, b) {
+            guard x.count == y.count else { return false }
+            for (u, v) in zip(x, y) where abs(u - v) >= 0.0001 {
+                return false
+            }
         }
+        return true
     }
 
     private func delete(_ highlight: Highlight) {
@@ -710,10 +717,18 @@ private struct PDFDocumentRepresentable: UIViewRepresentable {
         /// Zwei Rechteck-Listen derselben Seite berühren oder überlappen sich.
         private static func overlaps(_ a: [[Double]], _ b: [[Double]]) -> Bool {
             func rect(_ r: [Double]) -> CGRect? {
-                r.count == 4 ? CGRect(x: r[0], y: r[1], width: r[2], height: r[3]).insetBy(dx: -0.002, dy: -0.002) : nil
+                guard r.count == 4 else { return nil }
+                let bounds = CGRect(x: r[0], y: r[1], width: r[2], height: r[3])
+                return bounds.insetBy(dx: -0.002, dy: -0.002)
             }
-            let rb = b.compactMap(rect)
-            return a.compactMap(rect).contains { x in rb.contains { $0.intersects(x) } }
+            let first: [CGRect] = a.compactMap(rect)
+            let second: [CGRect] = b.compactMap(rect)
+            for x in first {
+                for y in second where x.intersects(y) {
+                    return true
+                }
+            }
+            return false
         }
 
         /// Text, Seite und Rechtecke der aktuellen Auswahl; danach Auswahl und Leiste weg.
