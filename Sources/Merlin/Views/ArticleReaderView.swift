@@ -924,27 +924,33 @@ private struct ActionLabelPlacement<Label: View>: ViewModifier {
 }
 
 /// Kreisförmiger Hintergrund des Querformat-Action-Buttons und seiner
-/// Fächer-Buttons. Ab iOS 26 Liquid Glass in der Akzentfarbe getönt,
-/// darunter eine flache Kreisfläche.
+/// Fächer-Buttons. Ab iOS 26 Liquid Glass (Hauptbutton ungetönt, Fächer
+/// mit `fill` getönt), darunter eine flache Kreisfläche.
 private struct ActionCircleBackground: ViewModifier {
-    let tint:    Color
+    let fill:    Color?
+    let bgColor: Color
     let fgColor: Color
 
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
-            // Gleiche Tönung wie die bottomBar (ReaderBarGlassBackground).
-            // Ohne `.interactive()`: der Button selbst reagiert auf den Tipp,
-            // interaktives Glas fing ihn sonst teils ab.
-            content.glassEffect(.regular.tint(tint.opacity(0.45)), in: Circle())
+            content.glassEffect(glass, in: Circle())
         } else {
             content
                 .background {
                     Circle()
-                        .fill(tint.opacity(0.97))
+                        .fill((fill ?? bgColor).opacity(0.97))
                         .overlay { Circle().strokeBorder(fgColor.opacity(0.15), lineWidth: 0.5) }
                         .shadow(color: .black.opacity(0.18), radius: 8, y: 3)
                 }
         }
+    }
+
+    @available(iOS 26.0, *)
+    private var glass: Glass {
+        // Ohne `.interactive()`: der Button selbst reagiert auf den Tipp,
+        // interaktives Glas fing ihn sonst teils ab.
+        if let fill { return .regular.tint(fill.opacity(0.6)) }
+        return .regular
     }
 }
 
@@ -3263,8 +3269,8 @@ struct ArticleReaderView: View {
     //               Erscheinungsbild
     //                     Zurück    (●)
     //
-    // Der Hauptbutton ist immer Glas in der Akzentfarbe, wie die bottomBar;
-    // ein Tipp auf den Text ändert an ihm nichts.
+    // Der Hauptbutton ist immer ungetöntes Glas, die Fächer-Buttons sind in
+    // der Akzentfarbe getönt; ein Tipp auf den Text ändert nichts.
 
     private var isCompactLandscape: Bool { verticalSizeClass == .compact }
 
@@ -3360,9 +3366,10 @@ struct ArticleReaderView: View {
                 Image(systemName: actionButtonExpanded ? "xmark" : "ellipsis")
                     .font(.system(size: actionButtonExpanded ? 19 : 22, weight: .semibold))
                     .contentTransition(.symbolEffect(.replace))
-                    .foregroundStyle(onAccent)
+                    .foregroundStyle(readerFgColor)
                     .frame(width: main, height: main)
-                    .modifier(ActionCircleBackground(tint: accent, fgColor: readerFgColor))
+                    .modifier(ActionCircleBackground(fill: nil,
+                                                     bgColor: readerBgColor, fgColor: readerFgColor))
                     // Ohne feste Trefferfläche zählen beim Glas (iOS 26) nur die
                     // Punkte des Symbols; ein Tipp daneben ging an den WebView
                     // durch.
@@ -3381,7 +3388,8 @@ struct ArticleReaderView: View {
             .font(.system(size: 18, weight: .medium))
             .foregroundStyle(onAccent)
             .frame(width: size, height: size)
-            .modifier(ActionCircleBackground(tint: accent, fgColor: readerFgColor))
+            .modifier(ActionCircleBackground(fill: accent,
+                                             bgColor: readerBgColor, fgColor: readerFgColor))
             .contentShape(Circle())
         switch action {
         case .share:
