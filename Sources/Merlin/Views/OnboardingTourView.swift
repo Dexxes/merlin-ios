@@ -240,6 +240,108 @@ private struct DemoLeftFlyout: View {
     }
 }
 
+// MARK: - Demo: Hero image
+
+/// Titelbild des Beispielartikels: gezeichnete Flusslandschaft am Morgen mit
+/// einem Fischotter im Wasser. Ohne Bilddatei, damit die Tour keine Fotorechte
+/// braucht und in jeder Größe scharf bleibt (Listen-Vorschau und Reader).
+private struct DemoHeroImage: View {
+    var body: some View {
+        Canvas { ctx, size in
+            let w = size.width, h = size.height
+
+            // Himmel
+            ctx.fill(Path(CGRect(origin: .zero, size: size)),
+                     with: .linearGradient(
+                        Gradient(colors: [Color(red: 0.55, green: 0.72, blue: 0.88),
+                                          Color(red: 0.98, green: 0.84, blue: 0.68)]),
+                        startPoint: .zero, endPoint: CGPoint(x: 0, y: h * 0.55)))
+
+            // Sonne
+            ctx.fill(Path(ellipseIn: CGRect(x: w * 0.70, y: h * 0.12, width: h * 0.22, height: h * 0.22)),
+                     with: .color(Color(red: 1.0, green: 0.93, blue: 0.70)))
+
+            // Hügel und Uferwald im Hintergrund
+            ctx.fill(wave(w: w, h: h, baseY: 0.46, amp: 0.06, freq: 1.3, phase: 0.4),
+                     with: .color(Color(red: 0.40, green: 0.55, blue: 0.52)))
+            ctx.fill(wave(w: w, h: h, baseY: 0.54, amp: 0.035, freq: 3.1, phase: 1.2),
+                     with: .color(Color(red: 0.24, green: 0.42, blue: 0.33)))
+
+            // Fluss
+            ctx.fill(Path(CGRect(x: 0, y: h * 0.60, width: w, height: h * 0.40)),
+                     with: .linearGradient(
+                        Gradient(colors: [Color(red: 0.36, green: 0.58, blue: 0.70),
+                                          Color(red: 0.16, green: 0.34, blue: 0.48)]),
+                        startPoint: CGPoint(x: 0, y: h * 0.60), endPoint: CGPoint(x: 0, y: h)))
+
+            // Lichtreflexe auf dem Wasser
+            let lineWidth = max(1, h * 0.012)
+            for (y, x0, len) in [(0.66, 0.62, 0.22), (0.86, 0.66, 0.20), (0.93, 0.24, 0.18)] {
+                var line = Path()
+                line.move(to: CGPoint(x: w * x0, y: h * y))
+                line.addLine(to: CGPoint(x: w * (x0 + len), y: h * y))
+                ctx.stroke(line, with: .color(.white.opacity(0.35)),
+                           style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+            }
+
+            // Fischotter: flacher Kopf und Rücken knapp über dem Wasser, Bugwelle dahinter
+            let cx = w * 0.50, cy = h * 0.74, r = h * 0.07
+            var wake = Path()
+            wake.move(to: CGPoint(x: cx - r * 3.3, y: cy + r * 0.5))
+            wake.addLine(to: CGPoint(x: cx - r * 6.6, y: cy - r * 0.2))
+            wake.move(to: CGPoint(x: cx - r * 3.3, y: cy + r * 0.7))
+            wake.addLine(to: CGPoint(x: cx - r * 6.2, y: cy + r * 1.8))
+            ctx.stroke(wake, with: .color(.white.opacity(0.55)),
+                       style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+
+            func oval(_ x0: CGFloat, _ y0: CGFloat, _ x1: CGFloat, _ y1: CGFloat) -> Path {
+                Path(ellipseIn: CGRect(x: cx + r * x0, y: cy + r * y0,
+                                       width: r * (x1 - x0), height: r * (y1 - y0)))
+            }
+            let fur = Color(red: 0.36, green: 0.25, blue: 0.17)
+            ctx.fill(oval(-3.2, -0.15, -0.8, 0.55), with: .color(fur))   // Rücken
+            ctx.fill(oval(-1.5, -0.75, 1.1, 0.6), with: .color(fur))     // Kopf
+            ctx.fill(oval(-0.95, -0.85, -0.6, -0.5), with: .color(fur))  // Ohr
+            ctx.fill(oval(0.2, -0.3, 1.6, 0.5),
+                     with: .color(Color(red: 0.62, green: 0.49, blue: 0.38)))  // Schnauze
+            ctx.fill(oval(1.3, -0.25, 1.65, 0.02), with: .color(.black))  // Nase
+            ctx.fill(oval(0.05, -0.45, 0.3, -0.2), with: .color(.black))  // Auge
+            var waterline = Path()
+            waterline.move(to: CGPoint(x: cx - r * 3.4, y: cy + r * 0.5))
+            waterline.addLine(to: CGPoint(x: cx + r * 1.7, y: cy + r * 0.5))
+            ctx.stroke(waterline, with: .color(.white.opacity(0.35)),
+                       style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+
+            // Schilf im Vordergrund links
+            for i in 0..<7 {
+                let x = w * (0.02 + Double(i) * 0.022)
+                let top = h * (0.50 + Double(i % 3) * 0.06)
+                var reed = Path()
+                reed.move(to: CGPoint(x: x, y: h))
+                reed.addQuadCurve(to: CGPoint(x: x + w * 0.02, y: top),
+                                  control: CGPoint(x: x - w * 0.01, y: (h + top) / 2))
+                ctx.stroke(reed, with: .color(Color(red: 0.30, green: 0.40, blue: 0.20)),
+                           style: StrokeStyle(lineWidth: max(1, h * 0.014), lineCap: .round))
+            }
+        }
+    }
+
+    /// Fläche unter einer Sinuslinie (Anteile von Breite/Höhe) bis zum unteren Rand.
+    private func wave(w: CGFloat, h: CGFloat, baseY: Double, amp: Double,
+                      freq: Double, phase: Double) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: 0, y: h))
+        let steps = 40
+        for i in 0...steps {
+            let t = Double(i) / Double(steps)
+            p.addLine(to: CGPoint(x: w * t, y: h * (baseY + amp * sin(t * freq * 2 * .pi + phase))))
+        }
+        p.addLine(to: CGPoint(x: w, y: h))
+        p.closeSubpath()
+        return p
+    }
+}
+
 // MARK: - Demo: List Row with Share Swipe
 
 private struct DemoRowSwipe: View {
@@ -306,12 +408,9 @@ private struct DemoRowSwipe: View {
     private var rowBody: some View {
         HStack(spacing: 12) {
             // Thumbnail — 72×54 matching ArticleRowView
-            RoundedRectangle(cornerRadius: 8)
-                .fill(LinearGradient(
-                    colors: [Color(red: 0.18, green: 0.42, blue: 0.62),
-                             Color(red: 0.42, green: 0.18, blue: 0.54)],
-                    startPoint: .topLeading, endPoint: .bottomTrailing))
+            DemoHeroImage()
                 .frame(width: 72, height: 54)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(L("onboarding.demo.sampleArticle.title"))
@@ -522,13 +621,10 @@ private struct DemoReaderView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(accent)
 
-            // Hero image placeholder
-            LinearGradient(
-                colors: [Color(red: 0.18, green: 0.38, blue: 0.58),
-                         Color(red: 0.38, green: 0.18, blue: 0.52)],
-                startPoint: .topLeading, endPoint: .bottomTrailing)
-            .frame(maxWidth: .infinity)
-            .aspectRatio(16 / 9, contentMode: .fit)
+            DemoHeroImage()
+                .frame(maxWidth: .infinity)
+                .aspectRatio(16 / 9, contentMode: .fit)
+                .clipped()
             .padding(.bottom, 14)
             .background(accent)
 

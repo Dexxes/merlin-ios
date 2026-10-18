@@ -79,7 +79,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the left is gone.
 - App tour matches the current app: the "Quick Actions" step is gone, the
   sample article shows the poster header in the accent colour (topline,
-  title, teaser, meta line, hero image and tone steps), and the highlight
+  title, teaser, meta line, hero image and tone steps; the hero image is a
+  drawn river landscape with an otter), and the highlight
   step shows the full-width bar docked to the screen edge with the five
   colours, Comment and Remove. The highlighted phrase now also shows in
   German.
