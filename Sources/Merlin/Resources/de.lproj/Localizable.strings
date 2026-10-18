@@ -30,6 +30,7 @@
 "articleList.emptyState.favoritesMessage" = "Noch keine Favoriten. Markiere Artikel mit einem Stern, um sie hier zu finden.";
 "articleList.emptyState.filesMessage" = "Noch keine Dateien. Teile Bilder, PDFs oder andere Dateien vom Handy mit Merlin, um sie hier zu finden.";
 "articleList.emptyState.refreshButton" = "Aktualisieren";
+"articleList.loadMore.retryButton" = "Ältere Artikel laden";
 "articleList.emptyState.taggedMessage" = "Keine Artikel mit Tag \"%@\".";
 "articleList.emptyState.title" = "Noch nichts hier";
 "articleList.emptyState.unheardMessage" = "Noch keine ungehörten Audios. Füge einen Podcast- oder Audio-Link hinzu, um ihn hier zu finden.";

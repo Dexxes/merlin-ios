@@ -30,6 +30,7 @@
 "articleList.emptyState.favoritesMessage" = "No favorites yet. Star articles to find them here.";
 "articleList.emptyState.filesMessage" = "No files yet. Share images, PDFs or other files from your phone to Merlin to find them here.";
 "articleList.emptyState.refreshButton" = "Refresh";
+"articleList.loadMore.retryButton" = "Load older articles";
 "articleList.emptyState.taggedMessage" = "No articles tagged \"%@\".";
 "articleList.emptyState.title" = "Nothing here yet";
 "articleList.emptyState.unheardMessage" = "No unheard audio yet. Add a podcast or audio link to find it here.";
