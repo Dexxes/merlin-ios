@@ -218,6 +218,17 @@ private let merlinHighlightJS: String = #"""
   // a colour swatch or the delete button.
   window.merlinApplyHighlightFromNative=function(color){applyHighlight(color);};
   window.merlinDeleteSelectedHighlightFromNative=function(){deleteSelectedHighlight();};
+  // Knopf "Text kopieren" an einer angetippten Markierung: Text an Swift
+  // (UIPasteboard), die Markierung selbst bleibt unverändert.
+  window.merlinCopySelectedHighlightFromNative=function(){
+    if(selectedHighlightId===null)return;
+    endEditing();
+    const id=String(selectedHighlightId);
+    selectedHighlightId=null;pendingRange=null;
+    const text=Array.from(document.querySelectorAll('mark.merlin-highlight[data-highlight-id="'+id+'"]')).map(e=>e.textContent).join('').trim();
+    window.getSelection()?.removeAllRanges();
+    if(text)window.webkit.messageHandlers.highlights.postMessage({action:'copy',text:text});
+  };
   // Löschen über die id statt über die Auswahl: nach der Rückfrage "Markierung
   // hat Kommentare" kann die Auswahl schon weg sein.
   window.merlinDeleteHighlightFromNative=function(id){
@@ -952,6 +963,7 @@ private struct HighlightToolbarView: View {
     let bgColor: Color
     let onColor: (String) -> Void
     let onComment: () -> Void
+    let onCopy: () -> Void
     let onDelete: () -> Void
 
     /// Mirrors the COLORS table in merlinHighlightJS — keep these in sync.
@@ -967,9 +979,9 @@ private struct HighlightToolbarView: View {
     /// edge, even at full size on a wide iPad.
     private static let horizontalPadding: CGFloat = 24
 
-    /// Buttons after the separator: comment (if supported) and delete (when
-    /// a highlight is selected).
-    private var trailingCount: Int { (showComment ? 1 : 0) + (hasHighlight ? 1 : 0) }
+    /// Buttons after the separator: comment (if supported), copy and delete
+    /// (both when a highlight is selected).
+    private var trailingCount: Int { (showComment ? 1 : 0) + (hasHighlight ? 2 : 0) }
 
     /// Number of fixed-size circles in the row (colours plus trailing buttons).
     private var circleCount: Int { Self.colors.count + trailingCount }
@@ -1028,6 +1040,19 @@ private struct HighlightToolbarView: View {
                     .accessibilityLabel(L("articleReader.comments.comment"))
                 }
                 if hasHighlight {
+                    Button(action: onCopy) {
+                        Circle()
+                            .fill(Color(.systemGray5))
+                            .frame(width: circleDiameter, height: circleDiameter)
+                            .overlay(
+                                Image(systemName: "doc.on.doc")
+                                    .font(.system(size: 18 * scale, weight: .semibold))
+                                    .foregroundStyle(.primary)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(L("articleReader.highlightToolbar.copyText"))
+
                     Button(action: onDelete) {
                         Circle()
                             .fill(Color(.systemGray5))
@@ -1182,6 +1207,8 @@ private struct HighlightToolbarBackground: ViewModifier {
     var pdfComment: (() -> Void)?
     /// PDF: angetippte Markierung entfernen bzw. eine bestimmte (nach der Rückfrage).
     var pdfDeleteSelected: (() -> Void)?
+    /// PDF: Text der angetippten Markierung in die Zwischenablage.
+    var pdfCopySelected: (() -> Void)?
     var pdfDelete: ((Int) -> Void)?
 
     func applyColor(_ colorId: String) {
@@ -1194,6 +1221,13 @@ private struct HighlightToolbarBackground: ViewModifier {
         if webView == nil, let pdfDeleteSelected { return pdfDeleteSelected() }
         webView?.evaluateJavaScript(
             "window.merlinDeleteSelectedHighlightFromNative && window.merlinDeleteSelectedHighlightFromNative()")
+    }
+
+    /// Text der angetippten Markierung in die Zwischenablage.
+    func copySelected() {
+        if webView == nil, let pdfCopySelected { return pdfCopySelected() }
+        webView?.evaluateJavaScript(
+            "window.merlinCopySelectedHighlightFromNative && window.merlinCopySelectedHighlightFromNative()")
     }
 
     /// Löscht eine bestimmte Markierung (nach der Rückfrage, ob ihre
@@ -2490,6 +2524,10 @@ struct ArticleReaderView: View {
                     },
                     onComment: {
                         highlightActions.comment()
+                        hideHighlightToolbar()
+                    },
+                    onCopy: {
+                        highlightActions.copySelected()
                         hideHighlightToolbar()
                     },
                     onDelete: {

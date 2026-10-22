@@ -383,6 +383,7 @@ private struct PDFDocumentRepresentable: UIViewRepresentable {
         actions?.pdfApplyColor = { [weak coordinator] color in coordinator?.mark(color: color) }
         actions?.pdfComment = { [weak coordinator] in coordinator?.comment() }
         actions?.pdfDeleteSelected = { [weak coordinator] in coordinator?.deleteSelected() }
+        actions?.pdfCopySelected = { [weak coordinator] in coordinator?.copySelected() }
         actions?.pdfDelete = { [weak coordinator] id in coordinator?.delete(id) }
         coordinator.apply(highlights)
     }
@@ -771,6 +772,17 @@ private struct PDFDocumentRepresentable: UIViewRepresentable {
         func deleteSelected() {
             guard let sel = selected else { return }
             delete(sel.id)
+        }
+
+        /// Knopf „Text kopieren“ der Reader-Leiste an einer angetippten Markierung.
+        func copySelected() {
+            guard let sel = selected else { return }
+            commitResize()
+            let text = sel.latest?.text ?? byId[sel.id]?.highlightedText ?? ""
+            selected = nil
+            pdfView?.clearSelection()
+            guard !text.isEmpty else { return }
+            UIPasteboard.general.string = text
         }
 
         /// Markierung entfernen (auch nach der Rückfrage wegen ihrer Kommentare).

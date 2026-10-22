@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Copy highlighted text: tapping a highlight in an article or PDF shows a
+  new copy button in the highlight bar (next to remove) that puts the
+  highlighted passage into the clipboard.
 - Resize highlights: tap an own highlight in an article or PDF and drag the
   selection handles; when you let go, the highlight takes the new length and
   the handles stay so you can keep dragging. It is saved in place (same id),

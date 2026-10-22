@@ -54,6 +54,7 @@
 "articleReader.appearance.lineSpacing" = "Zeilenabstand";
 "articleReader.appearance.progressAndHighlights" = "Fortschrittsbalken & Hervorhebungen";
 "articleReader.appearance.theme" = "Design";
+"articleReader.highlightToolbar.copyText" = "Text kopieren";
 "articleReader.highlightToolbar.title" = "Markierungsfarbe";
 "articleReader.imagePlaceholder.unavailable" = "Bild nicht abrufbar";
 "articleReader.labels.author" = "Von";

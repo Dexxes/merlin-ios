@@ -98,6 +98,7 @@
 "articleReader.comments.writeComment" = "Write a comment…";
 "articleReader.comments.writeReply" = "Write a reply…";
 "articleReader.comments.you" = "You";
+"articleReader.highlightToolbar.copyText" = "Copy text";
 "articleReader.highlightToolbar.title" = "Highlight Color";
 "articleReader.imagePlaceholder.unavailable" = "Image unavailable";
 "articleReader.labels.author" = "BY";

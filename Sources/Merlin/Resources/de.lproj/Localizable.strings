@@ -98,6 +98,7 @@
 "articleReader.comments.writeComment" = "Kommentar schreiben …";
 "articleReader.comments.writeReply" = "Antwort schreiben …";
 "articleReader.comments.you" = "Du";
+"articleReader.highlightToolbar.copyText" = "Text kopieren";
 "articleReader.highlightToolbar.title" = "Markierungsfarbe";
 "articleReader.imagePlaceholder.unavailable" = "Bild nicht abrufbar";
 "articleReader.labels.author" = "Von";
