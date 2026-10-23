@@ -2736,22 +2736,8 @@ struct ArticleReaderView: View {
         }
         // Geänderte Darstellung lädt die Reader-HTML neu; die JS-Referenz auf die aktive
         // YouTube-Karte geht dabei verloren, das Overlay hätte keine Position mehr.
-        .onChange(of: appearanceKey) { _, _ in
-            youtubePlayerState = nil
-            // Die neu geladene Seite kennt die Treffer nicht mehr.
-            if findActive { closeFind() }
-        }
-        .onChange(of: findQuery) { _, query in scheduleFind(query) }
-        // ⌘F mit Hardware-Tastatur
-        .background {
-            if canFind {
-                Button("") { openFind() }
-                    .keyboardShortcut("f", modifiers: .command)
-                    .opacity(0)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
-            }
-        }
+        .onChange(of: appearanceKey) { _, _ in youtubePlayerState = nil }
+        .background { findSupport }
         .sheet(isPresented: $showAppearance) {
             appearanceSheet
         }
@@ -2887,47 +2873,7 @@ struct ArticleReaderView: View {
             guard viewModel.canUndo else { return }
             Task { await viewModel.undo() }
         }
-        .overlay(alignment: .top) {
-            if findActive {
-                findBar
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                    .padding(.top, 8)
-            } else if let msg = viewModel.undoToast {
-                ReaderUndoToast(message: msg, bgColor: readerBgColor)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                    .animation(.spring(response: 0.35, dampingFraction: 0.8), value: viewModel.undoToast)
-                    .padding(.top, 8)
-            } else if let domain = current.requiresLoginDomain, !paywallBannerDismissed,
-                      let content = current.content, !content.isEmpty {
-                PaywallWarningBanner(
-                    domain: domain,
-                    isRetrying: isRetryingAfterPaywall,
-                    onConnect: { showSiteCredentialsSheet = true },
-                    onRetry: { retryAfterPaywall() },
-                    onDismiss: { paywallBannerDismissed = true }
-                )
-                .transition(.move(edge: .top).combined(with: .opacity))
-                .animation(.spring(response: 0.35, dampingFraction: 0.8), value: current.requiresLoginDomain)
-                .padding(.top, 8)
-                .padding(.horizontal, 12)
-            } else if current.isPaywalled, !paywallSubscribeBannerDismissed,
-                      let content = current.content, !content.isEmpty {
-                PaywallSubscribeBanner(
-                    subscribeUrl: current.paywallSubscribeUrl,
-                    onSubscribe: {
-                        if let subscribeUrl = current.paywallSubscribeUrl, let url = URL(string: subscribeUrl) {
-                            UIApplication.shared.open(url)
-                        }
-                    },
-                    onArchive: { archiveFromPaywallBanner() },
-                    onDismiss: { paywallSubscribeBannerDismissed = true }
-                )
-                .transition(.move(edge: .top).combined(with: .opacity))
-                .animation(.spring(response: 0.35, dampingFraction: 0.8), value: current.isPaywalled)
-                .padding(.top, 8)
-                .padding(.horizontal, 12)
-            }
-        }
+        .overlay(alignment: .top) { topBannerOverlay }
         .sheet(isPresented: $showSiteCredentialsSheet) {
             SiteCredentialsView(preselectedDomain: current.requiresLoginDomain)
         }
@@ -3695,6 +3641,72 @@ struct ArticleReaderView: View {
     // oder ⌘F mit Hardware-Tastatur. Die Leiste schwebt oben über dem Text,
     // damit sie die Tastatur nicht verdeckt und die bottomBar bleibt, wie sie
     // ist. Treffer: alle gelb, der aktuelle orange; ⌘G / ⇧⌘G springen.
+
+    /// Suchleiste bzw. Undo-Toast und Paywall-Banner oben über dem Reader.
+    /// Als eigene Property, damit `body` für den Type-Checker klein genug bleibt.
+    @ViewBuilder
+    private var topBannerOverlay: some View {
+        if findActive {
+            findBar
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .padding(.top, 8)
+        } else if let msg = viewModel.undoToast {
+            ReaderUndoToast(message: msg, bgColor: readerBgColor)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .animation(.spring(response: 0.35, dampingFraction: 0.8), value: viewModel.undoToast)
+                .padding(.top, 8)
+        } else if let domain = current.requiresLoginDomain, !paywallBannerDismissed,
+                  let content = current.content, !content.isEmpty {
+            PaywallWarningBanner(
+                domain: domain,
+                isRetrying: isRetryingAfterPaywall,
+                onConnect: { showSiteCredentialsSheet = true },
+                onRetry: { retryAfterPaywall() },
+                onDismiss: { paywallBannerDismissed = true }
+            )
+            .transition(.move(edge: .top).combined(with: .opacity))
+            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: current.requiresLoginDomain)
+            .padding(.top, 8)
+            .padding(.horizontal, 12)
+        } else if current.isPaywalled, !paywallSubscribeBannerDismissed,
+                  let content = current.content, !content.isEmpty {
+            PaywallSubscribeBanner(
+                subscribeUrl: current.paywallSubscribeUrl,
+                onSubscribe: {
+                    if let subscribeUrl = current.paywallSubscribeUrl, let url = URL(string: subscribeUrl) {
+                        UIApplication.shared.open(url)
+                    }
+                },
+                onArchive: { archiveFromPaywallBanner() },
+                onDismiss: { paywallSubscribeBannerDismissed = true }
+            )
+            .transition(.move(edge: .top).combined(with: .opacity))
+            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: current.isPaywalled)
+            .padding(.top, 8)
+            .padding(.horizontal, 12)
+        }
+    }
+
+    /// Unsichtbar hinter dem Reader: ⌘F und die Reaktionen auf Sucheingabe
+    /// und Neuladen der Seite (aus `body` ausgelagert, Type-Checker).
+    private var findSupport: some View {
+        Group {
+            if canFind {
+                Button("") { openFind() }
+                    .keyboardShortcut("f", modifiers: .command)
+            } else {
+                Color.clear
+            }
+        }
+        .frame(width: 0, height: 0)
+        .opacity(0)
+        .accessibilityHidden(true)
+        // Die neu geladene Seite kennt die Treffer nicht mehr.
+        .onChange(of: appearanceKey) { _, _ in
+            if findActive { closeFind() }
+        }
+        .onChange(of: findQuery) { _, query in scheduleFind(query) }
+    }
 
     /// Artikel mit Text oder PDF – Hinweis-Seiten ohne Inhalt haben nichts zu durchsuchen.
     private var canFind: Bool {
