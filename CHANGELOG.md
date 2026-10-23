@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Find in article: "Find in Article" in the reader's side menu (or ⌘F with
+  a keyboard) opens a search bar at the top. All matches are highlighted in
+  yellow, the current one in orange; the arrows (or Return, ⌘G / ⇧⌘G) jump
+  to the next or previous match and the bar shows "3 of 12". The search
+  ignores upper/lower case, finds text across formatting (e.g. half in
+  italics) and starts at the current reading position. Works in text
+  articles and PDFs. "Done" or Esc closes it and removes the highlights.
 - Resize highlights: tap an own highlight in an article or PDF and drag the
   selection handles; when you let go, the highlight takes the new length and
   the handles stay so you can keep dragging. It is saved in place (same id),
