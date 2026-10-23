@@ -384,6 +384,9 @@ private struct PDFDocumentRepresentable: UIViewRepresentable {
         actions?.pdfComment = { [weak coordinator] in coordinator?.comment() }
         actions?.pdfDeleteSelected = { [weak coordinator] in coordinator?.deleteSelected() }
         actions?.pdfDelete = { [weak coordinator] id in coordinator?.delete(id) }
+        actions?.pdfFind = { [weak coordinator] query in coordinator?.find(query) ?? [] }
+        actions?.pdfSelectMatch = { [weak coordinator] index in coordinator?.selectMatch(index) }
+        actions?.pdfVisiblePage = { [weak coordinator] in coordinator?.visiblePageIndex ?? 0 }
         coordinator.apply(highlights)
     }
 
@@ -479,6 +482,50 @@ private struct PDFDocumentRepresentable: UIViewRepresentable {
             offsetObservation = nil
             pdfView?.onLayout = nil
             removeAnnotations()
+        }
+
+        // MARK: Suche im Artikel
+
+        /// Treffer der aktuellen Suche, gelb eingefärbt; der gewählte orange.
+        private var findMatches: [PDFSelection] = []
+        private var currentFindMatch: Int?
+        private static let findColor = UIColor.systemYellow.withAlphaComponent(0.45)
+        private static let currentFindColor = UIColor.systemOrange
+
+        /// Sucht `query` im ganzen PDF und färbt alle Treffer ein; liefert je
+        /// Treffer den Seitenindex. Eine leere Suche nimmt die Treffer weg.
+        func find(_ query: String) -> [Int] {
+            findMatches = []
+            currentFindMatch = nil
+            let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let document, !trimmed.isEmpty else {
+                pdfView?.highlightedSelections = nil
+                return []
+            }
+            findMatches = document.findString(trimmed, withOptions: [.caseInsensitive, .diacriticInsensitive])
+            for match in findMatches { match.color = Self.findColor }
+            pdfView?.highlightedSelections = findMatches.isEmpty ? nil : findMatches
+            return findMatches.map { match in
+                match.pages.first.map { document.index(for: $0) } ?? 0
+            }
+        }
+
+        /// Hebt Treffer `index` hervor und blättert zu ihm.
+        func selectMatch(_ index: Int) {
+            guard let pdfView, findMatches.indices.contains(index) else { return }
+            if let previous = currentFindMatch, findMatches.indices.contains(previous) {
+                findMatches[previous].color = Self.findColor
+            }
+            findMatches[index].color = Self.currentFindColor
+            currentFindMatch = index
+            // Neu zuweisen, damit PDFKit die geänderten Farben zeichnet.
+            pdfView.highlightedSelections = findMatches
+            pdfView.go(to: findMatches[index])
+        }
+
+        var visiblePageIndex: Int {
+            guard let document, let page = pdfView?.currentPage else { return 0 }
+            return document.index(for: page)
         }
 
         // MARK: Layout, zoom, restore

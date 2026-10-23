@@ -1148,6 +1148,24 @@ private struct ActionCircleBackground: ViewModifier {
     }
 }
 
+/// Kapsel der Suchleiste: ab iOS 26 Liquid Glass, darunter eine flache,
+/// themenfarbige Fläche mit Schatten (wie der Undo-Toast).
+private struct FindBarBackground: ViewModifier {
+    let bgColor: Color
+    let fgColor: Color
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.glassEffect(.regular, in: Capsule())
+        } else {
+            content
+                .background(bgColor.opacity(0.97), in: Capsule())
+                .overlay(Capsule().strokeBorder(fgColor.opacity(0.12), lineWidth: 0.5))
+                .shadow(color: .black.opacity(0.14), radius: 10, y: 4)
+        }
+    }
+}
+
 /// Ab iOS 26 echtes Liquid Glass; darunter eine flache, themenfarbige Fläche
 /// (kein `regularMaterial` — das würde bei abweichendem App-Theme z. B. im
 /// Dark-Reader-Modus auf einem Light-System-Theme die falsche Tönung ziehen,
@@ -1231,18 +1249,151 @@ private struct HighlightToolbarBackground: ViewModifier {
         // -1 statt null: ein nil-Ergebnis verträgt die async-Variante von
         // evaluateJavaScript nicht auf allen iOS-Versionen.
         guard let top = try? await webView.evaluateJavaScript(js) as? Double, top >= 0 else { return }
-        var view: UIView? = webView.superview
+        scrollReader(toDocumentY: top)
+    }
+
+    /// Äußere UIScrollView, in der der (selbst nie scrollende) WebView liegt.
+    private var readerScrollView: UIScrollView? {
+        var view: UIView? = webView?.superview
         while let v = view {
-            if let scroll = v as? UIScrollView {
-                let point = webView.convert(CGPoint(x: 0, y: top), to: scroll)
-                let maxOffset = max(0, scroll.contentSize.height - scroll.bounds.height)
-                let target = min(max(0, point.y - scroll.bounds.height / 3), maxOffset)
-                scroll.setContentOffset(CGPoint(x: 0, y: target), animated: true)
-                return
-            }
+            if let scroll = v as? UIScrollView { return scroll }
             view = v.superview
         }
+        return nil
     }
+
+    /// Scrollt den Reader so, dass die Dokument-Höhe `top` des WebViews im
+    /// oberen Drittel des Bildschirms steht.
+    private func scrollReader(toDocumentY top: Double) {
+        guard let webView, let scroll = readerScrollView else { return }
+        let point = webView.convert(CGPoint(x: 0, y: top), to: scroll)
+        let maxOffset = max(0, scroll.contentSize.height - scroll.bounds.height)
+        let target = min(max(0, point.y - scroll.bounds.height / 3), maxOffset)
+        scroll.setContentOffset(CGPoint(x: 0, y: target), animated: true)
+    }
+
+    // MARK: Suche im Artikel
+    //
+    // Artikel: Treffer werden über die CSS Custom Highlight API eingefärbt
+    // (`::highlight(...)`, ab iOS 17.2) – das DOM bleibt unangetastet, eigene
+    // Markierungen, Kommentar-Anker und die Höhenmessung merken nichts davon.
+    // PDFs: PDFKit sucht selbst, siehe `pdfFind` im PDFArticleView.
+
+    /// PDF-Artikel: sucht und färbt alle Treffer ein; liefert je Treffer den Seitenindex.
+    var pdfFind: ((String) -> [Int])?
+    /// PDF-Artikel: hebt Treffer i als aktuellen hervor und zeigt ihn.
+    var pdfSelectMatch: ((Int) -> Void)?
+    /// PDF-Artikel: Index der gerade sichtbaren Seite.
+    var pdfVisiblePage: (() -> Int)?
+
+    /// Lage der Treffer: Dokument-Höhe im WebView bzw. Seitenindex im PDF.
+    private var findPositions: [Double] = []
+    private var findQuery = ""
+
+    /// Sucht `query` (ohne Groß-/Kleinschreibung, Leerraum zählt als ein
+    /// Leerzeichen) und färbt alle Treffer ein. Liefert die Trefferzahl und
+    /// den ersten Treffer ab der aktuellen Leseposition (0, wenn keiner
+    /// danach kommt); hervorgehoben wird er erst über `selectMatch`.
+    func find(_ query: String) async -> (count: Int, start: Int) {
+        findQuery = query
+        if webView == nil, let pdfFind {
+            let pages = pdfFind(query)
+            findPositions = pages.map(Double.init)
+            let visible = Double(pdfVisiblePage?() ?? 0)
+            return (pages.count, findPositions.firstIndex { $0 >= visible } ?? 0)
+        }
+        guard let webView else { findPositions = []; return (0, 0) }
+        guard let data = try? JSONEncoder().encode(query),
+              let json = String(data: data, encoding: .utf8) else { return (0, 0) }
+        let result = try? await webView.evaluateJavaScript(
+            Self.findScript + "window.merlinFind.run(\(json))") as? String
+        findPositions = result.flatMap { $0.data(using: .utf8) }
+            .flatMap { try? JSONDecoder().decode([Double].self, from: $0) } ?? []
+        // Sichtbarer Bereich in Dokument-Koordinaten des WebViews.
+        var visibleTop: Double = 0
+        if let scroll = readerScrollView {
+            visibleTop = Double(scroll.convert(CGPoint(x: 0, y: scroll.contentOffset.y), to: webView).y)
+        }
+        return (findPositions.count, findPositions.firstIndex { $0 >= visibleTop } ?? 0)
+    }
+
+    /// Hebt Treffer `index` als aktuellen hervor und scrollt zu ihm. Hat der
+    /// WebView die Seite inzwischen neu geladen (Treffer weg), wird neu
+    /// gesucht; die neue Trefferzahl kommt dann zurück.
+    @discardableResult
+    func selectMatch(_ index: Int) async -> Int? {
+        if webView == nil, let pdfSelectMatch {
+            guard findPositions.indices.contains(index) else { return nil }
+            pdfSelectMatch(index)
+            return nil
+        }
+        guard let webView else { return nil }
+        let top = try? await webView.evaluateJavaScript(
+            Self.findScript + "window.merlinFind.select(\(index))") as? Double
+        if let top, top >= 0 {
+            scrollReader(toDocumentY: top)
+            return nil
+        }
+        // Seite wurde neu geladen: Treffer neu aufbauen.
+        guard !findQuery.isEmpty else { return nil }
+        let (count, _) = await find(findQuery)
+        guard count > 0 else { return 0 }
+        let retry = min(index, count - 1)
+        if let top = try? await webView.evaluateJavaScript(
+            Self.findScript + "window.merlinFind.select(\(retry))") as? Double, top >= 0 {
+            scrollReader(toDocumentY: top)
+        }
+        return count
+    }
+
+    /// Nimmt alle Treffer-Hervorhebungen weg.
+    func clearFind() {
+        findPositions = []
+        findQuery = ""
+        if webView == nil, let pdfFind { _ = pdfFind(""); return }
+        webView?.evaluateJavaScript(Self.findScript + "window.merlinFind.run('')")
+    }
+
+    /// Legt `window.merlinFind` einmalig an. Treffer dürfen über Element-
+    /// grenzen gehen (z. B. halb kursiv); ausgeblendete Elemente zählen nicht.
+    /// `run` liefert die Treffer-Lagen als JSON, `select` die Lage des
+    /// gewählten Treffers (-1, wenn es ihn nicht mehr gibt).
+    private static let findScript = """
+    if(!window.merlinFind){window.merlinFind=(function(){\
+    var ranges=[];\
+    function style(){if(document.getElementById('merlin-find-style'))return;\
+    var st=document.createElement('style');st.id='merlin-find-style';\
+    st.textContent='::highlight(merlin-find){background-color:rgba(255,204,0,.45);}'+\
+    '::highlight(merlin-find-current){background-color:#ff9500;color:#000;}';\
+    document.head.appendChild(st);}\
+    function clear(){ranges=[];if(window.CSS&&CSS.highlights){CSS.highlights.delete('merlin-find');CSS.highlights.delete('merlin-find-current');}}\
+    function isSpace(c){return /\\s/.test(c);}\
+    function run(q){clear();\
+    q=q.replace(/\\s+/g,' ').trim().toLowerCase();\
+    if(!q||!window.CSS||!CSS.highlights||!window.Highlight)return '[]';\
+    style();\
+    var w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,{acceptNode:function(n){\
+    var p=n.parentElement;if(!p||p.closest('script,style,noscript,template,title'))return NodeFilter.FILTER_REJECT;\
+    return NodeFilter.FILTER_ACCEPT;}});\
+    var text='',mapN=[],mapO=[],n,lastSpace=true;\
+    while((n=w.nextNode())){var d=n.data;for(var i=0;i<d.length;i++){var c=d[i];\
+    if(isSpace(c)){if(lastSpace)continue;c=' ';lastSpace=true;}else{lastSpace=false;var l=c.toLowerCase();if(l.length===1)c=l;}\
+    text+=c;mapN.push(n);mapO.push(i);}}\
+    var tops=[],from=0,k;\
+    while(ranges.length<1000&&(k=text.indexOf(q,from))>=0){from=k+q.length;\
+    var e=k+q.length-1;\
+    var r=document.createRange();\
+    try{r.setStart(mapN[k],mapO[k]);r.setEnd(mapN[e],mapO[e]+1);}catch(x){continue;}\
+    var rect=r.getBoundingClientRect();\
+    if(rect.width===0&&rect.height===0)continue;\
+    ranges.push(r);tops.push(rect.top+window.scrollY);}\
+    if(ranges.length)CSS.highlights.set('merlin-find',new Highlight(...ranges));\
+    return JSON.stringify(tops);}\
+    function select(i){var r=ranges[i];if(!r)return -1;\
+    var h=new Highlight(r);h.priority=1;CSS.highlights.set('merlin-find-current',h);\
+    return r.getBoundingClientRect().top+window.scrollY;}\
+    return {run:run,select:select};})();}\n
+    """
 }
 
 // MARK: – WKWebView wrapper
@@ -1984,6 +2135,15 @@ struct ArticleReaderView: View {
     @State private var paperTexture:  Bool          = PreferencesStore.shared.readerPaperTexture
     @State private var progressEdge:  ProgressEdge = PreferencesStore.shared.progressEdge
     @State private var showSideMenu      = false
+    // Suche im Artikel (siehe `findBar`)
+    @State private var findActive        = false
+    @State private var findQuery         = ""
+    /// Suchbegriff, zu dem `findCount`/`findIndex` gehören.
+    @State private var findSearchedQuery = ""
+    @State private var findCount         = 0
+    @State private var findIndex         = 0
+    @State private var findTask: Task<Void, Never>? = nil
+    @FocusState private var findFieldFocused: Bool
     @State private var showReminderSheet = false
     @State private var articleReminder: Reminder? = nil
     @State private var showSavedAtFlyout   = false
@@ -2576,7 +2736,22 @@ struct ArticleReaderView: View {
         }
         // Geänderte Darstellung lädt die Reader-HTML neu; die JS-Referenz auf die aktive
         // YouTube-Karte geht dabei verloren, das Overlay hätte keine Position mehr.
-        .onChange(of: appearanceKey) { _, _ in youtubePlayerState = nil }
+        .onChange(of: appearanceKey) { _, _ in
+            youtubePlayerState = nil
+            // Die neu geladene Seite kennt die Treffer nicht mehr.
+            if findActive { closeFind() }
+        }
+        .onChange(of: findQuery) { _, query in scheduleFind(query) }
+        // ⌘F mit Hardware-Tastatur
+        .background {
+            if canFind {
+                Button("") { openFind() }
+                    .keyboardShortcut("f", modifiers: .command)
+                    .opacity(0)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+        }
         .sheet(isPresented: $showAppearance) {
             appearanceSheet
         }
@@ -2713,7 +2888,11 @@ struct ArticleReaderView: View {
             Task { await viewModel.undo() }
         }
         .overlay(alignment: .top) {
-            if let msg = viewModel.undoToast {
+            if findActive {
+                findBar
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .padding(.top, 8)
+            } else if let msg = viewModel.undoToast {
                 ReaderUndoToast(message: msg, bgColor: readerBgColor)
                     .transition(.move(edge: .top).combined(with: .opacity))
                     .animation(.spring(response: 0.35, dampingFraction: 0.8), value: viewModel.undoToast)
@@ -3309,6 +3488,13 @@ struct ArticleReaderView: View {
                     }
                 }
 
+                if canFind {
+                    menuRow(icon: "magnifyingglass", label: L("articleReader.sideMenu.find")) {
+                        showSideMenu = false
+                        openFind()
+                    }
+                }
+
                 menuDivider
 
                 // ── Teilen & Links ────────────────────────────────────────────
@@ -3500,6 +3686,152 @@ struct ArticleReaderView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+    }
+
+    // MARK: – Suche im Artikel
+    //
+    // Einstieg über das Seitenmenü („Im Artikel suchen“) – dort, wo auch
+    // Vorlesen und Erscheinungsbild liegen, in Hoch- und Querformat gleich –
+    // oder ⌘F mit Hardware-Tastatur. Die Leiste schwebt oben über dem Text,
+    // damit sie die Tastatur nicht verdeckt und die bottomBar bleibt, wie sie
+    // ist. Treffer: alle gelb, der aktuelle orange; ⌘G / ⇧⌘G springen.
+
+    /// Artikel mit Text oder PDF – Hinweis-Seiten ohne Inhalt haben nichts zu durchsuchen.
+    private var canFind: Bool {
+        if current.isPDF { return current.pdfSourceURL != nil }
+        return !(current.content ?? "").isEmpty
+    }
+
+    private static let findBarSpring: Animation = .spring(response: 0.35, dampingFraction: 0.85)
+
+    private func openFind() {
+        withAnimation(Self.findBarSpring) { findActive = true }
+        // Erst fokussieren, wenn das Feld im View-Baum ist.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { findFieldFocused = true }
+    }
+
+    private func closeFind() {
+        findTask?.cancel()
+        findTask = nil
+        findFieldFocused = false
+        highlightActions.clearFind()
+        withAnimation(Self.findBarSpring) { findActive = false }
+        findQuery = ""
+        findSearchedQuery = ""
+        findCount = 0
+        findIndex = 0
+    }
+
+    /// Sucht nach kurzer Tipp-Pause; der erste Treffer ist der erste ab der
+    /// aktuellen Leseposition.
+    private func scheduleFind(_ query: String, immediately: Bool = false) {
+        guard findActive else { return }
+        findTask?.cancel()
+        findTask = Task {
+            if !immediately {
+                try? await Task.sleep(for: .milliseconds(250))
+                guard !Task.isCancelled else { return }
+            }
+            let (count, start) = await highlightActions.find(query)
+            guard !Task.isCancelled else { return }
+            findSearchedQuery = query
+            findCount = count
+            findIndex = start
+            if count > 0 { await highlightActions.selectMatch(start) }
+        }
+    }
+
+    private func stepFind(_ delta: Int) {
+        guard findCount > 0 else { return }
+        findIndex = (findIndex + delta + findCount) % findCount
+        let index = findIndex
+        Task {
+            // Seite inzwischen neu geladen: neu gesucht, neue Trefferzahl.
+            if let count = await highlightActions.selectMatch(index) {
+                findCount = count
+                findIndex = min(index, max(count - 1, 0))
+            }
+        }
+    }
+
+    private var findHasQuery: Bool {
+        !findSearchedQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var findBar: some View {
+        let accent = Color(hexString: accentColorHex) ?? .red
+        return HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(readerFgColor.opacity(0.5))
+
+            TextField(L("articleReader.find.placeholder"), text: $findQuery)
+                .focused($findFieldFocused)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+                .foregroundStyle(readerFgColor)
+                .tint(accent)
+                .onSubmit {
+                    // Eingabetaste: noch nicht gesucht → jetzt suchen, sonst nächster Treffer.
+                    if findQuery != findSearchedQuery {
+                        scheduleFind(findQuery, immediately: true)
+                    } else {
+                        stepFind(1)
+                    }
+                    findFieldFocused = true
+                }
+                .onKeyPress(.escape) {
+                    closeFind()
+                    return .handled
+                }
+
+            if findHasQuery {
+                Text(findCount > 0
+                     ? String(format: L("articleReader.find.position"), findIndex + 1, findCount)
+                     : L("articleReader.find.noMatches"))
+                    .font(.footnote.monospacedDigit())
+                    .foregroundStyle(readerFgColor.opacity(0.6))
+                    .lineLimit(1)
+                    .fixedSize()
+            }
+
+            HStack(spacing: 2) {
+                Button { stepFind(-1) } label: {
+                    Image(systemName: "chevron.up")
+                        .frame(width: 32, height: 36)
+                        .contentShape(Rectangle())
+                }
+                .keyboardShortcut("g", modifiers: [.command, .shift])
+                .accessibilityLabel(L("articleReader.find.previous"))
+
+                Button { stepFind(1) } label: {
+                    Image(systemName: "chevron.down")
+                        .frame(width: 32, height: 36)
+                        .contentShape(Rectangle())
+                }
+                .keyboardShortcut("g", modifiers: .command)
+                .accessibilityLabel(L("articleReader.find.next"))
+            }
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundStyle(readerFgColor.opacity(findCount > 0 ? 0.85 : 0.3))
+            .disabled(findCount == 0)
+            .buttonStyle(.plain)
+
+            Button { closeFind() } label: {
+                Text(L("articleReader.find.close"))
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(accent)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.leading, 14)
+        .padding(.trailing, 14)
+        .frame(height: 48)
+        .modifier(FindBarBackground(bgColor: readerBgColor, fgColor: readerFgColor))
+        .environment(\.colorScheme, readerIsDark ? .dark : .light)
+        .frame(maxWidth: 600)
+        .padding(.horizontal, 12)
     }
 
     // MARK: – Landscape action button
