@@ -2737,7 +2737,6 @@ struct ArticleReaderView: View {
         // Geänderte Darstellung lädt die Reader-HTML neu; die JS-Referenz auf die aktive
         // YouTube-Karte geht dabei verloren, das Overlay hätte keine Position mehr.
         .onChange(of: appearanceKey) { _, _ in youtubePlayerState = nil }
-        .background { findSupport }
         .sheet(isPresented: $showAppearance) {
             appearanceSheet
         }
@@ -2804,31 +2803,7 @@ struct ArticleReaderView: View {
             .presentationDragIndicator(.visible)
         }
         // ── Artikel melden ─────────────────────────────────────────────────
-        .sheet(isPresented: $showReportSheet, onDismiss: { reportComment = "" }) {
-            ReportArticleSheet(
-                articleURL:  current.url,
-                comment:     $reportComment,
-                isSending:   $reportSending,
-                feedback:    $reportFeedback,
-                onSend:      {
-                    Task {
-                        reportSending = true
-                        do {
-                            try await ReportService.shared.report(
-                                url:     current.url,
-                                comment: reportComment.trimmingCharacters(in: .whitespacesAndNewlines)
-                            )
-                            reportFeedback = .success
-                        } catch {
-                            reportFeedback = .failure(error.localizedDescription)
-                        }
-                        reportSending = false
-                    }
-                }
-            )
-            .presentationDetents([.height(320)])
-            .presentationDragIndicator(.visible)
-        }
+        .sheet(isPresented: $showReportSheet, onDismiss: { reportComment = "" }) { reportSheet }
         // ── Bilder nachladen, die der Hintergrund-Prefetch verpasst hat ─────
         .task(id: current.id) {
             await fetchMissingContentImages()
@@ -3642,10 +3617,47 @@ struct ArticleReaderView: View {
     // damit sie die Tastatur nicht verdeckt und die bottomBar bleibt, wie sie
     // ist. Treffer: alle gelb, der aktuelle orange; ⌘G / ⇧⌘G springen.
 
-    /// Suchleiste bzw. Undo-Toast und Paywall-Banner oben über dem Reader.
-    /// Als eigene Property, damit `body` für den Type-Checker klein genug bleibt.
-    @ViewBuilder
+    /// „Artikel melden“-Sheet (aus `body` ausgelagert, Type-Checker).
+    private var reportSheet: some View {
+        ReportArticleSheet(
+            articleURL:  current.url,
+            comment:     $reportComment,
+            isSending:   $reportSending,
+            feedback:    $reportFeedback,
+            onSend:      { sendReport() }
+        )
+        .presentationDetents([.height(320)])
+        .presentationDragIndicator(.visible)
+    }
+
+    private func sendReport() {
+        Task {
+            reportSending = true
+            do {
+                try await ReportService.shared.report(
+                    url:     current.url,
+                    comment: reportComment.trimmingCharacters(in: .whitespacesAndNewlines)
+                )
+                reportFeedback = .success
+            } catch {
+                reportFeedback = .failure(error.localizedDescription)
+            }
+            reportSending = false
+        }
+    }
+
+    /// Oben über dem Reader: Suchleiste bzw. Undo-Toast und Paywall-Banner,
+    /// dazu unsichtbar ⌘F und die Such-Hooks (`findSupport`). Als eigene
+    /// Property, damit `body` für den Type-Checker klein genug bleibt.
     private var topBannerOverlay: some View {
+        ZStack(alignment: .top) {
+            findSupport
+            topBanner
+        }
+    }
+
+    @ViewBuilder
+    private var topBanner: some View {
         if findActive {
             findBar
                 .transition(.move(edge: .top).combined(with: .opacity))
