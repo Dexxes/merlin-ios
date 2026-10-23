@@ -3523,26 +3523,8 @@ struct ArticleReaderView: View {
 
             }
             .padding(.top, 8)
+            .padding(.bottom, safeAreaBottom + 14)
         }
-
-        // ── Merlin-Logo – immer an der Bildschirmkante sichtbar ───────────
-        HStack {
-            Spacer()
-            if let url = Bundle.module.url(forResource: "merlin-logo", withExtension: "png"),
-               let uiImage = UIImage(contentsOfFile: url.path) {
-                Image(uiImage: uiImage)
-                    .resizable()
-                    .interpolation(.none)
-                    .scaledToFit()
-                    .frame(height: 60)
-                    .scaleEffect(x: -1, y: 1)
-                    .opacity(0.22)
-                    .padding(.trailing, 20)
-            }
-        }
-        .padding(.vertical, 14)
-        .padding(.bottom, safeAreaBottom)
-        .background(readerBgColor)
         } // VStack
         .background(readerBgColor)
         .frame(maxHeight: .infinity)
