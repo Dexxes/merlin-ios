@@ -4,9 +4,15 @@ bundleID: dev.merlin.app
 infoPath: Sources/Merlin/Info.plist
 entitlementsPath: Sources/Merlin/Merlin.entitlements
 iconPath: Sources/Merlin/Assets.xcassets/AppIcon.appiconset/AppIcon.png
+# Liegt im App-Bundle-Root (Apple verlangt das Privacy-Manifest dort,
+# nicht im SwiftPM-Resource-Bundle).
+resources:
+  - Sources/Merlin/PrivacyInfo.xcprivacy
 extensions:
   - product: MerlinShare
     bundleID: dev.merlin.app.MerlinShare
     type: share
     infoPath: Sources/MerlinShare/Info.plist
     entitlementsPath: Sources/MerlinShare/MerlinShare.entitlements
+    resources:
+      - Sources/MerlinShare/PrivacyInfo.xcprivacy
