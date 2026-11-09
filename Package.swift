@@ -26,7 +26,7 @@ let package = Package(
     targets: [
         .target(
             name: "Merlin",
-            exclude: ["Info.plist", "Merlin.entitlements"],
+            exclude: ["Info.plist", "Merlin.entitlements", "PrivacyInfo.xcprivacy"],
             resources: [
                 .process("Assets.xcassets"),
                 .process("Resources"),
@@ -37,7 +37,7 @@ let package = Package(
         ),
         .target(
             name: "MerlinShare",
-            exclude: ["Info.plist", "MerlinShare.entitlements"],
+            exclude: ["Info.plist", "MerlinShare.entitlements", "PrivacyInfo.xcprivacy"],
             resources: [
                 .process("Assets.xcassets"),
                 .process("Resources"),

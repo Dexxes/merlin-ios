@@ -28,6 +28,10 @@
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<!-- Nur HTTPS/Standard-Krypto des Systems -> von Exportkontrolle ausgenommen.
+	     Erspart die Compliance-Frage bei jedem TestFlight-Upload. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>
