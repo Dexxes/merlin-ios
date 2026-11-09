@@ -28,15 +28,23 @@ See [Structure.md](Structure.md) for a full breakdown of the codebase (models, s
 
 ## Building
 
-The project uses Swift Package Manager (`Package.swift`) — there is no `.xcodeproj`.
+The project uses Swift Package Manager (`Package.swift`) — there is no checked-in `.xcodeproj`. `Merlin` and `MerlinShare` are library products; xtool wraps them into the app and the share extension using `xtool.yml`.
 
 **With Xcode:**
 
+Opening `Package.swift` directly is only good for editing — Xcode cannot run a library product. Let xtool generate a wrapper workspace instead (requires xtool ≥ 1.22 on macOS):
+
 ```bash
-open Package.swift
+xtool dev generate-xcode-project
+open xtool/Merlin.xcworkspace
 ```
 
-Select the `Merlin` scheme and run.
+Then select the **`Merlin-App`** scheme (not `Merlin`, which is the bare library) and run it on a simulator. For a real device, set your team under *Signing & Capabilities* for both `Merlin-App` and `MerlinShare-Extension`.
+
+Notes:
+
+- The generated project lives in `xtool/` (git-ignored). Re-running the command overwrites it, including the team selection. New Swift files or resources don't need a regeneration — only changes to `xtool.yml`, `Info.plist` or entitlements do.
+- Xcode signs with the bundle IDs from `xtool.yml` as they are (`dev.merlin.app`, `group.dev.merlin`), while xtool registers prefixed IDs (`XTL-….dev.merlin.app`). So an Xcode build installs as a separate app next to an xtool build. If Xcode reports an ID as unavailable, change it locally in the target settings.
 
 **With xtool:**
 
