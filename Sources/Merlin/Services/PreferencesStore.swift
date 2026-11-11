@@ -132,6 +132,8 @@ final class PreferencesStore: @unchecked Sendable {
         static let readerTheme          = "merlin_reader_theme"
         static let readerFont           = "merlin_reader_font"
         static let paperTexture         = "merlin_reader_paper_texture"
+        static let handsFreeButton      = "merlin_reader_hands_free_button"
+        static let handsFreeSpeed       = "merlin_reader_hands_free_speed"
         static let progressEdge         = "merlin_progress_edge"
         static let lineHeight           = "merlin_line_height"
         static let saveProgress           = "merlin_save_progress"
@@ -255,6 +257,25 @@ final class PreferencesStore: @unchecked Sendable {
             return defaults.bool(forKey: Key.paperTexture)
         }
         set { defaults.set(newValue, forKey: Key.paperTexture) }
+    }
+
+    /// Freihand-Lesemodus: Button in der Bottom bar des Readers einblenden.
+    /// Nur lokal (wie die Papierstruktur). Standard: aus.
+    var readerHandsFreeButton: Bool {
+        get { defaults.bool(forKey: Key.handsFreeButton) }
+        set { defaults.set(newValue, forKey: Key.handsFreeButton) }
+    }
+
+    /// Zuletzt gewählte Stellung des Geschwindigkeits-Sliders im Freihand-
+    /// Lesemodus, 0…1 (siehe `AutoScrollController.speed(forSlider:)`).
+    var readerHandsFreeSpeed: Double {
+        get {
+            guard defaults.object(forKey: Key.handsFreeSpeed) != nil else {
+                return AutoScrollController.defaultSlider
+            }
+            return min(1, max(0, defaults.double(forKey: Key.handsFreeSpeed)))
+        }
+        set { defaults.set(newValue, forKey: Key.handsFreeSpeed) }
     }
 
     var readerFont: ReaderFont {
