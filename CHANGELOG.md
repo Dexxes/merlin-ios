@@ -120,6 +120,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comments: with "Newest reply first", the thread with the newest reply
   now also comes first among several threads on the same passage (they kept
   the server order before).
+- Share extension: it now declares which content it accepts (one web link
+  or page, text, up to 50 photos, 20 videos, 20 files) instead of
+  `TRUEPREDICATE`, which App Review rejects.
+- Share extension: uploading shared photos starts sooner; the compression
+  levels you didn't pick are stopped, so text recognition no longer waits
+  for all three. "Preparing…" shows until the first file starts.
+- Share extension: errors stay on screen until you tap (or 10 s pass)
+  instead of closing after 3 s, and the sheet grows so longer messages fit.
+- Share extension: a rate-limit notice no longer stays under the spinner
+  when you save again; after entering credentials it says "Reading shared
+  content…" instead of "Saving…"; two error messages were English-only;
+  German typo "Geteilten Inhalt wird gelesen".
 
 ### Added
 - Tags: a tag can now be deleted. Long-press it in the side menu's tag list

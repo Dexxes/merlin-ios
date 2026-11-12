@@ -469,13 +469,14 @@
 "settings.storage.sectionHeader" = "Speicher";
 "settings.storage.serverLabel" = "Server";
 "settings.testConnection.button" = "Verbindung testen";
-"share.extracting.subtitle" = "Geteilten Inhalt wird gelesen…";
+"share.extracting.subtitle" = "Geteilter Inhalt wird gelesen…";
 "share.files.compression.light" = "Schwach komprimieren";
 "share.files.compression.original" = "Unkomprimiert";
 "share.files.compression.strong" = "Stark komprimieren";
 "share.files.errorReadFile" = "Die geteilte Datei konnte nicht gelesen werden.";
 "share.files.errorStandalone" = "Dateien lassen sich nur mit Nextcloud speichern, nicht mit dem Merlin-Server.";
 "share.files.errorUpload" = "Hochladen fehlgeschlagen: %@";
+"share.files.preparing" = "Wird vorbereitet…";
 "share.files.progress" = "Datei %@ von %@ · %@";
 "share.files.subtitle" = "Dateien in Merlin speichern";
 "share.files.summary" = "%@ · %@";
@@ -483,6 +484,8 @@
 "share.rateLimited.subtitle" = "Rate-Limit erreicht";
 "share.result.errorAppNotFound" = "Merlin-App auf diesem Server nicht gefunden.";
 "share.result.errorAuthFailed" = "Authentifizierung fehlgeschlagen.\nÜberprüfe deine Zugangsdaten in der Merlin-App.";
+"share.result.errorEncode" = "Die Anfrage konnte nicht erstellt werden.";
+"share.result.errorInvalidUrl" = "Ungültige Nextcloud-Adresse.";
 "share.result.errorNetwork" = "Netzwerkfehler: %@";
 "share.result.errorNoResponse" = "Keine Antwort vom Server.";
 "share.result.errorNoUrl" = "Keine URL im geteilten Inhalt gefunden.";
@@ -491,6 +494,7 @@
 "share.result.errorServerCode" = "Serverfehler (HTTP %lld).";
 "share.result.errorTitle" = "Konnte nicht gespeichert werden";
 "share.result.successTitle" = "In Merlin gespeichert!";
+"share.result.tapToClose" = "Tippen zum Schließen";
 "share.saving.subtitle" = "Wird zur Leseliste hinzugefügt…";
 "share.settings.missingFieldsMessage" = "Bitte fülle alle Felder aus.";
 "share.settings.missingFieldsTitle" = "Fehlende Angaben";

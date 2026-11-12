@@ -549,6 +549,9 @@ class ShareViewController: UIViewController {
         settingsStack.isHidden = true
         activityIndicator.isHidden = false
         statusLabel.isHidden = false
+        // Clear what an earlier attempt left there (e.g. the rate-limit notice).
+        statusLabel.text = ""
+        progressView.isHidden = true
         activityIndicator.startAnimating()
         containerHeightConstraint?.constant = 220
     }
@@ -586,7 +589,7 @@ class ShareViewController: UIViewController {
         usernameField.resignFirstResponder()
         passwordField.resignFirstResponder()
 
-        showSavingMode()
+        showExtractingMode()
         extractContent()
     }
 
@@ -780,7 +783,18 @@ class ShareViewController: UIViewController {
         let url      = pendingURL
         let hasFiles = !pendingFiles.isEmpty
         let existing = selectedTagIds  // chip selections
-        if hasFiles { showUploadingMode() } else { showSavingMode() }
+        if hasFiles {
+            // The other levels are no longer needed. Cancelling them lets the
+            // text recognition (which waits for all compressions, see
+            // showStagingMode(files:)) start right away instead of after every
+            // level has been computed for every photo.
+            for (level, task) in compressionTasks where level != selectedCompression {
+                task.cancel()
+            }
+            showUploadingMode()
+        } else {
+            showSavingMode()
+        }
         Task {
             // Resolve typed names → IDs (create if necessary)
             let newIds = newNames.isEmpty ? [] : await resolveTagIds(for: newNames)
@@ -986,16 +1000,16 @@ class ShareViewController: UIViewController {
         // Build URL; append tagIds as query params (tagIds[]=1&tagIds[]=2) so they
         // are always readable via getParam() regardless of Nextcloud version.
         guard var components = URLComponents(string: "\(storedURL)\(apiPrefix)/articles") else {
-            showError("Invalid Nextcloud URL."); return
+            showError(L("share.result.errorInvalidUrl")); return
         }
         if !tagIds.isEmpty {
             components.queryItems = tagIds.map { URLQueryItem(name: "tagIds[]", value: "\($0)") }
         }
         guard let apiURL = components.url else {
-            showError("Invalid Nextcloud URL."); return
+            showError(L("share.result.errorInvalidUrl")); return
         }
         guard let body = try? JSONSerialization.data(withJSONObject: ["url": urlString]) else {
-            showError("Failed to encode request."); return
+            showError(L("share.result.errorEncode")); return
         }
 
         let token = Data("\(storedUsername):\(storedPassword)".utf8).base64EncodedString()
@@ -1095,6 +1109,9 @@ class ShareViewController: UIViewController {
     private func showUploadingMode() {
         showSavingMode()
         subtitleLabel.text = L("share.files.uploadingSubtitle")
+        // Shown until the first file starts (compression and text recognition
+        // may still be running).
+        statusLabel.text = L("share.files.preparing")
         progressView.progress = 0
         progressView.isHidden = false
     }
@@ -1161,13 +1178,34 @@ class ShareViewController: UIViewController {
         done()
     }
 
+    /// Errors stay until the user taps (or `errorAutoCloseDelay` passes), so
+    /// longer messages with a server detail can be read.
+    private var isShowingError = false
+    private static let errorAutoCloseDelay: TimeInterval = 10
+
     private func showError(_ message: String) {
         activityIndicator.stopAnimating()
+        activityIndicator.isHidden = true
+        progressView.isHidden = true
+        stagingStack.isHidden  = true
+        settingsStack.isHidden = true
         iconView.image     = UIImage(systemName: "xmark.circle.fill")
         iconView.tintColor = .systemRed
         subtitleLabel.text = L("share.result.errorTitle")
-        statusLabel.text   = message
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+        statusLabel.isHidden = false
+        statusLabel.text   = message + "\n\n" + L("share.result.tapToClose")
+        isShowingError = true
+
+        // Grow the sheet so the whole message fits: the label starts 120 pt
+        // below the top (header + spinner slot, see setupUI).
+        let width = max(0, view.bounds.width - 40)
+        let textHeight = statusLabel.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height
+        let needed = 120 + ceil(textHeight) + 20 + view.safeAreaInsets.bottom
+        let maxHeight = view.bounds.height - view.safeAreaInsets.top
+        containerHeightConstraint?.constant = max(220, min(needed, maxHeight))
+        UIView.animate(withDuration: 0.2) { self.view.layoutIfNeeded() }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.errorAutoCloseDelay) { [weak self] in
             self?.done()
         }
     }
@@ -1207,6 +1245,7 @@ class ShareViewController: UIViewController {
     }
 
     @objc private func backgroundTapped() {
+        if isShowingError { done(); return }
         view.endEditing(true)
     }
 }
