@@ -94,10 +94,14 @@ class ShareViewController: UIViewController {
         return v
     }()
 
+    /// The asset catalog lives in SwiftPM's resource bundle (`Bundle.module`),
+    /// not in the bundle of this class, so the logo has to be loaded from there.
+    private static var logo: UIImage? {
+        UIImage(named: "MerlinLogo", in: .module, compatibleWith: nil)
+    }
+
     private let iconView: UIImageView = {
-        let bundle = Bundle(for: ShareViewController.self)
-        let logo = UIImage(named: "MerlinLogo", in: bundle, compatibleWith: nil)
-        let iv = UIImageView(image: logo)
+        let iv = UIImageView(image: ShareViewController.logo)
         iv.contentMode = .scaleAspectFit
         iv.translatesAutoresizingMaskIntoConstraints = false
         return iv
@@ -1381,9 +1385,7 @@ class ShareViewController: UIViewController {
             self.stagingStack.isHidden               = false
             self.activityIndicator.isHidden          = true
             self.statusLabel.isHidden                = true
-            self.iconView.image                      = UIImage(named: "MerlinLogo",
-                                                             in: Bundle(for: ShareViewController.self),
-                                                             compatibleWith: nil)
+            self.iconView.image                      = Self.logo
             self.iconView.tintColor                  = .label
             self.setFooter(self.confirmSaveButton)
             self.containerHeightConstraint?.constant  = self.stagingHeight

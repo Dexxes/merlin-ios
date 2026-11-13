@@ -139,6 +139,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scrolls when it doesn't fit, also with the keyboard open; the focused
   field scrolls into view. The save button stays pinned below the
   scrolling content, so it is always visible.
+- Share extension: the Merlin logo in the sheet's header shows again (it
+  was looked up in the wrong bundle).
 
 ### Added
 - Tags: a tag can now be deleted. Long-press it in the side menu's tag list
