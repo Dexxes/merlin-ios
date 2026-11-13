@@ -220,7 +220,6 @@ class ShareViewController: UIViewController {
             compressionRow,
             tagChipsScrollView,
             tagsField,
-            confirmSaveButton
         ])
         stack.axis = .vertical
         stack.spacing = 10
@@ -282,7 +281,6 @@ class ShareViewController: UIViewController {
             makeField(urlField,      placeholder: L("share.settings.urlPlaceholder"), keyboard: .URL),
             makeField(usernameField, placeholder: L("share.settings.usernamePlaceholder")),
             makeField(passwordField, placeholder: L("share.settings.passwordPlaceholder"), secure: true),
-            saveButton
         ])
         stack.axis = .vertical
         stack.spacing = 10
@@ -300,8 +298,57 @@ class ShareViewController: UIViewController {
         config.cornerStyle = .medium
         let btn = UIButton(configuration: config)
         btn.translatesAutoresizingMaskIntoConstraints = false
+        btn.heightAnchor.constraint(equalToConstant: 56).isActive = true
         return btn
     }()
+
+    // MARK: – Footer (save button, always visible)
+
+    /// Holds the save button of the staging or settings screen below the
+    /// scrolling content, so it stays visible when the content scrolls
+    /// (landscape, keyboard). Collapsed to zero height in the other modes.
+    private let footerView: UIView = {
+        let v = UIView()
+        v.clipsToBounds = true
+        v.translatesAutoresizingMaskIntoConstraints = false
+        return v
+    }()
+    /// Gap above the button plus its height.
+    private static let footerHeight: CGFloat = 10 + 56
+    /// Space below the button (plus the home indicator's safe area).
+    private static let footerBottomPadding: CGFloat = 12
+    /// What the footer takes off the old all-in-one layout heights: button,
+    /// the stack spacing above it and the space below it.
+    private static let footerReservedHeight: CGFloat = 106
+    private var footerButton: UIButton?
+    private var isKeyboardVisible = false
+    private lazy var footerHeightConstraint = footerView.heightAnchor.constraint(equalToConstant: 0)
+    private lazy var footerBottomConstraint = footerView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor)
+    private var fitContentConstraint: NSLayoutConstraint?
+
+    /// Shows `button` in the footer, or collapses the footer for `nil`.
+    private func setFooter(_ button: UIButton?) {
+        footerButton = button
+        confirmSaveButton.isHidden = button !== confirmSaveButton
+        saveButton.isHidden = button !== saveButton
+        updateFooterLayout()
+    }
+
+    private func updateFooterLayout() {
+        let hasFooter = footerButton != nil
+        let height = hasFooter ? Self.footerHeight : 0
+        let bottom = hasFooter
+            ? Self.footerBottomPadding + (isKeyboardVisible ? 0 : view.safeAreaInsets.bottom)
+            : 0
+        footerHeightConstraint.constant = height
+        footerBottomConstraint.constant = -bottom
+        fitContentConstraint?.constant = height + bottom
+    }
+
+    override func viewSafeAreaInsetsDidChange() {
+        super.viewSafeAreaInsetsDidChange()
+        updateFooterLayout()
+    }
 
     /// Height of the sheet's content for the current mode. The sheet takes
     /// this height when it fits; otherwise (landscape, keyboard, small
@@ -389,6 +436,8 @@ class ShareViewController: UIViewController {
 
         let keyboardHeight = keyboardFrame.height
         containerBottomConstraint?.constant = -keyboardHeight
+        isKeyboardVisible = true
+        updateFooterLayout()
         UIView.animate(withDuration: duration) { self.view.layoutIfNeeded() }
         scrollFirstResponderIntoView()
     }
@@ -407,6 +456,8 @@ class ShareViewController: UIViewController {
         else { return }
 
         containerBottomConstraint?.constant = 0
+        isKeyboardVisible = false
+        updateFooterLayout()
         UIView.animate(withDuration: duration) { self.view.layoutIfNeeded() }
     }
 
@@ -440,6 +491,18 @@ class ShareViewController: UIViewController {
         // Settings-mode views
         contentView.addSubview(settingsStack)
 
+        // Save buttons, pinned below the scrolling content
+        containerView.addSubview(footerView)
+        footerView.addSubview(confirmSaveButton)
+        footerView.addSubview(saveButton)
+        for button in [confirmSaveButton, saveButton] {
+            NSLayoutConstraint.activate([
+                button.leadingAnchor.constraint(equalTo: footerView.leadingAnchor, constant: 20),
+                button.trailingAnchor.constraint(equalTo: footerView.trailingAnchor, constant: -20),
+                button.bottomAnchor.constraint(equalTo: footerView.bottomAnchor),
+            ])
+        }
+
         let heightC = contentView.heightAnchor.constraint(equalToConstant: 220)
         let bottomC = containerView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         containerHeightConstraint = heightC
@@ -450,8 +513,10 @@ class ShareViewController: UIViewController {
         let fullWidth = containerView.widthAnchor.constraint(equalTo: view.widthAnchor)
         fullWidth.priority = .defaultHigh
         // As tall as the content, unless that would reach under the status bar.
+        // (plus the footer, see updateFooterLayout)
         let fitContent = containerView.heightAnchor.constraint(equalTo: contentView.heightAnchor)
         fitContent.priority = .defaultHigh
+        fitContentConstraint = fitContent
 
         NSLayoutConstraint.activate([
             containerView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
@@ -464,7 +529,11 @@ class ShareViewController: UIViewController {
             fitContent,
 
             contentScrollView.topAnchor.constraint(equalTo: containerView.topAnchor),
-            contentScrollView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
+            contentScrollView.bottomAnchor.constraint(equalTo: footerView.topAnchor),
+            footerView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            footerView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            footerHeightConstraint,
+            footerBottomConstraint,
             contentScrollView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
             contentScrollView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
 
@@ -564,6 +633,7 @@ class ShareViewController: UIViewController {
         statusLabel.isHidden   = false
         statusLabel.text       = ""
         activityIndicator.startAnimating()
+        setFooter(nil)
         containerHeightConstraint?.constant = 220
     }
 
@@ -581,6 +651,7 @@ class ShareViewController: UIViewController {
         activityIndicator.stopAnimating()
         activityIndicator.isHidden = true
         statusLabel.isHidden   = true
+        setFooter(confirmSaveButton)
         containerHeightConstraint?.constant = stagingHeight
 
         // Load existing tags in the background and populate the chips row
@@ -617,6 +688,7 @@ class ShareViewController: UIViewController {
         activityIndicator.stopAnimating()
         activityIndicator.isHidden = true
         statusLabel.isHidden   = true
+        setFooter(confirmSaveButton)
         containerHeightConstraint?.constant = stagingHeight
 
         Task { await loadTagChips() }
@@ -632,6 +704,7 @@ class ShareViewController: UIViewController {
         statusLabel.text = ""
         progressView.isHidden = true
         activityIndicator.startAnimating()
+        setFooter(nil)
         containerHeightConstraint?.constant = 220
     }
 
@@ -641,7 +714,8 @@ class ShareViewController: UIViewController {
         settingsStack.isHidden = false
         activityIndicator.isHidden = true
         statusLabel.isHidden = true
-        containerHeightConstraint?.constant = 340
+        setFooter(saveButton)
+        containerHeightConstraint?.constant = 340 - Self.footerReservedHeight
     }
 
     // MARK: – Settings actions
@@ -892,7 +966,7 @@ class ShareViewController: UIViewController {
     /// Sheet height in staging mode: the base layout (sized for one row of
     /// tags) plus the extra rows of the tag list.
     private var stagingHeight: CGFloat {
-        340 + tagListHeightConstraint.constant - Self.tagRowHeight
+        340 - Self.footerReservedHeight + tagListHeightConstraint.constant - Self.tagRowHeight
             + (compressionRow.isHidden ? 0 : CompressionTile.height + stagingStack.spacing)
     }
 
@@ -1274,6 +1348,7 @@ class ShareViewController: UIViewController {
         statusLabel.isHidden = false
         statusLabel.text   = message + "\n\n" + L("share.result.tapToClose")
         isShowingError = true
+        setFooter(nil)
 
         // Grow the sheet so the whole message fits: the label starts 120 pt
         // below the top (header + spinner slot, see setupUI).
@@ -1310,6 +1385,7 @@ class ShareViewController: UIViewController {
                                                              in: Bundle(for: ShareViewController.self),
                                                              compatibleWith: nil)
             self.iconView.tintColor                  = .label
+            self.setFooter(self.confirmSaveButton)
             self.containerHeightConstraint?.constant  = self.stagingHeight
         }
     }

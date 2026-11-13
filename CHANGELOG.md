@@ -137,7 +137,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Share extension: in landscape the sheet is centred (at most 540 pt wide)
   inside the safe area instead of running under the notch, and its content
   scrolls when it doesn't fit, also with the keyboard open; the focused
-  field scrolls into view.
+  field scrolls into view. The save button stays pinned below the
+  scrolling content, so it is always visible.
 
 ### Added
 - Tags: a tag can now be deleted. Long-press it in the side menu's tag list
