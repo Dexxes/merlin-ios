@@ -476,6 +476,7 @@
 "share.files.errorReadFile" = "The shared file could not be read.";
 "share.files.errorStandalone" = "Files can only be saved with Nextcloud, not with the Merlin server.";
 "share.files.errorUpload" = "Upload failed: %@";
+"share.files.preparing" = "Preparing…";
 "share.files.progress" = "File %@ of %@ · %@";
 "share.files.subtitle" = "Save files to Merlin";
 "share.files.summary" = "%@ · %@";
@@ -483,6 +484,8 @@
 "share.rateLimited.subtitle" = "Rate limited";
 "share.result.errorAppNotFound" = "Merlin app not found on this server.";
 "share.result.errorAuthFailed" = "Authentication failed.\nCheck your credentials in the Merlin app.";
+"share.result.errorEncode" = "Could not create the request.";
+"share.result.errorInvalidUrl" = "Invalid Nextcloud URL.";
 "share.result.errorNetwork" = "Network error: %@";
 "share.result.errorNoResponse" = "No response from server.";
 "share.result.errorNoUrl" = "No URL found in shared content.";
@@ -491,6 +494,7 @@
 "share.result.errorServerCode" = "Server error (HTTP %lld).";
 "share.result.errorTitle" = "Could not save";
 "share.result.successTitle" = "Saved to Merlin!";
+"share.result.tapToClose" = "Tap to close";
 "share.saving.subtitle" = "Saving to your reading list…";
 "share.settings.missingFieldsMessage" = "Please fill in all fields.";
 "share.settings.missingFieldsTitle" = "Missing Fields";

@@ -94,10 +94,16 @@ class ShareViewController: UIViewController {
         return v
     }()
 
+    /// Loaded as a plain PNG from SwiftPM's resource bundle, like the main
+    /// app's logo: SwiftPM builds (xtool) don't compile the asset catalog, so
+    /// `UIImage(named:)` finds nothing there.
+    private static var logo: UIImage? {
+        guard let url = Bundle.module.url(forResource: "merlin-logo", withExtension: "png") else { return nil }
+        return UIImage(contentsOfFile: url.path)
+    }
+
     private let iconView: UIImageView = {
-        let bundle = Bundle(for: ShareViewController.self)
-        let logo = UIImage(named: "MerlinLogo", in: bundle, compatibleWith: nil)
-        let iv = UIImageView(image: logo)
+        let iv = UIImageView(image: ShareViewController.logo)
         iv.contentMode = .scaleAspectFit
         iv.translatesAutoresizingMaskIntoConstraints = false
         return iv
@@ -220,7 +226,6 @@ class ShareViewController: UIViewController {
             compressionRow,
             tagChipsScrollView,
             tagsField,
-            confirmSaveButton
         ])
         stack.axis = .vertical
         stack.spacing = 10
@@ -282,7 +287,6 @@ class ShareViewController: UIViewController {
             makeField(urlField,      placeholder: L("share.settings.urlPlaceholder"), keyboard: .URL),
             makeField(usernameField, placeholder: L("share.settings.usernamePlaceholder")),
             makeField(passwordField, placeholder: L("share.settings.passwordPlaceholder"), secure: true),
-            saveButton
         ])
         stack.axis = .vertical
         stack.spacing = 10
@@ -300,15 +304,100 @@ class ShareViewController: UIViewController {
         config.cornerStyle = .medium
         let btn = UIButton(configuration: config)
         btn.translatesAutoresizingMaskIntoConstraints = false
+        btn.heightAnchor.constraint(equalToConstant: 56).isActive = true
         return btn
     }()
 
+    // MARK: – Footer (save button, always visible)
+
+    /// Holds the save button of the staging or settings screen below the
+    /// scrolling content, so it stays visible when the content scrolls
+    /// (landscape, keyboard). Collapsed to zero height in the other modes.
+    private let footerView: UIView = {
+        let v = UIView()
+        v.clipsToBounds = true
+        v.translatesAutoresizingMaskIntoConstraints = false
+        return v
+    }()
+    /// Gap above the button plus its height.
+    private static let footerHeight: CGFloat = 10 + 56
+    /// Space below the button (plus the home indicator's safe area).
+    private static let footerBottomPadding: CGFloat = 12
+    /// What the footer takes off the old all-in-one layout heights: button,
+    /// the stack spacing above it and the space below it.
+    private static let footerReservedHeight: CGFloat = 106
+    private var footerButton: UIButton?
+    private var isKeyboardVisible = false
+    private lazy var footerHeightConstraint = footerView.heightAnchor.constraint(equalToConstant: 0)
+    private lazy var footerBottomConstraint = footerView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor)
+    private var fitContentConstraint: NSLayoutConstraint?
+
+    /// Shows `button` in the footer, or collapses the footer for `nil`.
+    private func setFooter(_ button: UIButton?) {
+        footerButton = button
+        confirmSaveButton.isHidden = button !== confirmSaveButton
+        saveButton.isHidden = button !== saveButton
+        updateFooterLayout()
+    }
+
+    private func updateFooterLayout() {
+        let hasFooter = footerButton != nil
+        let height = hasFooter ? Self.footerHeight : 0
+        let bottom = hasFooter
+            ? Self.footerBottomPadding + (isKeyboardVisible ? 0 : view.safeAreaInsets.bottom)
+            : 0
+        footerHeightConstraint.constant = height
+        footerBottomConstraint.constant = -bottom
+        fitContentConstraint?.constant = height + bottom
+    }
+
+    override func viewSafeAreaInsetsDidChange() {
+        super.viewSafeAreaInsetsDidChange()
+        updateFooterLayout()
+    }
+
+    /// Height of the sheet's content for the current mode. The sheet takes
+    /// this height when it fits; otherwise (landscape, keyboard, small
+    /// screens) it stops below the status bar and the content scrolls.
     private var containerHeightConstraint: NSLayoutConstraint?
     private var containerBottomConstraint: NSLayoutConstraint?
+
+    /// Widest the sheet gets; in landscape it is centred at this width
+    /// instead of stretching across the whole screen.
+    private static let maxSheetWidth: CGFloat = 540
+
+    /// Scrolls the sheet's content when it is taller than the space left.
+    private let contentScrollView: UIScrollView = {
+        let sv = UIScrollView()
+        sv.alwaysBounceVertical = false
+        sv.showsHorizontalScrollIndicator = false
+        sv.keyboardDismissMode = .interactive
+        sv.contentInsetAdjustmentBehavior = .never
+        sv.translatesAutoresizingMaskIntoConstraints = false
+        return sv
+    }()
+    private let contentView: UIView = {
+        let v = UIView()
+        v.translatesAutoresizingMaskIntoConstraints = false
+        return v
+    }()
 
     // MARK: – Lifecycle
 
     private var didForceFullScreen = false
+
+    /// Dims the host app behind the sheet. It reaches far beyond the view on
+    /// every side (superviews don't clip, see viewWillAppear): the system may
+    /// lay the view out again below the status bar after we forced it to
+    /// full screen, and the dimming then stopped short of the top edge.
+    private let dimmingView: UIView = {
+        let v = UIView()
+        v.backgroundColor = UIColor.black.withAlphaComponent(0.4)
+        v.isUserInteractionEnabled = false
+        v.translatesAutoresizingMaskIntoConstraints = false
+        return v
+    }()
+    private static let dimmingOverhang: CGFloat = 2000
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -353,7 +442,19 @@ class ShareViewController: UIViewController {
 
         let keyboardHeight = keyboardFrame.height
         containerBottomConstraint?.constant = -keyboardHeight
+        isKeyboardVisible = true
+        updateFooterLayout()
         UIView.animate(withDuration: duration) { self.view.layoutIfNeeded() }
+        scrollFirstResponderIntoView()
+    }
+
+    /// Keeps the focused text field visible when the sheet got too short for
+    /// its content (landscape with keyboard).
+    private func scrollFirstResponderIntoView() {
+        guard let field = [urlField, usernameField, passwordField, tagsField].first(where: \.isFirstResponder)
+        else { return }
+        let rect = field.convert(field.bounds, to: contentScrollView).insetBy(dx: 0, dy: -12)
+        contentScrollView.scrollRectToVisible(rect, animated: true)
     }
 
     @objc private func keyboardWillHide(_ notification: Notification) {
@@ -361,43 +462,96 @@ class ShareViewController: UIViewController {
         else { return }
 
         containerBottomConstraint?.constant = 0
+        isKeyboardVisible = false
+        updateFooterLayout()
         UIView.animate(withDuration: duration) { self.view.layoutIfNeeded() }
     }
 
     // MARK: – Layout
 
     private func setupUI() {
-        view.backgroundColor = UIColor.black.withAlphaComponent(0.4)
+        view.backgroundColor = .clear
+        view.addSubview(dimmingView)
+        NSLayoutConstraint.activate([
+            dimmingView.topAnchor.constraint(equalTo: view.topAnchor, constant: -Self.dimmingOverhang),
+            dimmingView.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: Self.dimmingOverhang),
+            dimmingView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: -Self.dimmingOverhang),
+            dimmingView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: Self.dimmingOverhang),
+        ])
 
         view.addSubview(containerView)
-        containerView.addSubview(iconView)
-        containerView.addSubview(titleLabel)
-        containerView.addSubview(subtitleLabel)
+        containerView.addSubview(contentScrollView)
+        contentScrollView.addSubview(contentView)
+        contentView.addSubview(iconView)
+        contentView.addSubview(titleLabel)
+        contentView.addSubview(subtitleLabel)
 
         // Saving-mode views
-        containerView.addSubview(activityIndicator)
-        containerView.addSubview(statusLabel)
-        containerView.addSubview(progressView)
+        contentView.addSubview(activityIndicator)
+        contentView.addSubview(statusLabel)
+        contentView.addSubview(progressView)
 
         // Staging-mode views
-        containerView.addSubview(stagingStack)
+        contentView.addSubview(stagingStack)
 
         // Settings-mode views
-        containerView.addSubview(settingsStack)
+        contentView.addSubview(settingsStack)
 
-        let heightC = containerView.heightAnchor.constraint(equalToConstant: 220)
+        // Save buttons, pinned below the scrolling content
+        containerView.addSubview(footerView)
+        footerView.addSubview(confirmSaveButton)
+        footerView.addSubview(saveButton)
+        for button in [confirmSaveButton, saveButton] {
+            NSLayoutConstraint.activate([
+                button.leadingAnchor.constraint(equalTo: footerView.leadingAnchor, constant: 20),
+                button.trailingAnchor.constraint(equalTo: footerView.trailingAnchor, constant: -20),
+                button.bottomAnchor.constraint(equalTo: footerView.bottomAnchor),
+            ])
+        }
+
+        let heightC = contentView.heightAnchor.constraint(equalToConstant: 220)
         let bottomC = containerView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         containerHeightConstraint = heightC
         containerBottomConstraint = bottomC
 
+        // Full width in portrait; centred and at most maxSheetWidth wide in
+        // landscape, inside the safe area (notch / Dynamic Island).
+        let fullWidth = containerView.widthAnchor.constraint(equalTo: view.widthAnchor)
+        fullWidth.priority = .defaultHigh
+        // As tall as the content, unless that would reach under the status bar.
+        // (plus the footer, see updateFooterLayout)
+        let fitContent = containerView.heightAnchor.constraint(equalTo: contentView.heightAnchor)
+        fitContent.priority = .defaultHigh
+        fitContentConstraint = fitContent
+
         NSLayoutConstraint.activate([
-            containerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            containerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            containerView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            containerView.widthAnchor.constraint(lessThanOrEqualToConstant: Self.maxSheetWidth),
+            containerView.leadingAnchor.constraint(greaterThanOrEqualTo: view.safeAreaLayoutGuide.leadingAnchor),
+            containerView.trailingAnchor.constraint(lessThanOrEqualTo: view.safeAreaLayoutGuide.trailingAnchor),
+            fullWidth,
             bottomC,
+            containerView.topAnchor.constraint(greaterThanOrEqualTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
+            fitContent,
+
+            contentScrollView.topAnchor.constraint(equalTo: containerView.topAnchor),
+            contentScrollView.bottomAnchor.constraint(equalTo: footerView.topAnchor),
+            footerView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            footerView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            footerHeightConstraint,
+            footerBottomConstraint,
+            contentScrollView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            contentScrollView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+
+            contentView.topAnchor.constraint(equalTo: contentScrollView.contentLayoutGuide.topAnchor),
+            contentView.bottomAnchor.constraint(equalTo: contentScrollView.contentLayoutGuide.bottomAnchor),
+            contentView.leadingAnchor.constraint(equalTo: contentScrollView.contentLayoutGuide.leadingAnchor),
+            contentView.trailingAnchor.constraint(equalTo: contentScrollView.contentLayoutGuide.trailingAnchor),
+            contentView.widthAnchor.constraint(equalTo: contentScrollView.frameLayoutGuide.widthAnchor),
             heightC,
 
-            iconView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 20),
-            iconView.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 20),
+            iconView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            iconView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 20),
             iconView.widthAnchor.constraint(equalToConstant: 40),
             iconView.heightAnchor.constraint(equalToConstant: 40),
 
@@ -408,27 +562,27 @@ class ShareViewController: UIViewController {
             subtitleLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 2),
 
             // Saving mode
-            activityIndicator.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
+            activityIndicator.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
             activityIndicator.topAnchor.constraint(equalTo: iconView.bottomAnchor, constant: 28),
 
-            statusLabel.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
+            statusLabel.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
             statusLabel.topAnchor.constraint(equalTo: activityIndicator.bottomAnchor, constant: 12),
-            statusLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 20),
-            statusLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -20),
+            statusLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            statusLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
 
             progressView.topAnchor.constraint(equalTo: statusLabel.bottomAnchor, constant: 12),
-            progressView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 20),
-            progressView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -20),
+            progressView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            progressView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
 
             // Settings mode
             settingsStack.topAnchor.constraint(equalTo: iconView.bottomAnchor, constant: 20),
-            settingsStack.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 20),
-            settingsStack.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -20),
+            settingsStack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            settingsStack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
 
             // Staging mode
             stagingStack.topAnchor.constraint(equalTo: iconView.bottomAnchor, constant: 20),
-            stagingStack.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 20),
-            stagingStack.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -20),
+            stagingStack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            stagingStack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
 
         ])
 
@@ -485,6 +639,7 @@ class ShareViewController: UIViewController {
         statusLabel.isHidden   = false
         statusLabel.text       = ""
         activityIndicator.startAnimating()
+        setFooter(nil)
         containerHeightConstraint?.constant = 220
     }
 
@@ -502,6 +657,7 @@ class ShareViewController: UIViewController {
         activityIndicator.stopAnimating()
         activityIndicator.isHidden = true
         statusLabel.isHidden   = true
+        setFooter(confirmSaveButton)
         containerHeightConstraint?.constant = stagingHeight
 
         // Load existing tags in the background and populate the chips row
@@ -538,6 +694,7 @@ class ShareViewController: UIViewController {
         activityIndicator.stopAnimating()
         activityIndicator.isHidden = true
         statusLabel.isHidden   = true
+        setFooter(confirmSaveButton)
         containerHeightConstraint?.constant = stagingHeight
 
         Task { await loadTagChips() }
@@ -549,7 +706,11 @@ class ShareViewController: UIViewController {
         settingsStack.isHidden = true
         activityIndicator.isHidden = false
         statusLabel.isHidden = false
+        // Clear what an earlier attempt left there (e.g. the rate-limit notice).
+        statusLabel.text = ""
+        progressView.isHidden = true
         activityIndicator.startAnimating()
+        setFooter(nil)
         containerHeightConstraint?.constant = 220
     }
 
@@ -559,7 +720,8 @@ class ShareViewController: UIViewController {
         settingsStack.isHidden = false
         activityIndicator.isHidden = true
         statusLabel.isHidden = true
-        containerHeightConstraint?.constant = 340
+        setFooter(saveButton)
+        containerHeightConstraint?.constant = 340 - Self.footerReservedHeight
     }
 
     // MARK: – Settings actions
@@ -586,7 +748,7 @@ class ShareViewController: UIViewController {
         usernameField.resignFirstResponder()
         passwordField.resignFirstResponder()
 
-        showSavingMode()
+        showExtractingMode()
         extractContent()
     }
 
@@ -780,7 +942,18 @@ class ShareViewController: UIViewController {
         let url      = pendingURL
         let hasFiles = !pendingFiles.isEmpty
         let existing = selectedTagIds  // chip selections
-        if hasFiles { showUploadingMode() } else { showSavingMode() }
+        if hasFiles {
+            // The other levels are no longer needed. Cancelling them lets the
+            // text recognition (which waits for all compressions, see
+            // showStagingMode(files:)) start right away instead of after every
+            // level has been computed for every photo.
+            for (level, task) in compressionTasks where level != selectedCompression {
+                task.cancel()
+            }
+            showUploadingMode()
+        } else {
+            showSavingMode()
+        }
         Task {
             // Resolve typed names → IDs (create if necessary)
             let newIds = newNames.isEmpty ? [] : await resolveTagIds(for: newNames)
@@ -799,7 +972,7 @@ class ShareViewController: UIViewController {
     /// Sheet height in staging mode: the base layout (sized for one row of
     /// tags) plus the extra rows of the tag list.
     private var stagingHeight: CGFloat {
-        340 + tagListHeightConstraint.constant - Self.tagRowHeight
+        340 - Self.footerReservedHeight + tagListHeightConstraint.constant - Self.tagRowHeight
             + (compressionRow.isHidden ? 0 : CompressionTile.height + stagingStack.spacing)
     }
 
@@ -986,16 +1159,16 @@ class ShareViewController: UIViewController {
         // Build URL; append tagIds as query params (tagIds[]=1&tagIds[]=2) so they
         // are always readable via getParam() regardless of Nextcloud version.
         guard var components = URLComponents(string: "\(storedURL)\(apiPrefix)/articles") else {
-            showError("Invalid Nextcloud URL."); return
+            showError(L("share.result.errorInvalidUrl")); return
         }
         if !tagIds.isEmpty {
             components.queryItems = tagIds.map { URLQueryItem(name: "tagIds[]", value: "\($0)") }
         }
         guard let apiURL = components.url else {
-            showError("Invalid Nextcloud URL."); return
+            showError(L("share.result.errorInvalidUrl")); return
         }
         guard let body = try? JSONSerialization.data(withJSONObject: ["url": urlString]) else {
-            showError("Failed to encode request."); return
+            showError(L("share.result.errorEncode")); return
         }
 
         let token = Data("\(storedUsername):\(storedPassword)".utf8).base64EncodedString()
@@ -1095,6 +1268,9 @@ class ShareViewController: UIViewController {
     private func showUploadingMode() {
         showSavingMode()
         subtitleLabel.text = L("share.files.uploadingSubtitle")
+        // Shown until the first file starts (compression and text recognition
+        // may still be running).
+        statusLabel.text = L("share.files.preparing")
         progressView.progress = 0
         progressView.isHidden = false
     }
@@ -1161,13 +1337,35 @@ class ShareViewController: UIViewController {
         done()
     }
 
+    /// Errors stay until the user taps (or `errorAutoCloseDelay` passes), so
+    /// longer messages with a server detail can be read.
+    private var isShowingError = false
+    private static let errorAutoCloseDelay: TimeInterval = 10
+
     private func showError(_ message: String) {
         activityIndicator.stopAnimating()
+        activityIndicator.isHidden = true
+        progressView.isHidden = true
+        stagingStack.isHidden  = true
+        settingsStack.isHidden = true
         iconView.image     = UIImage(systemName: "xmark.circle.fill")
         iconView.tintColor = .systemRed
         subtitleLabel.text = L("share.result.errorTitle")
-        statusLabel.text   = message
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+        statusLabel.isHidden = false
+        statusLabel.text   = message + "\n\n" + L("share.result.tapToClose")
+        isShowingError = true
+        setFooter(nil)
+
+        // Grow the sheet so the whole message fits: the label starts 120 pt
+        // below the top (header + spinner slot, see setupUI).
+        let width = max(0, containerView.bounds.width - 40)
+        let textHeight = statusLabel.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height
+        let needed = 120 + ceil(textHeight) + 20 + view.safeAreaInsets.bottom
+        let maxHeight = view.bounds.height - view.safeAreaInsets.top
+        containerHeightConstraint?.constant = max(220, min(needed, maxHeight))
+        UIView.animate(withDuration: 0.2) { self.view.layoutIfNeeded() }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.errorAutoCloseDelay) { [weak self] in
             self?.done()
         }
     }
@@ -1189,10 +1387,9 @@ class ShareViewController: UIViewController {
             self.stagingStack.isHidden               = false
             self.activityIndicator.isHidden          = true
             self.statusLabel.isHidden                = true
-            self.iconView.image                      = UIImage(named: "MerlinLogo",
-                                                             in: Bundle(for: ShareViewController.self),
-                                                             compatibleWith: nil)
+            self.iconView.image                      = Self.logo
             self.iconView.tintColor                  = .label
+            self.setFooter(self.confirmSaveButton)
             self.containerHeightConstraint?.constant  = self.stagingHeight
         }
     }
@@ -1207,6 +1404,7 @@ class ShareViewController: UIViewController {
     }
 
     @objc private func backgroundTapped() {
+        if isShowingError { done(); return }
         view.endEditing(true)
     }
 }

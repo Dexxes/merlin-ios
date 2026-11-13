@@ -41,6 +41,9 @@ let package = Package(
             resources: [
                 .process("Assets.xcassets"),
                 .process("Resources"),
+                // Logo as a plain file: SwiftPM builds (xtool) don't compile
+                // the asset catalog, so UIImage(named:) can't find it there.
+                .copy("merlin-logo.png"),
             ]
         ),
     ]

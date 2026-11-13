@@ -131,7 +131,8 @@ SwiftUI-Views, die ausschließlich für Darstellung und Nutzereingabe zuständig
 | Pfad | Zweck |
 |------|-------|
 | `Sources/Merlin/Assets.xcassets/` | App-Icon und Akzentfarbe der Hauptapp |
-| `Sources/MerlinShare/Assets.xcassets/` | Merlin-Logo für die Share-Extension |
+| `Sources/MerlinShare/Assets.xcassets/` | App-Icon der Share-Extension |
+| `Sources/MerlinShare/merlin-logo.png` | Merlin-Logo im Kopf der Share-Extension, als einfache Datei aus `Bundle.module` geladen (SwiftPM-Builds kompilieren keinen Asset-Katalog) |
 | `Sources/Merlin/paper-texture.png` | Nahtlose Papier-Kachel (Graustufen, 512×512) für den Reader-Hintergrund in Hell/Sepia (`PaperBackground` in `ArticleReaderView.swift`); per `.copy` im Bundle, erzeugt von `scripts/generate-paper-texture.py` |
 
 ---
