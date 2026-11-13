@@ -94,10 +94,12 @@ class ShareViewController: UIViewController {
         return v
     }()
 
-    /// The asset catalog lives in SwiftPM's resource bundle (`Bundle.module`),
-    /// not in the bundle of this class, so the logo has to be loaded from there.
+    /// Loaded as a plain PNG from SwiftPM's resource bundle, like the main
+    /// app's logo: SwiftPM builds (xtool) don't compile the asset catalog, so
+    /// `UIImage(named:)` finds nothing there.
     private static var logo: UIImage? {
-        UIImage(named: "MerlinLogo", in: .module, compatibleWith: nil)
+        guard let url = Bundle.module.url(forResource: "merlin-logo", withExtension: "png") else { return nil }
+        return UIImage(contentsOfFile: url.path)
     }
 
     private let iconView: UIImageView = {
