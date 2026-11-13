@@ -303,18 +303,35 @@ class ShareViewController: UIViewController {
         return btn
     }()
 
+    /// Height of the sheet's content for the current mode. The sheet takes
+    /// this height when it fits; otherwise (landscape, keyboard, small
+    /// screens) it stops below the status bar and the content scrolls.
     private var containerHeightConstraint: NSLayoutConstraint?
     private var containerBottomConstraint: NSLayoutConstraint?
+
+    /// Widest the sheet gets; in landscape it is centred at this width
+    /// instead of stretching across the whole screen.
+    private static let maxSheetWidth: CGFloat = 540
+
+    /// Scrolls the sheet's content when it is taller than the space left.
+    private let contentScrollView: UIScrollView = {
+        let sv = UIScrollView()
+        sv.alwaysBounceVertical = false
+        sv.showsHorizontalScrollIndicator = false
+        sv.keyboardDismissMode = .interactive
+        sv.contentInsetAdjustmentBehavior = .never
+        sv.translatesAutoresizingMaskIntoConstraints = false
+        return sv
+    }()
+    private let contentView: UIView = {
+        let v = UIView()
+        v.translatesAutoresizingMaskIntoConstraints = false
+        return v
+    }()
 
     // MARK: – Lifecycle
 
     private var didForceFullScreen = false
-
-    /// Portrait only: the sheet's fixed layout looks wrong in landscape.
-    /// (Also declared in Info.plist.)
-    override var supportedInterfaceOrientations: UIInterfaceOrientationMask { .portrait }
-    override var preferredInterfaceOrientationForPresentation: UIInterfaceOrientation { .portrait }
-    override var shouldAutorotate: Bool { false }
 
     /// Dims the host app behind the sheet. It reaches far beyond the view on
     /// every side (superviews don't clip, see viewWillAppear): the system may
@@ -373,6 +390,16 @@ class ShareViewController: UIViewController {
         let keyboardHeight = keyboardFrame.height
         containerBottomConstraint?.constant = -keyboardHeight
         UIView.animate(withDuration: duration) { self.view.layoutIfNeeded() }
+        scrollFirstResponderIntoView()
+    }
+
+    /// Keeps the focused text field visible when the sheet got too short for
+    /// its content (landscape with keyboard).
+    private func scrollFirstResponderIntoView() {
+        guard let field = [urlField, usernameField, passwordField, tagsField].first(where: \.isFirstResponder)
+        else { return }
+        let rect = field.convert(field.bounds, to: contentScrollView).insetBy(dx: 0, dy: -12)
+        contentScrollView.scrollRectToVisible(rect, animated: true)
     }
 
     @objc private func keyboardWillHide(_ notification: Notification) {
@@ -396,34 +423,60 @@ class ShareViewController: UIViewController {
         ])
 
         view.addSubview(containerView)
-        containerView.addSubview(iconView)
-        containerView.addSubview(titleLabel)
-        containerView.addSubview(subtitleLabel)
+        containerView.addSubview(contentScrollView)
+        contentScrollView.addSubview(contentView)
+        contentView.addSubview(iconView)
+        contentView.addSubview(titleLabel)
+        contentView.addSubview(subtitleLabel)
 
         // Saving-mode views
-        containerView.addSubview(activityIndicator)
-        containerView.addSubview(statusLabel)
-        containerView.addSubview(progressView)
+        contentView.addSubview(activityIndicator)
+        contentView.addSubview(statusLabel)
+        contentView.addSubview(progressView)
 
         // Staging-mode views
-        containerView.addSubview(stagingStack)
+        contentView.addSubview(stagingStack)
 
         // Settings-mode views
-        containerView.addSubview(settingsStack)
+        contentView.addSubview(settingsStack)
 
-        let heightC = containerView.heightAnchor.constraint(equalToConstant: 220)
+        let heightC = contentView.heightAnchor.constraint(equalToConstant: 220)
         let bottomC = containerView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         containerHeightConstraint = heightC
         containerBottomConstraint = bottomC
 
+        // Full width in portrait; centred and at most maxSheetWidth wide in
+        // landscape, inside the safe area (notch / Dynamic Island).
+        let fullWidth = containerView.widthAnchor.constraint(equalTo: view.widthAnchor)
+        fullWidth.priority = .defaultHigh
+        // As tall as the content, unless that would reach under the status bar.
+        let fitContent = containerView.heightAnchor.constraint(equalTo: contentView.heightAnchor)
+        fitContent.priority = .defaultHigh
+
         NSLayoutConstraint.activate([
-            containerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            containerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            containerView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            containerView.widthAnchor.constraint(lessThanOrEqualToConstant: Self.maxSheetWidth),
+            containerView.leadingAnchor.constraint(greaterThanOrEqualTo: view.safeAreaLayoutGuide.leadingAnchor),
+            containerView.trailingAnchor.constraint(lessThanOrEqualTo: view.safeAreaLayoutGuide.trailingAnchor),
+            fullWidth,
             bottomC,
+            containerView.topAnchor.constraint(greaterThanOrEqualTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
+            fitContent,
+
+            contentScrollView.topAnchor.constraint(equalTo: containerView.topAnchor),
+            contentScrollView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
+            contentScrollView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            contentScrollView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+
+            contentView.topAnchor.constraint(equalTo: contentScrollView.contentLayoutGuide.topAnchor),
+            contentView.bottomAnchor.constraint(equalTo: contentScrollView.contentLayoutGuide.bottomAnchor),
+            contentView.leadingAnchor.constraint(equalTo: contentScrollView.contentLayoutGuide.leadingAnchor),
+            contentView.trailingAnchor.constraint(equalTo: contentScrollView.contentLayoutGuide.trailingAnchor),
+            contentView.widthAnchor.constraint(equalTo: contentScrollView.frameLayoutGuide.widthAnchor),
             heightC,
 
-            iconView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 20),
-            iconView.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 20),
+            iconView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            iconView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 20),
             iconView.widthAnchor.constraint(equalToConstant: 40),
             iconView.heightAnchor.constraint(equalToConstant: 40),
 
@@ -434,27 +487,27 @@ class ShareViewController: UIViewController {
             subtitleLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 2),
 
             // Saving mode
-            activityIndicator.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
+            activityIndicator.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
             activityIndicator.topAnchor.constraint(equalTo: iconView.bottomAnchor, constant: 28),
 
-            statusLabel.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
+            statusLabel.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
             statusLabel.topAnchor.constraint(equalTo: activityIndicator.bottomAnchor, constant: 12),
-            statusLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 20),
-            statusLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -20),
+            statusLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            statusLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
 
             progressView.topAnchor.constraint(equalTo: statusLabel.bottomAnchor, constant: 12),
-            progressView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 20),
-            progressView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -20),
+            progressView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            progressView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
 
             // Settings mode
             settingsStack.topAnchor.constraint(equalTo: iconView.bottomAnchor, constant: 20),
-            settingsStack.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 20),
-            settingsStack.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -20),
+            settingsStack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            settingsStack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
 
             // Staging mode
             stagingStack.topAnchor.constraint(equalTo: iconView.bottomAnchor, constant: 20),
-            stagingStack.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 20),
-            stagingStack.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -20),
+            stagingStack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            stagingStack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
 
         ])
 
@@ -1224,7 +1277,7 @@ class ShareViewController: UIViewController {
 
         // Grow the sheet so the whole message fits: the label starts 120 pt
         // below the top (header + spinner slot, see setupUI).
-        let width = max(0, view.bounds.width - 40)
+        let width = max(0, containerView.bounds.width - 40)
         let textHeight = statusLabel.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height
         let needed = 120 + ceil(textHeight) + 20 + view.safeAreaInsets.bottom
         let maxHeight = view.bounds.height - view.safeAreaInsets.top

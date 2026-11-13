@@ -133,7 +133,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   content…" instead of "Saving…"; two error messages were English-only;
   German typo "Geteilten Inhalt wird gelesen".
 - Share extension: the dimmed background now reaches the top edge of the
-  screen, and the sheet stays in portrait.
+  screen.
+- Share extension: in landscape the sheet is centred (at most 540 pt wide)
+  inside the safe area instead of running under the notch, and its content
+  scrolls when it doesn't fit, also with the keyboard open; the focused
+  field scrolls into view.
 
 ### Added
 - Tags: a tag can now be deleted. Long-press it in the side menu's tag list
