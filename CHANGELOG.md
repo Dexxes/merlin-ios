@@ -132,6 +132,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   when you save again; after entering credentials it says "Reading shared
   content…" instead of "Saving…"; two error messages were English-only;
   German typo "Geteilten Inhalt wird gelesen".
+- Share extension: the dimmed background now reaches the top edge of the
+  screen, and the sheet stays in portrait.
 
 ### Added
 - Tags: a tag can now be deleted. Long-press it in the side menu's tag list

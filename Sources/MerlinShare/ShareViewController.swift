@@ -310,6 +310,25 @@ class ShareViewController: UIViewController {
 
     private var didForceFullScreen = false
 
+    /// Portrait only: the sheet's fixed layout looks wrong in landscape.
+    /// (Also declared in Info.plist.)
+    override var supportedInterfaceOrientations: UIInterfaceOrientationMask { .portrait }
+    override var preferredInterfaceOrientationForPresentation: UIInterfaceOrientation { .portrait }
+    override var shouldAutorotate: Bool { false }
+
+    /// Dims the host app behind the sheet. It reaches far beyond the view on
+    /// every side (superviews don't clip, see viewWillAppear): the system may
+    /// lay the view out again below the status bar after we forced it to
+    /// full screen, and the dimming then stopped short of the top edge.
+    private let dimmingView: UIView = {
+        let v = UIView()
+        v.backgroundColor = UIColor.black.withAlphaComponent(0.4)
+        v.isUserInteractionEnabled = false
+        v.translatesAutoresizingMaskIntoConstraints = false
+        return v
+    }()
+    private static let dimmingOverhang: CGFloat = 2000
+
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
@@ -367,7 +386,14 @@ class ShareViewController: UIViewController {
     // MARK: – Layout
 
     private func setupUI() {
-        view.backgroundColor = UIColor.black.withAlphaComponent(0.4)
+        view.backgroundColor = .clear
+        view.addSubview(dimmingView)
+        NSLayoutConstraint.activate([
+            dimmingView.topAnchor.constraint(equalTo: view.topAnchor, constant: -Self.dimmingOverhang),
+            dimmingView.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: Self.dimmingOverhang),
+            dimmingView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: -Self.dimmingOverhang),
+            dimmingView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: Self.dimmingOverhang),
+        ])
 
         view.addSubview(containerView)
         containerView.addSubview(iconView)
