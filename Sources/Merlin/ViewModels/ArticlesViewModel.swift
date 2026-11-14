@@ -686,7 +686,7 @@ final class ArticlesViewModel {
     /// Stored handle for the active image prefetch task.
     private var prefetchTask: Task<Void, Never>?
 
-    /// Persists all images (hero, favicon, content) for the given articles to
+    /// Persists all images (hero, content) for the given articles to
     /// disk via `ImageCacheService`.  Supersedes the old `URLCache`-based
     /// thumbnail warm-up.
     private func prefetchImages(for articles: [Article]) {

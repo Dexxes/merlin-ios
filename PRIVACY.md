@@ -43,7 +43,6 @@ Die Verbindung ist mit HTTPS verschlüsselt. Wie lange dein Server Daten speiche
 Einige Funktionen laden Inhalte direkt von anderen Anbietern. Diese sehen dabei deine IP-Adresse und die übliche technische Anfrage.
 
 - **Bilder in Artikeln:** Sie werden von den Websites geladen, aus denen die Artikel stammen.
-- **Website-Symbole:** Sie kommen von DuckDuckGo (`icons.duckduckgo.com`). Dabei wird der Domainname des gespeicherten Artikels übermittelt, zum Beispiel `example.com`, aber nicht die vollständige Adresse.
 - **YouTube-Videos:** Sie werden erst geladen, wenn du ein Video antippst. Bei einem Nextcloud-Server geschieht das über eine Seite deines Servers, sonst direkt über `youtube-nocookie.com`. Dabei gilt die Datenschutzerklärung von Google.
 - **Videos aus Mediatheken:** Videos von ARD, ZDF, 3sat und Arte werden direkt von deren Servern gestreamt.
 - **Melden von Artikeln:** Wenn du einen Artikel meldest, gehen Adresse und Kommentar an das Melde-Backend, das dein Server-Administrator eingerichtet hat.
@@ -116,7 +115,6 @@ The connection is encrypted with HTTPS. How long your server keeps data and how 
 Some features load content directly from other providers. They see your IP address and the usual technical request.
 
 - **Images in articles:** they are loaded from the websites the articles come from.
-- **Site icons:** they come from DuckDuckGo (`icons.duckduckgo.com`). This sends the domain name of the saved article, for example `example.com`, but not the full address.
 - **YouTube videos:** they load only when you tap a video. With a Nextcloud server this goes through a page on your server, otherwise directly through `youtube-nocookie.com`. Google's privacy policy applies.
 - **Videos from broadcaster media libraries:** videos from ARD, ZDF, 3sat and Arte are streamed directly from their servers.
 - **Reporting articles:** if you report an article, its address and your comment go to the reporting backend your server administrator set up.

@@ -127,6 +127,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Error messages, TTS progress texts, the reminder notification and the
   "Standalone server" label were partly fixed to German or English; they
   are now localized in both languages.
+- Site icons are no longer fetched from DuckDuckGo. They were downloaded
+  and cached for every article but never shown, and the request told
+  DuckDuckGo the domain of each saved article.
 - Removed 221 unused `merlinServer.*` strings (left over from the web UI)
   from the app and the share extension.
 - Tags: archiving, restoring or (un)favoriting an article inside a tag view
