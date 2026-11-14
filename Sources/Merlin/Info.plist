@@ -32,6 +32,11 @@
 	     Erspart die Compliance-Frage bei jedem TestFlight-Upload. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<!-- Pflicht, sobald das Teilen-Menü ("Bild sichern") oder das Bild-Kontextmenü
+	     im Reader ("Zu Fotos hinzufügen") die Fotomediathek anspricht; ohne den
+	     Text beendet iOS die App. -->
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Merlin saves images and videos to your photo library only when you choose to save them.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>

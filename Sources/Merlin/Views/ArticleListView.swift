@@ -138,7 +138,10 @@ struct ArticleListView: View {
                 AddArticleSheet(viewModel: viewModel)
             }
             .sheet(isPresented: $showSettings, onDismiss: {
-                guard CredentialsStore.shared.isConfigured else { return }
+                guard CredentialsStore.shared.isConfigured else {
+                    viewModel.resetAfterLogout()
+                    return
+                }
                 Task { await viewModel.load() }
             }) {
                 SettingsView()

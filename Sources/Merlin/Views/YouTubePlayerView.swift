@@ -51,7 +51,7 @@ struct YouTubePlayerView: View {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.title2)
                         .foregroundStyle(.white.opacity(0.8))
-                    Text("Server nicht konfiguriert")
+                    Text(L("youtube.serverNotConfigured"))
                         .font(.footnote)
                         .foregroundStyle(.white.opacity(0.8))
                 }

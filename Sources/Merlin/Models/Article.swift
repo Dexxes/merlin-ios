@@ -209,12 +209,6 @@ struct Article: Identifiable, Codable, Equatable {
         return url
     }
 
-    /// DuckDuckGo favicon service – works for virtually any domain.
-    var faviconUrl: URL? {
-        guard let host = URL(string: url)?.host, !host.isEmpty else { return nil }
-        return URL(string: "https://icons.duckduckgo.com/ip3/\(host).ico")
-    }
-
     /// true für PDF-Artikel: der Server speichert nur die Quell-URL (`category == "PDF"`), die PDF wird beim
     /// Öffnen von dort geladen (siehe `PDFArticleView`/`PDFCacheService`). Fallback auf die Endung `.pdf`
     /// für Artikel, die ein älterer Server ohne Kategorie angelegt hat.

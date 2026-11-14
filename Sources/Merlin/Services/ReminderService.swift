@@ -7,7 +7,7 @@ enum ReminderError: LocalizedError {
     case permissionDenied
 
     var errorDescription: String? {
-        "Bitte erlaube Benachrichtigungen in den Einstellungen, um Erinnerungen zu setzen."
+        L("reminders.error.permissionDenied")
     }
 }
 
@@ -87,7 +87,7 @@ actor ReminderService {
         // Build the notification
         let content       = UNMutableNotificationContent()
         content.title     = reminder.articleTitle
-        content.body      = "Dein gespeicherter Artikel wartet auf dich."
+        content.body      = L("reminders.notification.body")
         content.sound     = .default
         content.userInfo  = ["articleId": article.id]
 
@@ -113,6 +113,16 @@ actor ReminderService {
         cancelNotification(id: existing.id)
         reminders[existing.id]?.status = .cancelled
         saveToDisk()
+    }
+
+    /// Entfernt alle Erinnerungen samt geplanter Mitteilungen, z. B. beim
+    /// Abmelden: sie gehören zu Artikeln des bisherigen Kontos.
+    func removeAll() {
+        loadIfNeeded()
+        let ids = reminders.keys.map(\.uuidString)
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ids)
+        reminders = [:]
+        try? FileManager.default.removeItem(at: storeURL)
     }
 
     /// Called by the notification delegate when the user taps the notification.

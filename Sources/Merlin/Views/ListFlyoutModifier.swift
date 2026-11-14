@@ -124,7 +124,9 @@ struct ListFlyoutModifier: ViewModifier {
                 safeAreaTop    = insets?.top    ?? 44
                 safeAreaBottom = insets?.bottom ?? 0
             }
-            .sheet(isPresented: $showSettings)  { SettingsView() }
+            .sheet(isPresented: $showSettings, onDismiss: {
+                if !CredentialsStore.shared.isConfigured { viewModel.resetAfterLogout() }
+            }) { SettingsView() }
             .sheet(isPresented: $showReminders) { RemindersView() }
             .sheet(item: $tagToMove) { tag in
                 MoveTagSheet(tag: tag, tree: viewModel.tagTree) { parentId in

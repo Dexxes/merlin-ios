@@ -277,15 +277,12 @@ actor ImageCacheService {
         return urls
     }
 
-    /// Extracts every image URL from an article: hero, favicon, and all
+    /// Extracts every image URL from an article: hero and all
     /// `<img src="...">` occurrences in the HTML content.
     private func imageURLs(for article: Article) -> [URL] {
         var urls: [URL] = []
 
         if let str = article.imageUrl, let url = URL(string: str) {
-            urls.append(url)
-        }
-        if let url = article.faviconUrl {
             urls.append(url)
         }
         if let content = article.content {
