@@ -167,14 +167,15 @@ final class AutoScrollController {
     }
 
     /// Hält den Controller nur schwach: `CADisplayLink` hält sein Target stark.
+    /// `@MainActor`, weil der Link auf dem Main-RunLoop hängt (`add(to: .main)`)
+    /// und `tick` damit immer auf dem Main Thread aufgerufen wird.
+    @MainActor
     private final class DisplayLinkProxy: NSObject {
         weak var owner: AutoScrollController?
         init(_ owner: AutoScrollController) { self.owner = owner }
         @objc func tick(_ link: CADisplayLink) {
-            MainActor.assumeIsolated {
-                guard let owner else { link.invalidate(); return }
-                owner.tick(link)
-            }
+            guard let owner else { link.invalidate(); return }
+            owner.tick(link)
         }
     }
 }
