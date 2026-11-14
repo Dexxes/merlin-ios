@@ -54,9 +54,13 @@ struct ArticleListView: View {
                 // Logo + filter name as custom navigation title
                 ToolbarItem(placement: .principal) {
                     HStack(spacing: 6) {
-                        if let uiImage = UIImage(named: "AppIcon") {
+                        // Transparentes Logo statt App-Icon: das Icon hat seit dem
+                        // App-Store-Upload einen lila Hintergrund.
+                        if let url = Bundle.module.url(forResource: "merlin-logo", withExtension: "png"),
+                           let uiImage = UIImage(contentsOfFile: url.path) {
                             Image(uiImage: uiImage)
                                 .resizable()
+                                .interpolation(.none)
                                 .frame(width: 26, height: 26)
                                 .clipShape(RoundedRectangle(cornerRadius: 6))
                         }

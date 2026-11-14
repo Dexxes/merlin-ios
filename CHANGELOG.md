@@ -108,6 +108,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "Edit tags" list the tags as an indented tree instead of chips.
 
 ### Changed
+- App icon now has a purple background (#6C4AD0) instead of transparency,
+  which App Store Connect rejects. The app itself keeps showing the
+  transparent logo, including in the article list's title bar.
 - Reader: author boxes at the end of an article now have two rows: photo and
   name (or author link) centred on top, the biography left-aligned and
   slightly smaller below, separated by a subtle centred line in the accent
@@ -124,6 +127,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   favorite/archive/delete on the right, no full-swipe archive). All these
   actions stay in the long-press menu; the list view keeps its swipe
   actions. The tour's "Share Articles" step now only appears in list view.
+
+### Removed
+- "Open via archive.ph" in the reader's side menu.
 
 ### Fixed
 - Saving an image or video to Photos (share sheet of a file, or the image menu

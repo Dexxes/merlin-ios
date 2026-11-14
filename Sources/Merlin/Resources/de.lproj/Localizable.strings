@@ -175,7 +175,6 @@
 "articleReader.sideMenu.find" = "Im Artikel suchen";
 "articleReader.sideMenu.moveToReadingList" = "In Leseliste verschieben";
 "articleReader.sideMenu.openInBrowser" = "Im Browser öffnen";
-"articleReader.sideMenu.openViaArchive" = "Via archive.ph öffnen";
 "articleReader.sideMenu.publicLink" = "Öffentlichen Link erstellen";
 "articleReader.sideMenu.removeFavorite" = "Aus Favoriten entfernen";
 "articleReader.sideMenu.reportArticle" = "Artikel melden…";
