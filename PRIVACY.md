@@ -11,7 +11,7 @@ Merlin ist ein Client für deinen eigenen Server: eine Nextcloud mit der Merlin-
 ## Verantwortlicher
 
 Julian von Bülow, Entwickler der App Merlin für iOS.
-Kontakt: über die Issues des Projekts unter <https://github.com/Dexxes/merlin-ios/issues>.
+Kontakt: E-Mail an <jvb@live.de> oder über die Issues des Projekts unter <https://github.com/Dexxes/merlin-ios/issues>.
 
 Für die Daten auf deinem Server ist verantwortlich, wer den Server betreibt, also du selbst oder dein Server-Administrator.
 
@@ -84,7 +84,7 @@ Merlin is a client for your own server: a Nextcloud with the Merlin app, or a Me
 ## Controller
 
 Julian von Bülow, developer of the Merlin for iOS app.
-Contact: via the project's issues at <https://github.com/Dexxes/merlin-ios/issues>.
+Contact: email <jvb@live.de> or the project's issues at <https://github.com/Dexxes/merlin-ios/issues>.
 
 Whoever runs your server is responsible for the data stored on it: you, or your server administrator.
 
