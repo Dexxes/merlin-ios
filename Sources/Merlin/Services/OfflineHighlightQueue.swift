@@ -189,6 +189,12 @@ final class OfflineHighlightQueue: @unchecked Sendable {
 
     // MARK: – Persistence
 
+    /// Verwirft alle ausstehenden Markierungs-Änderungen, z. B. beim Abmelden.
+    func removeAll() {
+        pending = []
+        save()
+    }
+
     private func save() {
         guard let data = try? JSONEncoder().encode(pending) else { return }
         UserDefaults.standard.set(data, forKey: key)

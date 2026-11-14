@@ -57,7 +57,7 @@ struct SettingsView: View {
                 Section {
                     Picker("Backend", selection: $backendKind) {
                         Text("Nextcloud").tag(CredentialsStore.BackendKind.nextcloud)
-                        Text("Standalone-Server").tag(CredentialsStore.BackendKind.standalone)
+                        Text(L("settings.account.backendStandalone")).tag(CredentialsStore.BackendKind.standalone)
                     }
                     .pickerStyle(.segmented)
                     .onChange(of: backendKind) { _, newValue in
@@ -529,10 +529,34 @@ struct SettingsView: View {
         showLoginSuccess = false
         keychainDebugInfo = nil
         testResult = nil
+        serverStorageUsage = nil
+        serverStorageError = false
+        // Gespeicherte Artikel, Bilder, PDFs, Markierungen, Lesepositionen und
+        // offene Änderungen gehören zum bisherigen Konto: nach dem Abmelden
+        // sollen sie weder lesbar bleiben noch beim nächsten Login gegen ein
+        // anderes Konto abgespielt werden.
+        Task {
+            await Self.wipeLocalAccountData()
+            await loadStorageUsage()
+        }
+    }
+
+    /// Löscht alles, was lokal zum angemeldeten Konto gehört. Gemeinsam für
+    /// "Abmelden" und "Cache leeren".
+    private static func wipeLocalAccountData() async {
+        PreferencesStore.shared.clearReadingPositions()
+        OfflineMutationQueue.shared.removeAll()
+        OfflineHighlightQueue.shared.removeAll()
+        ProgressSyncQueue.shared.removeAll()
+        SettingsSyncQueue.shared.reset()
+        await ReminderService.shared.removeAll()
+        await ArticleCacheService.shared.clear()
+        await ImageCacheService.shared.clear()
+        await PDFCacheService.shared.clear()
+        await HighlightCacheService.shared.clear()
     }
 
     private func clearCache() {
-        PreferencesStore.shared.clearReadingPositions()
         URLCache.shared.removeAllCachedResponses()
         WKWebsiteDataStore.default().removeData(
             ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(),
@@ -546,10 +570,7 @@ struct SettingsView: View {
         serverStorageUsage = nil
         serverStorageError = false
         Task {
-            await ArticleCacheService.shared.clear()
-            await ImageCacheService.shared.clear()
-            await PDFCacheService.shared.clear()
-            await HighlightCacheService.shared.clear()
+            await Self.wipeLocalAccountData()
             await loadStorageUsage()
         }
     }

@@ -21,15 +21,15 @@ enum MerlinAPIError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .notConfigured:       return "Nextcloud credentials not configured. Please open Settings."
-        case .unauthorized:        return "Authentication failed. Check username and app password."
-        case .notFound:            return "Resource not found."
-        case .serverError(let c):  return "Server error (HTTP \(c))."
+        case .notConfigured:       return L("api.error.notConfigured")
+        case .unauthorized:        return L("api.error.unauthorized")
+        case .notFound:            return L("api.error.notFound")
+        case .serverError(let c):  return L("api.error.server \(c)")
         case .decodingError(let e, let body):
-            return "Could not parse server response: \(Self.describe(e))\nAntwort: \(body)"
-        case .networkError(let e): return "Network error: \(e.localizedDescription)"
+            return L("api.error.decoding \(Self.describe(e)) \(body)")
+        case .networkError(let e): return L("api.error.network \(e.localizedDescription)")
         case .siteCredentialLoginFailed(let message, _): return message
-        case .unknown:             return "An unknown error occurred."
+        case .unknown:             return L("api.error.unknown")
         }
     }
 
@@ -40,17 +40,17 @@ enum MerlinAPIError: LocalizedError {
         guard let decoding = error as? DecodingError else { return error.localizedDescription }
 
         let (context, prefix): (DecodingError.Context, String) = switch decoding {
-        case .typeMismatch(let type, let ctx):  (ctx, "Typ passt nicht (erwartet \(type))")
-        case .valueNotFound(let type, let ctx): (ctx, "Wert fehlt (erwartet \(type))")
-        case .keyNotFound(let key, let ctx):    (ctx, "Schlüssel fehlt: \(key.stringValue)")
-        case .dataCorrupted(let ctx):           (ctx, "Daten unlesbar")
+        case .typeMismatch(let type, let ctx):  (ctx, L("api.error.decoding.typeMismatch \(String(describing: type))"))
+        case .valueNotFound(let type, let ctx): (ctx, L("api.error.decoding.valueNotFound \(String(describing: type))"))
+        case .keyNotFound(let key, let ctx):    (ctx, L("api.error.decoding.keyNotFound \(key.stringValue)"))
+        case .dataCorrupted(let ctx):           (ctx, L("api.error.decoding.dataCorrupted"))
         @unknown default:                       fatalError("Unexpected DecodingError case")
         }
 
         let path = context.codingPath.map(\.stringValue).joined(separator: ".")
         return path.isEmpty
-            ? "\(prefix) — \(context.debugDescription)"
-            : "\(prefix) bei '\(path)' — \(context.debugDescription)"
+            ? "\(prefix) – \(context.debugDescription)"
+            : L("api.error.decoding.atPath \(prefix) \(path) \(context.debugDescription)")
     }
 }
 

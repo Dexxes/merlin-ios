@@ -77,11 +77,11 @@ actor ReportService {
         var errorDescription: String? {
             switch self {
             case .backendURLNotConfigured:
-                return "Kein Report-Backend konfiguriert. Bitte die URL unter Einstellungen → Reporting hinterlegen."
+                return L("report.error.backendNotConfigured")
             case .backendURLInvalid(let url):
-                return "Ungültige Backend-URL: \(url)"
+                return L("report.error.backendURLInvalid \(url)")
             case .serverError:
-                return "Der Server hat die Meldung abgelehnt."
+                return L("report.error.serverRejected")
             }
         }
     }

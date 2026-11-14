@@ -36,6 +36,11 @@ final class SettingsSyncQueue: @unchecked Sendable {
         defaults.set(true, forKey: key)
     }
 
+    /// Vergisst eine ausstehende Übertragung, z. B. beim Abmelden.
+    func reset() {
+        defaults.removeObject(forKey: key)
+    }
+
     /// If a push is owed, retries it with the *current* local settings.
     /// Stays dirty on failure so the next reconnect tries again.
     func retryIfNeeded() async {

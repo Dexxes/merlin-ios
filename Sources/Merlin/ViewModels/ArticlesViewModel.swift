@@ -376,6 +376,28 @@ final class ArticlesViewModel {
         fetchTask?.cancel()
     }
 
+    /// Leert die Liste nach dem Abmelden, damit keine Artikel des bisherigen
+    /// Kontos im Speicher stehen bleiben (der Cache auf der Platte wird in
+    /// den Einstellungen gelöscht).
+    func resetAfterLogout() {
+        prefetchTask?.cancel()
+        loadMoreTask?.cancel()
+        loadGeneration += 1
+        articles = []
+        counts = ArticleCounts()
+        allTags = []
+        selectedTagId = nil
+        lastUndoableAction = nil
+        error = nil
+        isLoading = false
+        isLoadingMore = false
+        hasMoreArticles = false
+        loadMoreFailed = false
+        isOffline = false
+        rawOffset = 0
+        loadedViewKey = nil
+    }
+
     func load() async {
         prefetchTask?.cancel()
         loadMoreTask?.cancel()

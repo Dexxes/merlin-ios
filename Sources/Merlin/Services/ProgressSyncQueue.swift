@@ -40,6 +40,12 @@ final class ProgressSyncQueue: @unchecked Sendable {
         return !load().isEmpty
     }
 
+    /// Verwirft alle ausstehenden Lesepositionen, z. B. beim Abmelden.
+    func removeAll() {
+        lock.lock(); defer { lock.unlock() }
+        defaults.removeObject(forKey: key)
+    }
+
     // MARK: – Enqueue / retry
 
     /// Records the latest position owed to the server for `articleId`. Always

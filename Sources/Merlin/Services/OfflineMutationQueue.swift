@@ -238,6 +238,15 @@ final class OfflineMutationQueue: @unchecked Sendable {
         m.start(queue: DispatchQueue(label: "dev.merlin.netmonitor", qos: .utility))
     }
 
+    // MARK: – Reset
+
+    /// Verwirft alle ausstehenden Änderungen, z. B. beim Abmelden – sonst
+    /// würden sie beim nächsten Login gegen ein anderes Konto abgespielt.
+    func removeAll() {
+        pending = []
+        save()
+    }
+
     // MARK: – Persistence
 
     private func save() {

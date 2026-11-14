@@ -118,6 +118,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   purpose string is now in the Info.plist.
 - The login page now has a "Cancel" button at the top. Before, it covered
   the whole screen and there was no way back without finishing the login.
+- Logging out now also removes cached articles, images, PDFs, highlights,
+  reading positions, reminders and changes not yet synced from the device,
+  and empties the article list. Before, they stayed readable after logout,
+  and pending changes could be sent to the next account that logged in.
+- Error messages, TTS progress texts, the reminder notification and the
+  "Standalone server" label were partly fixed to German or English; they
+  are now localized in both languages.
+- Removed 221 unused `merlinServer.*` strings (left over from the web UI)
+  from the app and the share extension.
 - Tags: archiving, restoring or (un)favoriting an article inside a tag view
   no longer makes it vanish from the list (or stay when it should go); the
   list now follows the tag view and its archive toggle instead of the main

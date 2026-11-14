@@ -75,7 +75,7 @@ final class PiperAudioService: NSObject, ObservableObject {
         downloadProgress = 0
         totalDuration    = estimatedSeconds.map { $0 * 1000 }
         downloadIsDone   = false
-        loadingStep      = "Reintext wird aufbereitet …"
+        loadingStep      = L("tts.step.preparingText")
 
         // Auth-Header hier auf dem MainActor lesen, bevor der detached Task startet.
         let authHeader = CredentialsStore.shared.basicAuthHeader ?? ""
@@ -184,7 +184,7 @@ final class PiperAudioService: NSObject, ObservableObject {
         } catch {
             await MainActor.run {
                 self.isLoading    = false
-                self.errorMessage = "Nextcloud nicht konfiguriert. Bitte zuerst einloggen."
+                self.errorMessage = L("tts.error.notConfigured")
             }
             return
         }
@@ -192,12 +192,12 @@ final class PiperAudioService: NSObject, ObservableObject {
         guard !authHeader.isEmpty else {
             await MainActor.run {
                 self.isLoading    = false
-                self.errorMessage = "Anmeldedaten fehlen."
+                self.errorMessage = L("tts.error.missingCredentials")
             }
             return
         }
 
-        await MainActor.run { self.loadingStep = "Text wird an Sprachmodell gesendet …" }
+        await MainActor.run { self.loadingStep = L("tts.step.sendingText") }
 
         // ── 2. AVAudioSession ─────────────────────────────────────────────────
         do {
@@ -206,7 +206,7 @@ final class PiperAudioService: NSObject, ObservableObject {
         } catch {
             await MainActor.run {
                 self.isLoading    = false
-                self.errorMessage = "Audio-Session-Fehler: \(error.localizedDescription)"
+                self.errorMessage = L("tts.error.audioSession \(error.localizedDescription)")
             }
             return
         }
@@ -220,7 +220,7 @@ final class PiperAudioService: NSObject, ObservableObject {
         guard let fh = try? FileHandle(forWritingTo: tempURL) else {
             await MainActor.run {
                 self.isLoading    = false
-                self.errorMessage = "Temp-Datei konnte nicht geöffnet werden."
+                self.errorMessage = L("tts.error.tempFile")
             }
             return
         }
@@ -240,7 +240,7 @@ final class PiperAudioService: NSObject, ObservableObject {
             if (error as NSError).code == NSURLErrorCancelled { return }
             await MainActor.run {
                 self.isLoading    = false
-                self.errorMessage = "Download-Fehler: \(error.localizedDescription)"
+                self.errorMessage = L("tts.error.download \(error.localizedDescription)")
             }
             return
         }
@@ -252,7 +252,7 @@ final class PiperAudioService: NSObject, ObservableObject {
             fh.closeFile()
             await MainActor.run {
                 self.isLoading    = false
-                self.errorMessage = "Server-Fehler: HTTP \(http.statusCode)"
+                self.errorMessage = L("tts.error.server \(http.statusCode)")
             }
             return
         }
@@ -295,7 +295,7 @@ final class PiperAudioService: NSObject, ObservableObject {
                     if !firstChunkReceived {
                         firstChunkReceived  = true
                         downloadStartedAt   = Date()
-                        await MainActor.run { self.loadingStep = "Audio wird generiert …" }
+                        await MainActor.run { self.loadingStep = L("tts.step.generatingAudio") }
                     }
 
                     // Download-Rate (KB/s) alle 32 KB loggen
