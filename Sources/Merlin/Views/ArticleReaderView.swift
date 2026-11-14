@@ -3452,16 +3452,6 @@ struct ArticleReaderView: View {
                         UIApplication.shared.open(url)
                     }
 
-                    let strippedURL = current.url
-                        .replacingOccurrences(of: "https://", with: "")
-                        .replacingOccurrences(of: "http://", with: "")
-                    if !current.isPDF, let archiveURL = URL(string: "https://archive.ph/" + strippedURL) {
-                        menuRow(icon: "globe", label: L("articleReader.sideMenu.openViaArchive")) {
-                            showSideMenu = false
-                            UIApplication.shared.open(archiveURL)
-                        }
-                    }
-
                     menuRow(icon: "link", label: L("articleReader.sideMenu.copyLink")) {
                         UIPasteboard.general.string = current.url
                         showSideMenu = false

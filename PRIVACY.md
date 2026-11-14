@@ -46,7 +46,7 @@ Einige Funktionen laden Inhalte direkt von anderen Anbietern. Diese sehen dabei 
 - **YouTube-Videos:** Sie werden erst geladen, wenn du ein Video antippst. Bei einem Nextcloud-Server geschieht das über eine Seite deines Servers, sonst direkt über `youtube-nocookie.com`. Dabei gilt die Datenschutzerklärung von Google.
 - **Videos aus Mediatheken:** Videos von ARD, ZDF, 3sat und Arte werden direkt von deren Servern gestreamt.
 - **Melden von Artikeln:** Wenn du einen Artikel meldest, gehen Adresse und Kommentar an das Melde-Backend, das dein Server-Administrator eingerichtet hat.
-- **Links:** Links und „Via archive.ph öffnen“ öffnen sich in Safari bzw. auf der jeweiligen Website.
+- **Links:** Links öffnen sich in Safari bzw. auf der jeweiligen Website.
 - **Kalender:** Termine aus erkannten Texten legst du im Kalenderdialog von iOS an. Die App liest deinen Kalender nicht.
 
 ## Was die App nicht tut
@@ -118,7 +118,7 @@ Some features load content directly from other providers. They see your IP addre
 - **YouTube videos:** they load only when you tap a video. With a Nextcloud server this goes through a page on your server, otherwise directly through `youtube-nocookie.com`. Google's privacy policy applies.
 - **Videos from broadcaster media libraries:** videos from ARD, ZDF, 3sat and Arte are streamed directly from their servers.
 - **Reporting articles:** if you report an article, its address and your comment go to the reporting backend your server administrator set up.
-- **Links:** links and "Open via archive.ph" open in Safari or on the respective website.
+- **Links:** links open in Safari or on the respective website.
 - **Calendar:** you add events from recognized text in the iOS calendar dialog. The app does not read your calendar.
 
 ## What the app does not do
