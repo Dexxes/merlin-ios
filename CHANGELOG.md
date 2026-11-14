@@ -113,6 +113,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   actions. The tour's "Share Articles" step now only appears in list view.
 
 ### Fixed
+- Saving an image or video to Photos (share sheet of a file, or the image menu
+  in the reader) no longer crashes the app: the required photo-library
+  purpose string is now in the Info.plist.
+- The login page now has a "Cancel" button at the top. Before, it covered
+  the whole screen and there was no way back without finishing the login.
 - Tags: archiving, restoring or (un)favoriting an article inside a tag view
   no longer makes it vanish from the list (or stay when it should go); the
   list now follows the tag view and its archive toggle instead of the main

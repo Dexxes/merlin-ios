@@ -369,8 +369,20 @@ struct SettingsView: View {
             // dazu führen dass beim Schließen des inneren Sheets der äußere
             // mitgeschlossen wird.
             .fullScreenCover(item: $safariLoginURL) { item in
-                SafariLoginView(url: item.url)
-                    .ignoresSafeArea()
+                // Eigene Leiste mit "Abbrechen": Ohne sie verdeckt das
+                // Vollbild den Abbrechen-Knopf darunter, und wer den Login
+                // nicht abschließt, käme nicht mehr zurück.
+                NavigationStack {
+                    SafariLoginView(url: item.url)
+                        .ignoresSafeArea(edges: .bottom)
+                        .navigationTitle(L("common.login"))
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button(L("common.cancel")) { cancelLoginFlow() }
+                            }
+                        }
+                }
             }
             .task { await loadStorageUsage() }
             .task {
