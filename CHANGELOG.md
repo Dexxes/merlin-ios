@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Hands-free reading: the article scrolls down by itself. A fourth button in
+  the bottom bar (on iPhone in landscape: in the action button's fan) starts
+  it; "Hands-free reading" in the reader's Appearance sheet hides the button
+  (shown by default). Tapping it starts scrolling and turns the bottom bar
+  into a control bar with pause/resume, a speed slider (tortoise to hare,
+  10–150 pt/s, remembered on the device) and a button to stop. Dragging the
+  text yourself pauses it briefly; 1.5 s after letting go it continues from
+  the new position. Selecting text, opening a sheet, the side menu, search,
+  an image or video, or leaving the app pauses it until you tap play. At the
+  end of the article it stops and does not move on to the next one. The
+  screen stays on while it scrolls. Works in text articles and PDFs.
 - Find in article: "Find in Article" in the reader's side menu (or ⌘F with
   a keyboard) opens a search bar at the top. All matches are highlighted in
   yellow, the current one in orange; the arrows (or Return, ⌘G / ⇧⌘G) jump

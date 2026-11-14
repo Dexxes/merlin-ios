@@ -33,6 +33,8 @@ struct PDFArticleView: View {
     var onRestored: (() -> Void)? = nil
     /// Scrollen im PDF: Abstand vom Anfang und ob nach unten (Leisten ein-/ausblenden).
     var onScroll: ((CGFloat, Bool) -> Void)? = nil
+    /// Innere Scroll-View von PDFKit, sobald es sie gibt (Freihand-Lesemodus).
+    var onScrollView: ((UIScrollView) -> Void)? = nil
     /// Farbleiste des Readers: Knöpfe landen über `HighlightActionHandler` hier.
     var actions: HighlightActionHandler? = nil
     /// Text ausgewählt (Rechteck in Fensterkoordinaten, dazu die id einer angetippten
@@ -123,6 +125,7 @@ struct PDFArticleView: View {
                     onPageChange: onPageChange,
                     onRestored: onRestored,
                     onScroll: onScroll,
+                    onScrollView: onScrollView,
                     actions: actions,
                     onSelectionChanged: onSelectionChanged,
                     onSelectionCleared: onSelectionCleared,
@@ -343,6 +346,7 @@ private struct PDFDocumentRepresentable: UIViewRepresentable {
     let onPageChange: ((CGFloat) -> Void)?
     let onRestored: (() -> Void)?
     let onScroll: ((CGFloat, Bool) -> Void)?
+    let onScrollView: ((UIScrollView) -> Void)?
     let actions: HighlightActionHandler?
     let onSelectionChanged: ((CGRect, String?) -> Void)?
     let onSelectionCleared: (() -> Void)?
@@ -377,6 +381,8 @@ private struct PDFDocumentRepresentable: UIViewRepresentable {
         coordinator.onPageChange = onPageChange
         coordinator.onRestored = onRestored
         coordinator.onScroll = onScroll
+        coordinator.onScrollView = onScrollView
+        if let scroll = coordinator.innerScrollView { onScrollView?(scroll) }
         coordinator.onSelectionChanged = onSelectionChanged
         coordinator.onSelectionCleared = onSelectionCleared
         coordinator.onTap = onTap
@@ -407,6 +413,9 @@ private struct PDFDocumentRepresentable: UIViewRepresentable {
         var onPageChange: ((CGFloat) -> Void)?
         var onRestored: (() -> Void)?
         var onScroll: ((CGFloat, Bool) -> Void)?
+        var onScrollView: ((UIScrollView) -> Void)?
+        /// PDFKits innere Scroll-View (gefunden in `observeScrollingIfNeeded`).
+        private(set) weak var innerScrollView: UIScrollView?
         var onSelectionChanged: ((CGRect, String?) -> Void)?
         var onSelectionCleared: (() -> Void)?
         var onTap: (() -> Void)?
@@ -566,6 +575,8 @@ private struct PDFDocumentRepresentable: UIViewRepresentable {
         /// (Leisten ein-/ausblenden) und hält die Farbleiste an der Auswahl.
         private func observeScrollingIfNeeded() {
             guard offsetObservation == nil, let pdfView, let scroll = Self.scrollView(in: pdfView) else { return }
+            innerScrollView = scroll
+            onScrollView?(scroll)
             offsetObservation = scroll.observe(\.contentOffset, options: [.new]) { [weak self] scroll, _ in
                 MainActor.assumeIsolated {
                     self?.scrolled(to: scroll.contentOffset.y + scroll.adjustedContentInset.top)
