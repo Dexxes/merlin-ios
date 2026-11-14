@@ -75,6 +75,16 @@
 "articleReader.appearance.fontSize" = "Font size";
 "articleReader.appearance.lineSpacing" = "Line spacing";
 "articleReader.appearance.paperTexture" = "Paper texture";
+"articleReader.appearance.handsFree" = "Hands-free reading";
+"articleReader.appearance.handsFreeFooter" = "Shows a button in the bottom bar that scrolls the article by itself.";
+"articleReader.handsFree.start" = "Hands-free reading";
+"articleReader.handsFree.pause" = "Pause";
+"articleReader.handsFree.resume" = "Resume";
+"articleReader.handsFree.stop" = "Stop hands-free reading";
+"articleReader.handsFree.speed" = "Scroll speed";
+"articleReader.handsFree.slow" = "slow";
+"articleReader.handsFree.medium" = "medium";
+"articleReader.handsFree.fast" = "fast";
 "articleReader.appearance.progressAndHighlights" = "Progress bar & highlights";
 "articleReader.appearance.theme" = "Theme";
 "articleReader.comments.allComments" = "All comments";

@@ -2133,6 +2133,10 @@ struct ArticleReaderView: View {
     @State private var readerFont:    ReaderFont   = PreferencesStore.shared.readerFont
     @State private var lineHeight:    Double        = PreferencesStore.shared.lineHeight
     @State private var paperTexture:  Bool          = PreferencesStore.shared.readerPaperTexture
+    /// Freihand-Lesemodus: Button in der Bottom bar eingeblendet (Erscheinungsbild).
+    @State private var handsFreeButton: Bool        = PreferencesStore.shared.readerHandsFreeButton
+    /// Scroll-Motor des Freihand-Lesemodus (siehe `AutoScrollController`).
+    @State private var autoScroll = AutoScrollController()
     @State private var progressEdge:  ProgressEdge = PreferencesStore.shared.progressEdge
     @State private var showSideMenu      = false
     // Suche im Artikel (siehe `findBar`)
@@ -2209,6 +2213,13 @@ struct ArticleReaderView: View {
                         .opacity(0)
                         .allowsHitTesting(false)
                 }
+
+                // Freihand-Lesemodus: der Motor braucht die UIScrollView dahinter.
+                EnclosingScrollViewReader { [autoScroll] in autoScroll.scrollView = $0 }
+                    .frame(width: 1, height: 1)
+                    .opacity(0)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
 
                 articleHeader
 
@@ -2396,7 +2407,8 @@ struct ArticleReaderView: View {
             let scrollable = totalContentHeight - viewportHeight
             let isNearBottom = scrollable > 0 ? (scrollable - newOffset < 160) : true
 
-            if abs(delta) > 4 {
+            // Im Freihand-Lesemodus bleibt die Lesemodus-Leiste stehen.
+            if abs(delta) > 4 && !autoScroll.isActive {
                 scrollingDown = delta > 0 && newOffset > 40
                 if scrollingDown && !isNearBottom {
                     // Runterscrollen & nicht am Ende → Bar ausblenden
@@ -2473,7 +2485,12 @@ struct ArticleReaderView: View {
                     // Wie im Artikel: die Leiste ist am Rand verankert, nicht an der Auswahl.
                     hideHighlightToolbar(animation: .spring(response: 0.3, dampingFraction: 0.85))
                     if down && offset > 40 {
-                        if showBottomBar || showPDFHeader {
+                        // Im Freihand-Lesemodus bleibt die Lesemodus-Leiste stehen.
+                        if autoScroll.isActive {
+                            if showPDFHeader {
+                                withAnimation(.easeInOut(duration: 0.2)) { showPDFHeader = false }
+                            }
+                        } else if showBottomBar || showPDFHeader {
                             withAnimation(.easeInOut(duration: 0.2)) {
                                 showBottomBar = false
                                 showPDFHeader = false
@@ -2489,6 +2506,7 @@ struct ArticleReaderView: View {
                         }
                     }
                 },
+                onScrollView: { [autoScroll] in autoScroll.scrollView = $0 },
                 actions: highlightActions,
                 onSelectionChanged: { rect, highlightId in
                     showHighlightToolbar(
@@ -2624,7 +2642,7 @@ struct ArticleReaderView: View {
             }
 
             // MARK: Landscape action button – ersetzt im Querformat die bottomBar
-            if isCompactLandscape {
+            if isCompactLandscape && !autoScroll.isActive {
                 landscapeActionButton
                     .environment(\.colorScheme, readerIsDark ? .dark : .light)
                     .transition(.opacity)
@@ -3020,8 +3038,9 @@ struct ArticleReaderView: View {
     private var appearanceSheet: some View {
         AppearanceSheet(fontSize: $fontSize, theme: $theme, readerFont: $readerFont, lineHeight: $lineHeight,
                         paperTexture: $paperTexture,
+                        handsFreeButton: $handsFreeButton,
                         onAccentColorChange: { pushAppearanceToServer() })
-            .presentationDetents([.height(520)])
+            .presentationDetents([.height(610), .large])
             .presentationDragIndicator(.visible)
     }
 
@@ -3578,8 +3597,13 @@ struct ArticleReaderView: View {
     private var bottomAreaStack: some View {
         VStack(spacing: 0) {
             Spacer()
-            // Im Querformat (iPhone) übernimmt der Action Button unten rechts.
-            if showBottomBar && !isCompactLandscape {
+            if autoScroll.isActive {
+                // Freihand-Lesemodus: statt der bottomBar (auch im Querformat,
+                // dort tritt der Action Button so lange zurück).
+                handsFreeBar
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            } else if showBottomBar && !isCompactLandscape {
+                // Im Querformat (iPhone) übernimmt der Action Button unten rechts.
                 bottomBar
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
@@ -3589,6 +3613,9 @@ struct ArticleReaderView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+        .modifier(HandsFreeLifecycle(controller: autoScroll,
+                                     buttonEnabled: handsFreeButton,
+                                     shouldPause: handsFreeShouldPause))
     }
 
     // MARK: – Suche im Artikel
@@ -3863,7 +3890,7 @@ struct ArticleReaderView: View {
     }
 
     private enum LandscapeAction: CaseIterable, Identifiable {
-        case archive, share, tags, appearance, back
+        case archive, share, tags, appearance, handsFree, back
         var id: Self { self }
         var icon: String {
             switch self {
@@ -3871,6 +3898,7 @@ struct ArticleReaderView: View {
             case .share:      return "square.and.arrow.up"
             case .tags:       return "tag"
             case .appearance: return "textformat.size"
+            case .handsFree:  return "scroll"
             case .back:       return "chevron.left"
             }
         }
@@ -3880,14 +3908,22 @@ struct ArticleReaderView: View {
             case .share:      return L("articleReader.sideMenu.share")
             case .tags:       return L("articleReader.sideMenu.editTags")
             case .appearance: return L("articleReader.sideMenu.appearance")
+            case .handsFree:  return L("articleReader.handsFree.start")
             case .back:       return L("common.back")
             }
         }
     }
 
-    /// PDF-Artikel haben keine Schrift-/Theme-Einstellungen (wie im Seitenmenü).
+    /// PDF-Artikel haben keine Schrift-/Theme-Einstellungen (wie im Seitenmenü);
+    /// Freihand-Lesen nur, wenn im Erscheinungsbild eingeschaltet.
     private var landscapeActions: [LandscapeAction] {
-        LandscapeAction.allCases.filter { $0 != .appearance || !current.isPDF }
+        LandscapeAction.allCases.filter {
+            switch $0 {
+            case .appearance: return !current.isPDF
+            case .handsFree:  return handsFreeButton
+            default:          return true
+            }
+        }
     }
 
     private static let actionButtonSize: CGFloat = 54
@@ -4018,6 +4054,7 @@ struct ArticleReaderView: View {
             dismiss()
         case .tags:       showTagSheet = true
         case .appearance: showAppearance = true
+        case .handsFree:  startHandsFree()
         case .back:       dismiss()
         case .share:      break // läuft über ArticleShareLink
         }
@@ -4066,6 +4103,21 @@ struct ArticleReaderView: View {
 
             onAccent.opacity(0.25).frame(width: 0.5)
 
+            // ── Optional: Freihand-Lesen (im Erscheinungsbild einschaltbar) ────
+            if handsFreeButton {
+                Button {
+                    startHandsFree()
+                } label: {
+                    Image(systemName: "scroll")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundStyle(onAccent)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                .accessibilityLabel(L("articleReader.handsFree.start"))
+
+                onAccent.opacity(0.25).frame(width: 0.5)
+            }
+
             // ── Button 3: Share ───────────────────────────────────────────────
             ArticleShareLink(article: current) {
                 Image(systemName: "square.and.arrow.up")
@@ -4087,6 +4139,107 @@ struct ArticleReaderView: View {
             unionID: "readerBottomGlass", namespace: bottomGlassNamespace,
             bgColor: readerBgColor, separatorColor: readerSeparatorColor,
             tint: accent)
+    }
+
+    // MARK: – Freihand-Lesemodus
+    //
+    // Ersetzt die bottomBar, solange der Modus an ist, in derselben Glas-Form:
+    //
+    //  ⏸ | 🐢 ━━━━━●━━━━━ 🐇 | ✕
+    //
+    // Der Slider wirkt sofort; ✕ beendet den Modus.
+
+    private func startHandsFree() {
+        hideHighlightToolbar()
+        withAnimation(.easeInOut(duration: 0.2)) {
+            showBottomBar = true
+            autoScroll.start()
+        }
+    }
+
+    private func stopHandsFree() {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            autoScroll.stop()
+            showBottomBar = true
+        }
+    }
+
+    /// Alles, was den Motor anhalten soll, bis man selbst ▶ tippt: Auswahl bzw.
+    /// Farbleiste (Scrollen würde sie sofort wegklappen), Sheets, Menüs, Suche,
+    /// Overlays und App im Hintergrund.
+    private var handsFreeShouldPause: Bool {
+        toolbarVisible || showAppearance || showSideMenu || findActive
+            || lightboxState != nil || youtubePlayerState != nil || eventSuggestion != nil
+            || showTagSheet || commentFocus != nil || tappedLinkURL != nil
+            || showReportSheet || showShareLinkSheet || showSiteCredentialsSheet
+            || addWithTagsLink != nil || scenePhase != .active
+    }
+
+    private var handsFreeBar: some View {
+        let accent   = Color(hexString: accentColorHex) ?? .red
+        let onAccent = Color(hexString: onAccentHex) ?? .white
+        let paused   = autoScroll.isPaused
+        return HStack(spacing: 0) {
+            Button {
+                autoScroll.togglePause()
+            } label: {
+                Image(systemName: paused ? "play.fill" : "pause.fill")
+                    .font(.system(size: 20, weight: .medium))
+                    .contentTransition(.symbolEffect(.replace))
+                    .foregroundStyle(onAccent)
+                    .frame(width: 60)
+                    .frame(maxHeight: .infinity)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel(paused ? L("articleReader.handsFree.resume") : L("articleReader.handsFree.pause"))
+
+            onAccent.opacity(0.25).frame(width: 0.5)
+
+            HStack(spacing: 10) {
+                Image(systemName: "tortoise.fill")
+                    .font(.system(size: 13))
+                    .foregroundStyle(onAccent.opacity(0.75))
+                    .accessibilityHidden(true)
+                Slider(value: $autoScroll.slider, in: 0...1)
+                    .tint(onAccent)
+                    .accessibilityLabel(L("articleReader.handsFree.speed"))
+                    .accessibilityValue(handsFreeSpeedDescription)
+                Image(systemName: "hare.fill")
+                    .font(.system(size: 13))
+                    .foregroundStyle(onAccent.opacity(0.75))
+                    .accessibilityHidden(true)
+            }
+            .padding(.horizontal, 14)
+            .frame(maxWidth: .infinity)
+
+            onAccent.opacity(0.25).frame(width: 0.5)
+
+            Button {
+                stopHandsFree()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(onAccent)
+                    .frame(width: 60)
+                    .frame(maxHeight: .infinity)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel(L("articleReader.handsFree.stop"))
+        }
+        .frame(height: 54)
+        .padding(.bottom, piperTTS.hasContent ? 0 : safeAreaBottom)
+        .readerBarGlassBackground(
+            unionID: "readerBottomGlass", namespace: bottomGlassNamespace,
+            bgColor: readerBgColor, separatorColor: readerSeparatorColor,
+            tint: accent)
+    }
+
+    private var handsFreeSpeedDescription: String {
+        switch autoScroll.slider {
+        case ..<0.34: return L("articleReader.handsFree.slow")
+        case ..<0.67: return L("articleReader.handsFree.medium")
+        default:      return L("articleReader.handsFree.fast")
+        }
     }
 
     // MARK: – Piper TTS panel
@@ -5242,6 +5395,28 @@ struct ArticleReaderView: View {
     }
 }
 
+// MARK: – Freihand-Lesemodus: Lebenszyklus
+
+/// Hält den `AutoScrollController` mit dem Reader in Takt: anhalten, sobald
+/// etwas über dem Text liegt (oder die App in den Hintergrund geht), beenden,
+/// wenn der Button im Erscheinungsbild ausgeschaltet wird oder der Reader zugeht.
+private struct HandsFreeLifecycle: ViewModifier {
+    let controller: AutoScrollController
+    let buttonEnabled: Bool
+    let shouldPause: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: shouldPause) { _, pause in
+                if pause { controller.pause() }
+            }
+            .onChange(of: buttonEnabled) { _, enabled in
+                if !enabled { controller.stop() }
+            }
+            .onDisappear { controller.stop() }
+    }
+}
+
 // MARK: – Appearance sheet
 
 private struct AppearanceSheet: View {
@@ -5250,6 +5425,7 @@ private struct AppearanceSheet: View {
     @Binding var readerFont: ReaderFont
     @Binding var lineHeight: Double
     @Binding var paperTexture: Bool
+    @Binding var handsFreeButton: Bool
     var onAccentColorChange: () -> Void = {}
 
     @AppStorage("merlin_accent_progress_color") private var accentColorHex: String = "#FF3B30"
@@ -5257,19 +5433,46 @@ private struct AppearanceSheet: View {
     private let fontSizes = [13, 15, 17, 19, 21, 24]
 
     var body: some View {
+        // Scrollbar, damit auf kleinen iPhones nichts abgeschnitten wird.
+        ScrollView {
         VStack(alignment: .leading, spacing: 20) {
             fontSizeRow
             themeRow
             fontRow
             lineHeightRow
             paperTextureRow
+            handsFreeRow
             accentColorRow
-            Spacer()
+            Spacer(minLength: 0)
         }
         .padding(20)
+        }
+        .scrollBounceBehavior(.basedOnSize)
         .background(Color(.systemGroupedBackground))
         .onChange(of: paperTexture) { _, v in
             PreferencesStore.shared.readerPaperTexture = v
+        }
+        .onChange(of: handsFreeButton) { _, v in
+            PreferencesStore.shared.readerHandsFreeButton = v
+        }
+    }
+
+    /// Blendet den Freihand-Button in der Bottom bar ein (Standard: an).
+    @ViewBuilder
+    private var handsFreeRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Toggle(isOn: $handsFreeButton) {
+                Label(L("articleReader.appearance.handsFree"), systemImage: "scroll")
+                    .font(.subheadline)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(Color(.secondarySystemGroupedBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            Text(L("articleReader.appearance.handsFreeFooter"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 12)
         }
     }
 

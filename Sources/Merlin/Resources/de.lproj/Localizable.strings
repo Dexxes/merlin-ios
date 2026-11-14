@@ -75,6 +75,16 @@
 "articleReader.appearance.fontSize" = "Schriftgröße";
 "articleReader.appearance.lineSpacing" = "Zeilenabstand";
 "articleReader.appearance.paperTexture" = "Papierstruktur";
+"articleReader.appearance.handsFree" = "Freihand-Lesemodus";
+"articleReader.appearance.handsFreeFooter" = "Zeigt in der unteren Leiste einen Button, der den Artikel von selbst scrollen lässt.";
+"articleReader.handsFree.start" = "Freihand-Lesen";
+"articleReader.handsFree.pause" = "Pause";
+"articleReader.handsFree.resume" = "Weiter";
+"articleReader.handsFree.stop" = "Freihand-Lesen beenden";
+"articleReader.handsFree.speed" = "Scrollgeschwindigkeit";
+"articleReader.handsFree.slow" = "langsam";
+"articleReader.handsFree.medium" = "mittel";
+"articleReader.handsFree.fast" = "schnell";
 "articleReader.appearance.progressAndHighlights" = "Fortschrittsbalken & Hervorhebungen";
 "articleReader.appearance.theme" = "Design";
 "articleReader.comments.allComments" = "Alle Kommentare";
