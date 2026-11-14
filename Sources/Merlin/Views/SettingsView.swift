@@ -347,6 +347,12 @@ struct SettingsView: View {
                             Label(L("settings.about.privacyLabel"), systemImage: "hand.raised")
                         }
                     }
+                    // Öffnet die Mail-App mit vorbelegtem Empfänger und Betreff.
+                    if let contactURL = URL(string: "mailto:jvb@live.de?subject=Merlin%2FiOS%3A%20") {
+                        Link(destination: contactURL) {
+                            Label(L("settings.about.contactDeveloperLabel"), systemImage: "envelope")
+                        }
+                    }
                     if let repoURL = URL(string: "https://github.com/dexxes/merlin-ios") {
                         Link(destination: repoURL) {
                             Label(L("settings.about.sourceCodeLabel"), systemImage: "chevron.left.forwardslash.chevron.right")

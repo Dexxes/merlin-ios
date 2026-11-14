@@ -324,6 +324,7 @@
 "report.successMessage" = "Danke – Artikel wurde gemeldet.";
 "report.title" = "Artikel melden";
 "settings.about.commitLabel" = "Commit";
+"settings.about.contactDeveloperLabel" = "Entwickler kontaktieren";
 "settings.about.privacyLabel" = "Datenschutzerklärung";
 "settings.about.sectionHeader" = "Über";
 "settings.about.sourceCodeLabel" = "Quellcode";

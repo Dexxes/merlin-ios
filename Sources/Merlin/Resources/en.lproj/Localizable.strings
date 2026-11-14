@@ -324,6 +324,7 @@
 "report.successMessage" = "Thanks – the article has been reported.";
 "report.title" = "Report Article";
 "settings.about.commitLabel" = "Commit";
+"settings.about.contactDeveloperLabel" = "Contact Developer";
 "settings.about.privacyLabel" = "Privacy Policy";
 "settings.about.sectionHeader" = "About";
 "settings.about.sourceCodeLabel" = "Source code";

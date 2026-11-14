@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- "Contact Developer" under Settings → About opens a new email to the
+  developer with the subject "Merlin/iOS: ".
 - Privacy policy (PRIVACY.md, German and English), linked under Settings →
   About.
 - Hands-free reading: the article scrolls down by itself. A fourth button in
