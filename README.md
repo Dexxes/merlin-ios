@@ -62,6 +62,10 @@ On first launch, connect the app to your Nextcloud instance either via the built
 
 See [Structure.md](Structure.md) for a file-by-file overview of `Sources/Merlin` and `Sources/MerlinShare`, and the top-level `CLAUDE.md` for how this app fits into the broader Merlin platform (Nextcloud backend, standalone server, Android, browser extensions).
 
+## Privacy
+
+Merlin collects no data for the developer: no analytics, no tracking, no ads. See [PRIVACY.md](PRIVACY.md) (German and English).
+
 ## License
 
 Copyright (C) 2026 Julian von Bülow

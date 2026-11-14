@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Privacy policy (PRIVACY.md, German and English), linked under Settings →
+  About.
 - Find in article: "Find in Article" in the reader's side menu (or ⌘F with
   a keyboard) opens a search bar at the top. All matches are highlighted in
   yellow, the current one in orange; the arrows (or Return, ⌘G / ⇧⌘G) jump

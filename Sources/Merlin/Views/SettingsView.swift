@@ -342,6 +342,11 @@ struct SettingsView: View {
                             .font(.system(.body, design: .monospaced))
                             .foregroundStyle(.secondary)
                     }
+                    if let privacyURL = URL(string: "https://github.com/Dexxes/merlin-ios/blob/main/PRIVACY.md") {
+                        Link(destination: privacyURL) {
+                            Label(L("settings.about.privacyLabel"), systemImage: "hand.raised")
+                        }
+                    }
                     if let repoURL = URL(string: "https://github.com/dexxes/merlin-ios") {
                         Link(destination: repoURL) {
                             Label(L("settings.about.sourceCodeLabel"), systemImage: "chevron.left.forwardslash.chevron.right")
