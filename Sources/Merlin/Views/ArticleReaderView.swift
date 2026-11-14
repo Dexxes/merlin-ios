@@ -5457,7 +5457,7 @@ private struct AppearanceSheet: View {
         }
     }
 
-    /// Blendet den Freihand-Button in der Bottom bar ein (Standard: aus).
+    /// Blendet den Freihand-Button in der Bottom bar ein (Standard: an).
     @ViewBuilder
     private var handsFreeRow: some View {
         VStack(alignment: .leading, spacing: 6) {

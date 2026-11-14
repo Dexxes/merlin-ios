@@ -260,9 +260,12 @@ final class PreferencesStore: @unchecked Sendable {
     }
 
     /// Freihand-Lesemodus: Button in der Bottom bar des Readers einblenden.
-    /// Nur lokal (wie die Papierstruktur). Standard: aus.
+    /// Nur lokal (wie die Papierstruktur). Standard: an.
     var readerHandsFreeButton: Bool {
-        get { defaults.bool(forKey: Key.handsFreeButton) }
+        get {
+            guard defaults.object(forKey: Key.handsFreeButton) != nil else { return true }
+            return defaults.bool(forKey: Key.handsFreeButton)
+        }
         set { defaults.set(newValue, forKey: Key.handsFreeButton) }
     }
 
