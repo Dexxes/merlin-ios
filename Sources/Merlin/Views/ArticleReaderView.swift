@@ -5034,6 +5034,12 @@ struct ArticleReaderView: View {
         let fgMuted        = isSepia ? "#7a6350" : (effectiveDark ? "#98989d" : "#6e6e73")
         let accent         = accentColorHex
         let onAccent       = onAccentHex
+        // Akzent als Textfarbe (Captions, Zitate, Infokasten-Links) im Dark Mode auf
+        // WCAG AA (4.5:1) aufhellen: ein dunkler Akzent (z. B. Lila) ist auf Schwarz
+        // bzw. dem dunkelblauen Infokasten sonst kaum lesbar. Hell/Sepia bleiben unverändert.
+        let infoboxBg      = isSepia ? "#e8d9be" : (effectiveDark ? "#1e2d3d" : "#f0f7ff")
+        let accentText        = effectiveDark ? HexContrast.readable(accent, on: bg) : accent
+        let accentTextInfobox = effectiveDark ? HexContrast.readable(accent, on: infoboxBg) : accent
         let imgPlaceholderBg = isSepia ? "#e8d9be" : (effectiveDark ? "#2c2c2e" : "#f2f2f7")
         // Lokalisierter Platzhaltertext als JS-String-Literal (JSON-kodiert, "</" entschärft,
         // damit eine Übersetzung weder das Literal noch den <script>-Block beenden kann).
@@ -5095,7 +5101,7 @@ struct ArticleReaderView: View {
               font-size: 1.3em;
               font-style: italic;
               line-height: 1.45;
-              color: \(accentColorHex);
+              color: \(accentText);
             }
             blockquote p { margin: 0 0 0.4em; }
             blockquote cite, blockquote footer {
@@ -5106,7 +5112,7 @@ struct ArticleReaderView: View {
               font-style: normal;
               text-align: center !important;
               margin-top: 0.3em;
-              color: \(accentColorHex);
+              color: \(accentText);
             }
             /* Der Server (normalizeQuotes) legt die Quellenangabe als <cite> ins
                blockquote. Nur ein Folgeabsatz, der ausschließlich aus einem <cite>
@@ -5118,7 +5124,7 @@ struct ArticleReaderView: View {
               text-align: center !important;
               font-family: \(ReaderFont.system.cssValue);
               font-size: 0.85em;
-              color: \(accentColorHex);
+              color: \(accentText);
             }
             blockquote + p:has(> cite:only-child) cite, blockquote + p:has(> cite:only-child) cite * { font-style: normal; }
             blockquote cite em, blockquote cite strong { font-style: normal; }
@@ -5132,7 +5138,7 @@ struct ArticleReaderView: View {
             figure { margin: 1em 0 0; }
             figure:first-child { margin-top: 0; }
             figure img { display: block; margin-bottom: 0; }
-            figcaption { font-size: 0.75em; line-height: 1.4; color: \(accentColorHex); text-align: left; margin-top: 2px; margin-bottom: 1em; }
+            figcaption { font-size: 0.75em; line-height: 1.4; color: \(accentText); text-align: left; margin-top: 2px; margin-bottom: 1em; }
             /* ── Titelbild auf Akzentfläche, randlos, danach Tonstufen ── */
             body > figure:first-child,
             body > img:first-child {
@@ -5152,7 +5158,7 @@ struct ArticleReaderView: View {
               font-size: 11px; font-weight: 700; letter-spacing: 1px;
             }
             /* Bildquelle (vom Server als <cite> markiert): nicht fett, kursiv, halbtransparent */
-            figcaption cite { font-weight: 400; font-style: italic; opacity: 0.5; }
+            figcaption cite { font-weight: 400; font-style: italic; opacity: \(effectiveDark ? "0.75" : "0.5"); }
             figcaption cite * { font-weight: inherit; font-style: inherit; }
             /* Links in Bildunterschriften wie der übrige Caption-Text: gleiche Farbe, nicht unterstrichen */
             figcaption a { color: inherit !important; text-decoration: none; }
@@ -5198,7 +5204,7 @@ struct ArticleReaderView: View {
               font-size: 0.9em; font-weight: 600;
             }
             .merlin-infobox {
-              background: \(isSepia ? "#e8d9be" : (effectiveDark ? "#1e2d3d" : "#f0f7ff"));
+              background: \(infoboxBg);
               border-left: 4px solid \(accent);
               border-radius: 0 8px 8px 0;
               padding: 14px 16px;
@@ -5209,7 +5215,8 @@ struct ArticleReaderView: View {
             }
             .merlin-infobox > *:first-child { margin-top: 0; }
             .merlin-infobox > *:last-child  { margin-bottom: 0; }
-            .merlin-infobox a { color: \(accent) !important; text-decoration-color: \(accent)80; }
+            .merlin-infobox a { color: \(accentTextInfobox) !important; text-decoration-color: \(accentTextInfobox)80; }
+            .merlin-infobox figcaption { color: \(accentTextInfobox); }
             /* Instagram-/X-/Bluesky-Embeds (siehe ContentExtractorService.swift,
                isAllowedWidgetScriptSrc()) rendern sich nach dem Laden ihres
                Widget-Skripts selbst neu - der generische blockquote-Style oben

@@ -786,8 +786,20 @@ private struct UndoToast: View {
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 12)
-        .background(Color(.label).opacity(0.88), in: Capsule())
-        .shadow(color: .black.opacity(0.18), radius: 8, y: 4)
+        .toastBackground()
+    }
+}
+
+/// Gemeinsamer Hintergrund für UndoToast/ArchiveToast. Bewusst fest dunkel statt
+/// `Color(.label)`: das ist im Dark Mode fast weiß, der weiße Text darauf war
+/// unlesbar (besonders über Kartenbildern). Die feine helle Kontur trennt die
+/// Kapsel im Dark Mode vom schwarzen Hintergrund.
+private extension View {
+    func toastBackground() -> some View {
+        self
+            .background(Color(white: 0.14).opacity(0.94), in: Capsule())
+            .overlay(Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
+            .shadow(color: .black.opacity(0.25), radius: 8, y: 4)
     }
 }
 
@@ -817,7 +829,6 @@ private struct ArchiveToast: View {
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 12)
-        .background(Color(.label).opacity(0.88), in: Capsule())
-        .shadow(color: .black.opacity(0.18), radius: 8, y: 4)
+        .toastBackground()
     }
 }
