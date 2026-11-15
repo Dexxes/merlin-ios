@@ -239,7 +239,12 @@ final class ArticlesViewModel {
     var searchQuery: String = ""
     var isLoading = false
     var error: String? = nil
-    var counts = ArticleCounts()
+    /// Startet mit dem letzten bekannten Stand, damit das Seitenmenü auch
+    /// offline (Kaltstart ohne Verbindung) Zähler zeigt; jede Änderung wird
+    /// wieder gespeichert.
+    var counts = PreferencesStore.shared.cachedCounts ?? ArticleCounts() {
+        didSet { PreferencesStore.shared.cachedCounts = counts }
+    }
 
     /// Nachladen älterer Artikel beim Runterscrollen (Card- und Listenansicht).
     /// `true`, solange der Server die letzte Seite voll geliefert hat.
@@ -386,6 +391,7 @@ final class ArticlesViewModel {
         articles = []
         counts = ArticleCounts()
         allTags = []
+        PreferencesStore.shared.clearCachedListMeta()
         selectedTagId = nil
         lastUndoableAction = nil
         error = nil
@@ -572,7 +578,11 @@ final class ArticlesViewModel {
 
     // MARK: – Tags
 
-    var allTags: [Tag] = []
+    /// Wie `counts`: startet mit dem letzten bekannten Stand und wird bei
+    /// jeder Änderung gespeichert, damit Tags auch offline sichtbar sind.
+    var allTags: [Tag] = PreferencesStore.shared.cachedTags ?? [] {
+        didSet { PreferencesStore.shared.cachedTags = allTags }
+    }
     var selectedTagId: Int? = nil
 
     /// Blendet archivierte Artikel innerhalb der Einzel-Tag-Ansicht ein/aus
@@ -603,7 +613,11 @@ final class ArticlesViewModel {
     }
 
     func loadTags() async {
-        allTags = (try? await MerlinAPI.shared.getTags()) ?? []
+        // Offline bleibt der bisherige (ggf. gespeicherte) Stand stehen,
+        // statt die Tags zu leeren.
+        if let tags = try? await MerlinAPI.shared.getTags() {
+            allTags = tags
+        }
     }
 
     /// Hängt einen Tag samt Unter-Tags unter `parentId` (`nil` = oberste

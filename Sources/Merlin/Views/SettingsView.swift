@@ -556,6 +556,7 @@ struct SettingsView: View {
     /// "Abmelden" und "Cache leeren".
     private static func wipeLocalAccountData() async {
         PreferencesStore.shared.clearReadingPositions()
+        PreferencesStore.shared.clearCachedListMeta()
         OfflineMutationQueue.shared.removeAll()
         OfflineHighlightQueue.shared.removeAll()
         ProgressSyncQueue.shared.removeAll()

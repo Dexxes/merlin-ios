@@ -134,6 +134,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - "Open via archive.ph" in the reader's side menu.
 
 ### Fixed
+- Offline, the side menu no longer shows 0 for every count and no tags: the
+  last known counts and tags are stored on the device and shown until the
+  server answers again, also after a cold start without a connection. A
+  failed tag refresh keeps the current tags instead of clearing them.
+  Logging out and "Clear cache" remove the stored state. Not built or run
+  on a device yet.
 - Saving an image or video to Photos (share sheet of a file, or the image menu
   in the reader) no longer crashes the app: the required photo-library
   purpose string is now in the Info.plist.

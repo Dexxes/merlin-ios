@@ -143,6 +143,8 @@ final class PreferencesStore: @unchecked Sendable {
         static let developerMode          = "merlin_developer_mode"
         static let excludedTagIds         = "merlin_excluded_tag_ids"
         static let cacheRetentionDays     = "merlin_cache_retention_days"
+        static let cachedCounts           = "merlin_cached_article_counts"
+        static let cachedTags             = "merlin_cached_tags"
     }
 
     // MARK: – App preferences
@@ -158,6 +160,42 @@ final class PreferencesStore: @unchecked Sendable {
             let data = try? JSONEncoder().encode(newValue)
             defaults.set(data, forKey: Key.excludedTagIds)
         }
+    }
+
+    // MARK: – Offline-Stand des Seitenmenüs
+
+    /// Letzter bekannter Stand von Zählern und Tags fürs Seitenmenü, damit es
+    /// auch offline (v.a. nach einem Kaltstart ohne Verbindung) nicht bei 0
+    /// bzw. ohne Tags steht. Geschrieben von `ArticlesViewModel` bei jeder
+    /// Änderung; `nil` = nichts gespeichert.
+    var cachedCounts: ArticleCounts? {
+        get { decoded(ArticleCounts.self, forKey: Key.cachedCounts) }
+        set { encode(newValue, forKey: Key.cachedCounts) }
+    }
+
+    var cachedTags: [Tag]? {
+        get { decoded([Tag].self, forKey: Key.cachedTags) }
+        set { encode(newValue, forKey: Key.cachedTags) }
+    }
+
+    /// Beim Abmelden/„Cache leeren“: Zähler und Tags des alten Kontos nicht
+    /// weiter anzeigen.
+    func clearCachedListMeta() {
+        defaults.removeObject(forKey: Key.cachedCounts)
+        defaults.removeObject(forKey: Key.cachedTags)
+    }
+
+    private func decoded<T: Decodable>(_ type: T.Type, forKey key: String) -> T? {
+        guard let data = defaults.data(forKey: key) else { return nil }
+        return try? JSONDecoder().decode(type, from: data)
+    }
+
+    private func encode<T: Encodable>(_ value: T?, forKey key: String) {
+        guard let value, let data = try? JSONEncoder().encode(value) else {
+            defaults.removeObject(forKey: key)
+            return
+        }
+        defaults.set(data, forKey: key)
     }
 
     var defaultFilter: ArticleFilter {
