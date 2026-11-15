@@ -2795,10 +2795,6 @@ struct ArticleReaderView: View {
             PreferencesStore.shared.readerFont = v
             pushAppearanceToServer()
         }
-        // Installierte Schrift bleibt lokal (gerätespezifisch) – kein Server-Push.
-        .onChange(of: customFontFamily) { _, v in
-            PreferencesStore.shared.readerCustomFontFamily = v
-        }
         .onChange(of: lineHeight)  { _, v in
             PreferencesStore.shared.lineHeight = v
             pushAppearanceToServer()
@@ -3057,9 +3053,21 @@ struct ArticleReaderView: View {
         }
     }
 
+    /// Speichert die installierte Schrift direkt beim Setzen (nur lokal, kein Server-Push).
+    /// Bewusst kein weiteres `.onChange` in `body`: das brachte den Type-Checker über sein Limit.
+    private var customFontFamilyBinding: Binding<String?> {
+        Binding(
+            get: { customFontFamily },
+            set: { newValue in
+                customFontFamily = newValue
+                PreferencesStore.shared.readerCustomFontFamily = newValue
+            }
+        )
+    }
+
     private var appearanceSheet: some View {
         AppearanceSheet(fontSize: $fontSize, theme: $theme, readerFont: $readerFont,
-                        customFontFamily: $customFontFamily, lineHeight: $lineHeight,
+                        customFontFamily: customFontFamilyBinding, lineHeight: $lineHeight,
                         paperTexture: $paperTexture,
                         handsFreeButton: $handsFreeButton,
                         onAccentColorChange: { pushAppearanceToServer() })
