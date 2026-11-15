@@ -2131,6 +2131,8 @@ struct ArticleReaderView: View {
     @State private var fontSize:      Int          = PreferencesStore.shared.readerFontSize
     @State private var theme:         ReaderTheme  = PreferencesStore.shared.readerTheme
     @State private var readerFont:    ReaderFont   = PreferencesStore.shared.readerFont
+    /// Installierte Schrift (überschreibt `readerFont`), `nil` = Voreinstellung. Nur lokal gespeichert.
+    @State private var customFontFamily: String?   = PreferencesStore.shared.readerCustomFontFamily
     @State private var lineHeight:    Double        = PreferencesStore.shared.lineHeight
     @State private var paperTexture:  Bool          = PreferencesStore.shared.readerPaperTexture
     /// Freihand-Lesemodus: Button in der Bottom bar eingeblendet (Erscheinungsbild).
@@ -2181,7 +2183,22 @@ struct ArticleReaderView: View {
 
     /// Fasst alle Einstellungen zusammen, die die Reader-HTML neu laden lassen.
     private var appearanceKey: String {
-        "\(fontSize)|\(theme.rawValue)|\(readerFont.rawValue)|\(lineHeight)|\(showsPaperTexture)"
+        "\(fontSize)|\(theme.rawValue)|\(readerFont.rawValue)|\(effectiveCustomFontFamily ?? "")|\(lineHeight)|\(showsPaperTexture)"
+    }
+
+    /// Gewählte installierte Schrift, sofern sie noch installiert ist; sonst greift die Voreinstellung.
+    private var effectiveCustomFontFamily: String? {
+        guard let family = customFontFamily, InstalledFonts.isInstalled(family) else { return nil }
+        return family
+    }
+
+    /// Schrift für den nativen Plakat-Header: die installierte Schrift, falls gewählt, sonst das
+    /// System-Design der Voreinstellung.
+    private func headerFont(size: CGFloat, weight: Font.Weight, design: Font.Design) -> Font {
+        if let family = effectiveCustomFontFamily {
+            return .custom(family, fixedSize: size).weight(weight)
+        }
+        return .system(size: size, weight: weight, design: design)
     }
 
     /// Inline-Player exakt über der angetippten Vorschaukarte. Der WebView scrollt nicht
@@ -3014,6 +3031,7 @@ struct ArticleReaderView: View {
 
     private func readerHTML(content: String) -> String {
         buildReaderHTML(content: content, fontSize: fontSize, theme: theme, font: readerFont,
+                        customFontFamily: effectiveCustomFontFamily,
                         lineHeight: lineHeight, transparentBackground: showsPaperTexture,
                         developerMode: developerMode)
     }
@@ -3035,8 +3053,21 @@ struct ArticleReaderView: View {
         }
     }
 
+    /// Speichert die installierte Schrift direkt beim Setzen (nur lokal, kein Server-Push).
+    /// Bewusst kein weiteres `.onChange` in `body`: das brachte den Type-Checker über sein Limit.
+    private var customFontFamilyBinding: Binding<String?> {
+        Binding(
+            get: { customFontFamily },
+            set: { newValue in
+                customFontFamily = newValue
+                PreferencesStore.shared.readerCustomFontFamily = newValue
+            }
+        )
+    }
+
     private var appearanceSheet: some View {
-        AppearanceSheet(fontSize: $fontSize, theme: $theme, readerFont: $readerFont, lineHeight: $lineHeight,
+        AppearanceSheet(fontSize: $fontSize, theme: $theme, readerFont: $readerFont,
+                        customFontFamily: customFontFamilyBinding, lineHeight: $lineHeight,
                         paperTexture: $paperTexture,
                         handsFreeButton: $handsFreeButton,
                         onAccentColorChange: { pushAppearanceToServer() })
@@ -3183,7 +3214,7 @@ struct ArticleReaderView: View {
                                 Text(tag.name).lineLimit(1)
                             }
                         }
-                        .font(.system(size: 11, weight: .bold, design: design))
+                        .font(headerFont(size: 11, weight: .bold, design: design))
                         .tracking(2.0)
                         .foregroundStyle(onAccent)
                         .padding(.bottom, 8)
@@ -3192,7 +3223,7 @@ struct ArticleReaderView: View {
 
                     // ── Titel ──
                     Text(current.displayTitle)
-                        .font(.system(size: CGFloat(fontSize) * 2.1, weight: .heavy, design: design))
+                        .font(headerFont(size: CGFloat(fontSize) * 2.1, weight: .heavy, design: design))
                         .tracking(-1)
                         .foregroundStyle(onAccent)
                         .fixedSize(horizontal: false, vertical: true)
@@ -3200,7 +3231,7 @@ struct ArticleReaderView: View {
                     // ── Teaser ──
                     if let ex = current.excerpt, !ex.isEmpty {
                         Text(ex)
-                            .font(.system(size: CGFloat(fontSize), weight: .medium, design: design))
+                            .font(headerFont(size: CGFloat(fontSize), weight: .medium, design: design))
                             .foregroundStyle(onAccent)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -3240,7 +3271,7 @@ struct ArticleReaderView: View {
     @ViewBuilder
     private func metaLineRow(onAccent: Color, design: Font.Design) -> some View {
         let cells = infoCardCells
-        let font  = Font.system(size: 11, weight: .bold, design: design)
+        let font  = headerFont(size: 11, weight: .bold, design: design)
 
         HStack(spacing: 6) {
             ForEach(Array(cells.enumerated()), id: \.offset) { idx, cell in
@@ -3317,7 +3348,7 @@ struct ArticleReaderView: View {
                         Text(text)
                     }
                 }
-                .font(.system(size: 13, weight: .semibold, design: design))
+                .font(headerFont(size: 13, weight: .semibold, design: design))
                 .foregroundStyle(readerFgColor)
                 .padding(14)
                 .presentationCompactAdaptation(.popover)
@@ -3335,11 +3366,11 @@ struct ArticleReaderView: View {
                 .popover(isPresented: $showSavedAtFlyout) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(InfoCardKind.saved.displayLabel)
-                            .font(.system(size: 10, weight: .semibold, design: design))
+                            .font(headerFont(size: 10, weight: .semibold, design: design))
                             .tracking(1.0)
                             .foregroundStyle(readerFgMutedColor)
                         Text(saved)
-                            .font(.system(size: 13, weight: .semibold, design: design))
+                            .font(headerFont(size: 13, weight: .semibold, design: design))
                             .foregroundStyle(readerFgColor)
                     }
                     .padding(14)
@@ -4985,10 +5016,19 @@ struct ArticleReaderView: View {
 
     // MARK: – HTML builder
 
+    /// `font-family` für den Artikeltext: installierte Schrift zuerst, Voreinstellung als Fallback.
+    static func cssFontFamily(font: ReaderFont, customFontFamily: String?) -> String {
+        guard let family = customFontFamily else { return font.cssValue }
+        let escaped = family.replacingOccurrences(of: "\\", with: "\\\\")
+                            .replacingOccurrences(of: "'", with: "\\'")
+        return "'\(escaped)', \(font.cssValue)"
+    }
+
     private func buildReaderHTML(content: String,
                                  fontSize: Int = 17,
                                  theme: ReaderTheme = .auto,
                                  font: ReaderFont = .system,
+                                 customFontFamily: String? = nil,
                                  lineHeight: Double = 1.6,
                                  transparentBackground: Bool = false,
                                  developerMode: Bool = false) -> String {
@@ -5081,7 +5121,7 @@ struct ArticleReaderView: View {
               padding: 0 20px 40px;
               background: \(transparentBackground ? "transparent" : bg);
               color: \(fg);
-              font-family: \(font.cssValue);
+              font-family: \(Self.cssFontFamily(font: font, customFontFamily: customFontFamily));
               font-size: \(fontSize)px;
               line-height: \(String(format: "%.2f", lineHeight));
             }
@@ -5414,12 +5454,71 @@ private struct HandsFreeLifecycle: ViewModifier {
     }
 }
 
+// MARK: – Installierte Schriften
+
+/// Durchsuchbare Liste aller installierten Schriftfamilien, jede in ihrer eigenen Schrift.
+/// Gegenstück zu `InstalledFontPickerDialog` unter Android.
+private struct InstalledFontPickerView: View {
+    @Binding var selection: String?
+    @Environment(\.dismiss) private var dismiss
+    @State private var query = ""
+
+    private var filtered: [String] {
+        let q = query.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return InstalledFonts.familyNames }
+        return InstalledFonts.familyNames.filter { $0.localizedCaseInsensitiveContains(q) }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if query.isEmpty {
+                    row(label: L("articleReader.appearance.installedFontNone"), family: nil)
+                }
+                ForEach(filtered, id: \.self) { family in
+                    row(label: family, family: family)
+                }
+            }
+            .listStyle(.insetGrouped)
+            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always))
+            .navigationTitle(L("articleReader.appearance.installedFont"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(L("common.done")) { dismiss() }
+                }
+            }
+        }
+    }
+
+    private func row(label: String, family: String?) -> some View {
+        Button {
+            selection = family
+            dismiss()
+        } label: {
+            HStack {
+                Text(label)
+                    .font(family.map { Font.custom($0, size: 17, relativeTo: .body) } ?? Font.body)
+                    .foregroundStyle(Color.primary)
+                    .lineLimit(1)
+                Spacer()
+                if selection == family {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(Color.accentColor)
+                }
+            }
+        }
+    }
+}
+
 // MARK: – Appearance sheet
 
 private struct AppearanceSheet: View {
     @Binding var fontSize:   Int
     @Binding var theme:      ReaderTheme
     @Binding var readerFont: ReaderFont
+    /// Installierte Schrift (`nil` = Voreinstellung aus `readerFont`).
+    @Binding var customFontFamily: String?
     @Binding var lineHeight: Double
     @Binding var paperTexture: Bool
     @Binding var handsFreeButton: Bool
@@ -5428,6 +5527,7 @@ private struct AppearanceSheet: View {
     @AppStorage("merlin_accent_progress_color") private var accentColorHex: String = "#FF3B30"
 
     private let fontSizes = [13, 15, 17, 19, 21, 24]
+    @State private var showFontPicker = false
 
     var body: some View {
         // Scrollbar, damit auf kleinen iPhones nichts abgeschnitten wird.
@@ -5526,8 +5626,9 @@ private struct AppearanceSheet: View {
             Text(L("articleReader.appearance.font")).font(.footnote).foregroundStyle(.secondary)
             HStack(spacing: 8) {
                 ForEach(ReaderFont.allCases, id: \.self) { f in
-                    Button { readerFont = f } label: {
-                        let selected = readerFont == f
+                    // Eine Voreinstellung wählen hebt die installierte Schrift auf.
+                    Button { readerFont = f; customFontFamily = nil } label: {
+                        let selected = readerFont == f && customFontFamily == nil
                         let labelFont: Font = {
                             switch f {
                             case .serif: return .system(.subheadline, design: .serif)
@@ -5547,7 +5648,40 @@ private struct AppearanceSheet: View {
                     }
                 }
             }
+            installedFontButton
         }
+        .sheet(isPresented: $showFontPicker) {
+            InstalledFontPickerView(selection: $customFontFamily)
+                .presentationDetents([.large])
+        }
+    }
+
+    /// Öffnet die Liste aller installierten Schriften (`InstalledFonts`).
+    private var installedFontButton: some View {
+        Button { showFontPicker = true } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(L("articleReader.appearance.installedFont"))
+                        .font(.subheadline)
+                        .foregroundStyle(Color.primary)
+                    Text(customFontFamily ?? L("articleReader.appearance.installedFontNone"))
+                        .font(customFontFamily.map { Font.custom($0, size: 13, relativeTo: .footnote) } ?? Font.footnote)
+                        .foregroundStyle(customFontFamily != nil ? Color.accentColor : Color.secondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(Color(.secondarySystemGroupedBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(
+                customFontFamily != nil ? Color.accentColor : Color(.separator),
+                lineWidth: customFontFamily != nil ? 1.5 : 0.5))
+        }
+        .buttonStyle(.plain)
     }
 
     @ViewBuilder

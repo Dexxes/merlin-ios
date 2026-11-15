@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Free font choice in the reader's Appearance sheet: besides the four presets,
+  "Installed font" opens a searchable list of every font family installed on
+  the device (each shown in its own typeface). The chosen font applies to the
+  article text and the poster header. It is stored on the device only; the
+  server keeps receiving the preset, which also serves as fallback. Fonts
+  installed via apps or profiles (Settings → General → Fonts) are not listed,
+  since iOS only exposes them through the system font picker.
 - "Contact Developer" under Settings → About opens a new email to the
   developer with the subject "Merlin/iOS: ".
 - Privacy policy (PRIVACY.md, German and English), linked under Settings →
