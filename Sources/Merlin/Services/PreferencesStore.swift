@@ -131,6 +131,7 @@ final class PreferencesStore: @unchecked Sendable {
         static let readerFontSize       = "merlin_reader_font_size"
         static let readerTheme          = "merlin_reader_theme"
         static let readerFont           = "merlin_reader_font"
+        static let readerCustomFontFamily = "merlin_reader_custom_font_family"
         static let paperTexture         = "merlin_reader_paper_texture"
         static let handsFreeButton      = "merlin_reader_hands_free_button"
         static let handsFreeSpeed       = "merlin_reader_hands_free_speed"
@@ -288,6 +289,22 @@ final class PreferencesStore: @unchecked Sendable {
             return font
         }
         set { defaults.set(newValue.rawValue, forKey: Key.readerFont) }
+    }
+
+    /// Installierte Schriftfamilie (`UIFont.familyNames`), die die Voreinstellung `readerFont` für
+    /// Artikeltext und Plakat-Header überschreibt; `nil` = Voreinstellung nutzen.
+    /// Bewusst nur lokal und NICHT mit dem Server gesynct: welche Schriften installiert sind, ist
+    /// gerätespezifisch (Android kennt z. B. kein "Avenir Next"). Zum Server geht weiter nur die
+    /// Voreinstellung, die zugleich als CSS-Fallback dient.
+    var readerCustomFontFamily: String? {
+        get {
+            guard let name = defaults.string(forKey: Key.readerCustomFontFamily), !name.isEmpty else { return nil }
+            return name
+        }
+        set {
+            if let newValue, !newValue.isEmpty { defaults.set(newValue, forKey: Key.readerCustomFontFamily) }
+            else { defaults.removeObject(forKey: Key.readerCustomFontFamily) }
+        }
     }
 
     var progressEdge: ProgressEdge {

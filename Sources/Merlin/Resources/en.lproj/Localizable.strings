@@ -72,6 +72,8 @@
 "articleReader.actionButton" = "Actions";
 "articleReader.appearance.accentColor" = "Accent color";
 "articleReader.appearance.font" = "Font";
+"articleReader.appearance.installedFont" = "Installed font";
+"articleReader.appearance.installedFontNone" = "None – use preset";
 "articleReader.appearance.fontSize" = "Font size";
 "articleReader.appearance.lineSpacing" = "Line spacing";
 "articleReader.appearance.paperTexture" = "Paper texture";
