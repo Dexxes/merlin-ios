@@ -116,6 +116,8 @@
 "articleReader.quote.backdrop.aurora" = "Aurora";
 "articleReader.quote.backdrop.candy" = "Candy";
 "articleReader.quote.hint" = "Tap to close";
+"articleReader.quote.rotateTo169" = "Rotate phone for 16:9";
+"articleReader.quote.rotateTo916" = "Rotate phone for 9:16";
 "articleReader.quote.close" = "Close";
 "articleReader.quote.saveFailed" = "The image could not be saved.";
 "articleReader.quote.photosDenied.title" = "No Access to Photos";
