@@ -263,7 +263,7 @@ enum QuoteImageRenderer {
     static func compose(background: UIImage?, quote: UIImage, canvas: CGSize,
                         scale: CGFloat, style: QuoteStyle) -> UIImage {
         let rect = CGRect(origin: .zero, size: canvas)
-        let blurred = style.opaque ? nil : background.flatMap { blur($0, radius: 30) }
+        let blurred = style.opaque ? nil : background.flatMap { blur($0, radius: 14) }
         let format = UIGraphicsImageRendererFormat()
         format.scale = scale
         format.opaque = true
@@ -273,7 +273,7 @@ enum QuoteImageRenderer {
             if let blurred {
                 blurred.draw(in: rect)
                 // Entspricht ungefähr Material plus Tönung im Overlay.
-                style.tint.withAlphaComponent(style.isDark ? 0.6 : 0.62).setFill()
+                style.tint.withAlphaComponent(style.isDark ? 0.22 : 0.25).setFill()
                 ctx.fill(rect)
             }
             quote.draw(in: fitted(quote.size, in: rect.insetBy(dx: 24, dy: 48)))
@@ -479,8 +479,8 @@ private struct QuoteGlassOverlay: View {
             bgColor
         } else {
             Rectangle()
-                .fill(.regularMaterial)
-                .overlay(bgColor.opacity(0.35))
+                .fill(.ultraThinMaterial)
+                .overlay(bgColor.opacity(0.08))
         }
     }
 
@@ -495,7 +495,7 @@ private struct QuoteGlassOverlay: View {
                 .resizable()
                 .interpolation(.high)
                 .frame(width: frame.width, height: frame.height)
-                .shadow(color: bgColor.opacity(lifted ? 0.7 : 0), radius: 2)
+                .shadow(color: bgColor.opacity(lifted ? 0.9 : 0), radius: 3)
                 .position(x: frame.midX, y: frame.midY)
                 .opacity(reduceMotion && !lifted ? 0 : 1)
                 .accessibilityLabel(controller.text)
