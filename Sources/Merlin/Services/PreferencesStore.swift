@@ -135,6 +135,16 @@ final class PreferencesStore: @unchecked Sendable {
         static let paperTexture         = "merlin_reader_paper_texture"
         static let handsFreeButton      = "merlin_reader_hands_free_button"
         static let handsFreeSpeed       = "merlin_reader_hands_free_speed"
+        static let quoteMode            = "merlin_reader_quote_mode"
+        static let quoteHintShown       = "merlin_reader_quote_hint_shown"
+        static let quoteShowAuthor      = "merlin_reader_quote_show_author"
+        static let quoteShowSource      = "merlin_reader_quote_show_source"
+        static let quoteBackdrop        = "merlin_reader_quote_backdrop"
+        static let quoteFont            = "merlin_reader_quote_font"
+        static let quoteFontSize        = "merlin_reader_quote_font_size"
+        static let quoteTextColor       = "merlin_reader_quote_text_color"
+        static let quoteGlow            = "merlin_reader_quote_glow"
+        static let quoteBlur            = "merlin_reader_quote_blur"
         static let progressEdge         = "merlin_progress_edge"
         static let lineHeight           = "merlin_line_height"
         static let saveProgress           = "merlin_save_progress"
@@ -318,6 +328,70 @@ final class PreferencesStore: @unchecked Sendable {
             return min(1, max(0, defaults.double(forKey: Key.handsFreeSpeed)))
         }
         set { defaults.set(newValue, forKey: Key.handsFreeSpeed) }
+    }
+
+    /// Zitat-Ansicht: bleibt eine Auswahl im Reader 5 s stehen, liegt der
+    /// markierte Text allein auf Glas. Nur lokal (wie die Papierstruktur). Standard: an.
+    var readerQuoteMode: Bool {
+        get {
+            guard defaults.object(forKey: Key.quoteMode) != nil else { return true }
+            return defaults.bool(forKey: Key.quoteMode)
+        }
+        set { defaults.set(newValue, forKey: Key.quoteMode) }
+    }
+
+    /// Hinweis „Tippen zum Schließen“ wurde in der Zitat-Ansicht schon einmal gezeigt.
+    var readerQuoteHintShown: Bool {
+        get { defaults.bool(forKey: Key.quoteHintShown) }
+        set { defaults.set(newValue, forKey: Key.quoteHintShown) }
+    }
+
+    /// Zitat-Ansicht: Zeile mit Autor bzw. Quelle unter dem Zitat (Standard: aus).
+    var readerQuoteShowAuthor: Bool {
+        get { defaults.bool(forKey: Key.quoteShowAuthor) }
+        set { defaults.set(newValue, forKey: Key.quoteShowAuthor) }
+    }
+    var readerQuoteShowSource: Bool {
+        get { defaults.bool(forKey: Key.quoteShowSource) }
+        set { defaults.set(newValue, forKey: Key.quoteShowSource) }
+    }
+
+    /// Zitat-Ansicht: zuletzt gewählter Hintergrund hinter dem Glas
+    /// (`QuoteBackdrop.rawValue`, 0 = der Artikel selbst).
+    var readerQuoteBackdrop: Int {
+        get { defaults.integer(forKey: Key.quoteBackdrop) }
+        set { defaults.set(newValue, forKey: Key.quoteBackdrop) }
+    }
+
+    /// Zitat-Ansicht: Schrift (`QuoteFont.rawValue`, 0 = Original aus dem
+    /// Artikel), Größe in pt (0 = wie im Reader) und Farbe (`QuoteTextColor`).
+    var readerQuoteFont: Int {
+        get { defaults.integer(forKey: Key.quoteFont) }
+        set { defaults.set(newValue, forKey: Key.quoteFont) }
+    }
+    var readerQuoteFontSize: Double {
+        get { defaults.double(forKey: Key.quoteFontSize) }
+        set { defaults.set(newValue, forKey: Key.quoteFontSize) }
+    }
+    var readerQuoteTextColor: Int {
+        get { defaults.integer(forKey: Key.quoteTextColor) }
+        set { defaults.set(newValue, forKey: Key.quoteTextColor) }
+    }
+    /// Zitat-Ansicht: Schein hinter der Schrift (Standard: an).
+    var readerQuoteGlow: Bool {
+        get {
+            guard defaults.object(forKey: Key.quoteGlow) != nil else { return true }
+            return defaults.bool(forKey: Key.quoteGlow)
+        }
+        set { defaults.set(newValue, forKey: Key.quoteGlow) }
+    }
+    /// Zitat-Ansicht: Stärke des Weichzeichners im Glas, in pt (Standard 16).
+    var readerQuoteBlur: Double {
+        get {
+            guard defaults.object(forKey: Key.quoteBlur) != nil else { return 16 }
+            return defaults.double(forKey: Key.quoteBlur)
+        }
+        set { defaults.set(newValue, forKey: Key.quoteBlur) }
     }
 
     var readerFont: ReaderFont {

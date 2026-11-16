@@ -8,6 +8,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Quote card: selecting text in an article shows a glass "Quote card"
+  button next to the highlight toolbar. Tapping it lets colorless frosted
+  glass cover the reader and the selected text glides to the
+  middle of the screen on its own, without the highlight toolbar, bottom
+  bar, system menu or status bar, ready for a screenshot. "Save Image" puts
+  the same view (without the buttons) into Photos, "Share" opens the share
+  sheet with it. Two checkboxes, "Author" and "Source", add a line such
+  as "— Jane Doe · spiegel.de" under the quote, on screen and in the image
+  (remembered on the device). Swiping sideways changes what lies behind
+  the glass: the article itself, colorful bubbles, sunset, ocean, hearts,
+  a rainbow, aurora or candy colors (dots below the Dynamic Island show the
+  position; remembered on the device). "Design" opens a panel with typefaces (Original as in the
+  article, Modern, Classic, Rounded, Georgia, Typewriter, Handwriting,
+  Script), a size slider, text colors, a slider for the glass blur and a switch for the glow behind the
+  text; the choice is remembered. The
+  quote can be dragged anywhere on the screen and pinched to zoom it (just
+  the view, the font size setting stays as it is); the saved image keeps
+  position and zoom, and with a drawn background it shows exactly what is
+  on screen. Tapping anywhere else returns to the article; the
+  selection is gone afterwards. Works for new selections and tapped
+  highlights, in portrait and landscape, follows the reader theme, and uses
+  a solid background with "Reduce Transparency". With VoiceOver every
+  button of the highlight toolbar also offers a "Quote card" action.
+  The button can be turned off under "Quote card" in the Appearance sheet. Text
+  articles only for now.
 - Free font choice in the reader's Appearance sheet: besides the four presets,
   "Installed font" opens a searchable list of every font family installed on
   the device (each shown in its own typeface). The chosen font applies to the
