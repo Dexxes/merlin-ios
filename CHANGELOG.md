@@ -18,7 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (remembered on the device). Swiping sideways changes what lies behind
   the glass: the article itself, colorful bubbles, sunset, ocean, hearts,
   a rainbow, aurora or candy colors (dots show the position; remembered on
-  the device). Tapping anywhere else returns to the article; the
+  the device). "Font" opens a panel with typefaces (Original as in the
+  article, Modern, Classic, Rounded, Georgia, Typewriter, Handwriting,
+  Script), a size slider and text colors; the choice is remembered. The
+  quote can be dragged anywhere on the screen, and the saved image keeps
+  that position. Tapping anywhere else returns to the article; the
   selection is gone afterwards. Works for new selections and tapped
   highlights, in portrait and landscape, follows the reader theme, and uses
   a solid background with "Reduce Transparency". Not started automatically

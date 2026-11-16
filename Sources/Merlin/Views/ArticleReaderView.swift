@@ -631,6 +631,19 @@ private let merlinHighlightJS: String = #"""
     return out;
   }
 
+  // Text der Auswahl mit Absätzen (Range.toString kennt keine Umbrüche):
+  // kurz unsichtbar ins Dokument hängen und innerText lesen.
+  function quotePlainText(r){
+    try{
+      const d=document.createElement('div');
+      d.style.cssText='position:absolute;left:-99999px;top:0;width:600px;';
+      d.appendChild(r.cloneContents());
+      document.body.appendChild(d);
+      const t=d.innerText;d.remove();
+      return t.replace(/[ \t]+\n/g,'\n').replace(/\n{2,}/g,'\n').trim();
+    }catch(e){return r.toString().trim();}
+  }
+
   window.merlinEnterQuoteMode=function(){
     if(quote)return true;
     const sel=window.getSelection();
@@ -663,7 +676,7 @@ private let merlinHighlightJS: String = #"""
         else lines.push({left:x.left,right:x.right,top:x.top,bottom:x.bottom});
       });
     if(!lines.length)return '';
-    return JSON.stringify({text:r.toString(),lines:lines.map(l=>[l.left,l.top,l.right-l.left,l.bottom-l.top])});
+    return JSON.stringify({text:quotePlainText(r),lines:lines.map(l=>[l.left,l.top,l.right-l.left,l.bottom-l.top])});
   };
 
   window.merlinExitQuoteMode=function(){
@@ -2703,7 +2716,8 @@ struct ArticleReaderView: View {
                                opaque: UIAccessibility.isReduceTransparencyEnabled,
                                textColor: UIColor(readerFgColor),
                                author: author?.isEmpty == false ? author : nil,
-                               source: QuoteStyle.source(from: current.url))
+                               source: QuoteStyle.source(from: current.url),
+                               fontSize: CGFloat(fontSize))
         Task {
             guard await quote.enter(webView: webView, style: style) else { return }
             // Die Auswahl ist aufgehoben; die Leiste ist unter dem Glas schon unsichtbar.

@@ -39,6 +39,8 @@ struct QuoteStyle {
     var author: String?
     /// Quelle als Domain ohne „www.“, z. B. „spiegel.de“.
     var source: String?
+    /// Schriftgröße des Readers (Startwert für neu gesetzten Text).
+    var fontSize: CGFloat = 17
 
     /// Domain aus der Artikel-URL, ohne „www.“.
     static func source(from url: String) -> String? {
@@ -83,8 +85,9 @@ final class QuoteModeController {
     /// Ansicht offen, vom Abgreifen bis zum Ende der Schließ-Animation.
     /// Solange sind Leisten, Markierungsleiste und Statusleiste ausgeblendet.
     private(set) var isActive = false
-    /// Freigestellter Text (nur die Schrift, Hintergrund durchsichtig).
-    private(set) var quoteImage: UIImage?
+    /// Freigestellter Text aus dem Artikel (nur die Schrift, Hintergrund
+    /// durchsichtig). Mit Schrift „Original“ ist das das angezeigte Bild.
+    private(set) var capturedImage: UIImage?
     /// Lage des Textes im Artikel beim Abgreifen, in Fenster-Koordinaten.
     private(set) var sourceFrame: CGRect = .zero
     /// Markierter Text (VoiceOver).
@@ -117,6 +120,57 @@ final class QuoteModeController {
         let parts = [showAuthor ? style.author : nil, showSource ? style.source : nil].compactMap { $0 }
         return parts.isEmpty ? nil : "— " + parts.joined(separator: " · ")
     }
+
+    // MARK: Schrift, Größe, Farbe, Lage
+
+    /// Schrift des Zitats. „Original“ zeigt den Text wie im Artikel (Snapshot);
+    /// alle anderen setzen ihn neu, in Größe und Farbe nach Wahl (gemerkt).
+    var textFont: QuoteFont = QuoteFont(rawValue: PreferencesStore.shared.readerQuoteFont) ?? .original {
+        didSet { PreferencesStore.shared.readerQuoteFont = textFont.rawValue; shareImage = nil }
+    }
+    /// Schriftgröße in pt; 0 = Größe des Readers.
+    var textSize: Double = PreferencesStore.shared.readerQuoteFontSize {
+        didSet { PreferencesStore.shared.readerQuoteFontSize = textSize; shareImage = nil }
+    }
+    var textColor: QuoteTextColor = QuoteTextColor(rawValue: PreferencesStore.shared.readerQuoteTextColor) ?? .auto {
+        didSet { PreferencesStore.shared.readerQuoteTextColor = textColor.rawValue; shareImage = nil }
+    }
+    /// Vom Nutzer verschoben (Ziehen am Text); gilt nur für dieses Zitat.
+    var textOffset: CGSize = .zero
+
+    /// Schriftgröße, die gerade gilt.
+    var effectiveTextSize: Double { textSize > 0 ? textSize : Double(style.fontSize) }
+
+    /// Farbe von Zitat (außer „Original“) und Zeile mit Autor/Quelle.
+    var textUIColor: UIColor { textColor.uiColor(auto: style.textColor) }
+
+    /// Angezeigter Text: der Snapshot oder der neu gesetzte Text.
+    var quoteImage: UIImage? {
+        guard let capturedImage else { return nil }
+        guard textFont != .original, !text.isEmpty else { return capturedImage }
+        let canvasWidth = background?.size.width ?? webView?.window?.bounds.width ?? capturedImage.size.width
+        let side = max(insets.left, insets.right, 16)
+        let width = min(max(120, canvasWidth - 2 * side - 8), 620)
+        let size = effectiveTextSize
+        let key = "\(textFont.rawValue)|\(size)|\(textColor.rawValue)|\(width)|\(style.isDark)|\(text.hashValue)"
+        if let cached = renderedCache, cached.key == key { return cached.image }
+        let image = QuoteImageRenderer.renderText(text, font: textFont.uiFont(size: CGFloat(size)),
+                                                  color: textUIColor, maxWidth: width,
+                                                  scale: capturedImage.scale)
+        renderedCache = (key, image)
+        return image
+    }
+
+    /// Lage des Zitats auf dem Bildschirm, wie das Overlay es zeigt; das Bild
+    /// zum Speichern/Teilen übernimmt sie.
+    func setLayoutFrame(_ frame: CGRect) {
+        guard frame != layoutFrame else { return }
+        layoutFrame = frame
+        shareImage = nil
+    }
+
+    @ObservationIgnored private var renderedCache: (key: String, image: UIImage)?
+    @ObservationIgnored private var layoutFrame: CGRect?
 
     @ObservationIgnored private(set) var style = QuoteStyle()
     @ObservationIgnored private weak var webView: WKWebView?
@@ -159,17 +213,17 @@ final class QuoteModeController {
         isActive = true
         isClosing = false
         await capture()
-        if quoteImage != nil, !PreferencesStore.shared.readerQuoteHintShown {
+        if capturedImage != nil, !PreferencesStore.shared.readerQuoteHintShown {
             PreferencesStore.shared.readerQuoteHintShown = true
             showHint = true
         }
-        return quoteImage != nil
+        return capturedImage != nil
     }
 
     /// Tipp aufs Glas: zurück zur normalen Artikelansicht (mit Animation).
     func close() {
         guard isActive, !isClosing else { return }
-        if quoteImage == nil { finish() } else { isClosing = true }
+        if capturedImage == nil { finish() } else { isClosing = true }
     }
 
     /// Sofort schließen und aufräumen (Ende der Animation, App im Hintergrund,
@@ -182,7 +236,9 @@ final class QuoteModeController {
         isClosing = false
         isRecapturing = false
         showHint = false
-        quoteImage = nil
+        capturedImage = nil
+        textOffset = .zero
+        layoutFrame = nil
         background = nil
         shareImage = nil
         text = ""
@@ -194,8 +250,9 @@ final class QuoteModeController {
     /// Bildschirmgröße geändert (Drehen): der Artikel bricht neu um, also
     /// Text und Hintergrund neu abgreifen.
     func recapture() {
-        guard isActive, !isClosing, quoteImage != nil else { return }
+        guard isActive, !isClosing, capturedImage != nil else { return }
         isRecapturing = true
+        textOffset = .zero
         Task { @MainActor [weak self] in
             // Drehung und Neu-Umbruch abwarten.
             try? await Task.sleep(for: .milliseconds(350))
@@ -230,7 +287,7 @@ final class QuoteModeController {
         sourceFrame = webView.convert(geometry.bounds, to: nil)
         text = geometry.text
         shareImage = nil
-        quoteImage = QuoteImageRenderer.cutOut(snapshot, geometry: geometry)
+        capturedImage = QuoteImageRenderer.cutOut(snapshot, geometry: geometry)
         isRecapturing = false
     }
 
@@ -255,8 +312,9 @@ final class QuoteModeController {
         guard canvas.width > 0, canvas.height > 0 else { return nil }
         let scale = background?.scale ?? webView?.window?.traitCollection.displayScale ?? 2
         let behind = backdrop == .article ? background : backdropImage(backdrop)
-        let image = QuoteImageRenderer.compose(background: behind, quote: quoteImage,
-                                               caption: caption, canvas: canvas, scale: scale, style: style)
+        let image = QuoteImageRenderer.compose(background: behind, quote: quoteImage, frame: layoutFrame,
+                                               caption: caption, captionColor: textUIColor,
+                                               canvas: canvas, scale: scale, style: style)
         shareImage = image
         return image
     }
@@ -301,6 +359,76 @@ final class QuoteModeController {
     func prepareShareImage() {
         guard shareImage == nil, quoteImage != nil else { return }
         _ = makeShareImage()
+    }
+}
+
+// MARK: – Schrift und Farbe des Zitats
+
+/// Schriften für das Zitat. `.original` ist der Snapshot aus dem Artikel.
+enum QuoteFont: Int, CaseIterable {
+    case original, system, serif, rounded, georgia, typewriter, handwriting, script
+
+    var title: String {
+        switch self {
+        case .original:    return L("articleReader.quote.font.original")
+        case .system:      return L("articleReader.quote.font.system")
+        case .serif:       return L("articleReader.quote.font.serif")
+        case .rounded:     return L("articleReader.quote.font.rounded")
+        case .georgia:     return "Georgia"
+        case .typewriter:  return L("articleReader.quote.font.typewriter")
+        case .handwriting: return L("articleReader.quote.font.handwriting")
+        case .script:      return L("articleReader.quote.font.script")
+        }
+    }
+
+    func uiFont(size: CGFloat) -> UIFont {
+        switch self {
+        case .original, .system: return .systemFont(ofSize: size)
+        case .serif:       return Self.designed(.serif, size: size)
+        case .rounded:     return Self.designed(.rounded, size: size)
+        case .georgia:     return UIFont(name: "Georgia", size: size) ?? .systemFont(ofSize: size)
+        case .typewriter:  return UIFont(name: "AmericanTypewriter", size: size) ?? .monospacedSystemFont(ofSize: size, weight: .regular)
+        case .handwriting: return UIFont(name: "Noteworthy-Light", size: size) ?? .systemFont(ofSize: size)
+        // Schreibschrift läuft klein, darum etwas größer.
+        case .script:      return UIFont(name: "SnellRoundhand", size: size * 1.25) ?? .systemFont(ofSize: size)
+        }
+    }
+
+    private static func designed(_ design: UIFontDescriptor.SystemDesign, size: CGFloat) -> UIFont {
+        let base = UIFont.systemFont(ofSize: size)
+        guard let descriptor = base.fontDescriptor.withDesign(design) else { return base }
+        return UIFont(descriptor: descriptor, size: size)
+    }
+}
+
+/// Schriftfarben für das Zitat. `.auto` ist die Schriftfarbe des Readers.
+enum QuoteTextColor: Int, CaseIterable {
+    case auto, white, black, red, amber, green, blue, violet
+
+    func uiColor(auto: UIColor) -> UIColor {
+        switch self {
+        case .auto:   return auto
+        case .white:  return .white
+        case .black:  return UIColor(red: 0.07, green: 0.07, blue: 0.08, alpha: 1)
+        case .red:    return UIColor(red: 0.88, green: 0.11, blue: 0.28, alpha: 1)
+        case .amber:  return UIColor(red: 0.96, green: 0.62, blue: 0.04, alpha: 1)
+        case .green:  return UIColor(red: 0.06, green: 0.6, blue: 0.4, alpha: 1)
+        case .blue:   return UIColor(red: 0.15, green: 0.39, blue: 0.92, alpha: 1)
+        case .violet: return UIColor(red: 0.49, green: 0.23, blue: 0.93, alpha: 1)
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .auto:   return L("articleReader.quote.color.auto")
+        case .white:  return L("articleReader.quote.color.white")
+        case .black:  return L("articleReader.quote.color.black")
+        case .red:    return L("articleReader.quote.color.red")
+        case .amber:  return L("articleReader.quote.color.amber")
+        case .green:  return L("articleReader.quote.color.green")
+        case .blue:   return L("articleReader.quote.color.blue")
+        case .violet: return L("articleReader.quote.color.violet")
+        }
     }
 }
 
@@ -511,7 +639,8 @@ enum QuoteImageRenderer {
     /// Bild in Bildschirmgröße: Hintergrund verschwommen und getönt (bzw.
     /// deckend bei „Transparenz reduzieren“), der Text zentriert darauf.
     @MainActor
-    static func compose(background: UIImage?, quote: UIImage, caption: String?, canvas: CGSize,
+    static func compose(background: UIImage?, quote: UIImage, frame quoteFrame: CGRect?,
+                        caption: String?, captionColor: UIColor, canvas: CGSize,
                         scale: CGFloat, style: QuoteStyle) -> UIImage {
         let rect = CGRect(origin: .zero, size: canvas)
         let blurred = style.opaque ? nil : background.flatMap { blur($0, radius: 14) }
@@ -528,18 +657,44 @@ enum QuoteImageRenderer {
                 ctx.fill(rect)
             }
             let area = rect.insetBy(dx: 24, dy: 48)
-            let frame = layout(quote.size, hasCaption: caption != nil, in: area)
+            // Wie auf dem Bildschirm (auch verschoben); sonst mittig.
+            let frame = quoteFrame ?? layout(quote.size, hasCaption: caption != nil, in: area)
             quote.draw(in: frame)
             if let caption {
                 let attributes: [NSAttributedString.Key: Any] = [
                     .font: captionFont,
-                    .foregroundColor: style.textColor.withAlphaComponent(0.75),
+                    .foregroundColor: captionColor.withAlphaComponent(0.75),
                 ]
-                let width = area.maxX - frame.minX
+                let width = max(0, rect.maxX - 16 - frame.minX)
                 NSAttributedString(string: caption, attributes: attributes).draw(
                     with: CGRect(x: frame.minX, y: frame.maxY + captionGap, width: width, height: captionHeight),
                     options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], context: nil)
             }
+        }
+    }
+
+    /// Setzt den markierten Text neu (andere Schrift, Größe, Farbe): ein Bild
+    /// mit durchsichtigem Hintergrund, höchstens `maxWidth` breit.
+    @MainActor
+    static func renderText(_ text: String, font: UIFont, color: UIColor,
+                           maxWidth: CGFloat, scale: CGFloat) -> UIImage {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineSpacing = font.pointSize * 0.25
+        paragraph.paragraphSpacing = font.pointSize * 0.6
+        let string = NSAttributedString(string: text, attributes: [
+            .font: font, .foregroundColor: color, .paragraphStyle: paragraph,
+        ])
+        let options: NSStringDrawingOptions = [.usesLineFragmentOrigin, .usesFontLeading]
+        let bounds = string.boundingRect(with: CGSize(width: maxWidth, height: .greatestFiniteMagnitude),
+                                         options: options, context: nil)
+        let pad: CGFloat = 4
+        let size = CGSize(width: ceil(bounds.width) + 2 * pad, height: ceil(bounds.height) + 2 * pad)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = scale
+        format.opaque = false
+        return UIGraphicsImageRenderer(size: size, format: format).image { _ in
+            string.draw(with: CGRect(x: pad, y: pad, width: size.width - 2 * pad, height: size.height - 2 * pad),
+                        options: options, context: nil)
         }
     }
 
@@ -688,6 +843,10 @@ private struct QuoteGlassOverlay: View {
     @State private var saveState: SaveState = .idle
     @State private var showDeniedAlert = false
     @State private var showSaveFailed = false
+    /// Zug am Text, solange der Finger liegt (danach in `controller.textOffset`).
+    @State private var dragOffset: CGSize = .zero
+    /// Feld für Schrift, Größe und Farbe offen.
+    @State private var showStylePanel = false
 
     private enum SaveState { case idle, saving, saved }
 
@@ -719,7 +878,14 @@ private struct QuoteGlassOverlay: View {
             guard backdropsAvailable, abs(dx) > 50, abs(dx) > abs(dy) else { return }
             stepBackdrop(dx < 0 ? 1 : -1)
         })
-        .onTapGesture { controller.close() }
+        .onTapGesture {
+            // Erst das Schrift-Feld schließen, dann die Ansicht.
+            if showStylePanel {
+                withAnimation(.easeInOut(duration: 0.2)) { showStylePanel = false }
+            } else {
+                controller.close()
+            }
+        }
         .opacity(controller.isRecapturing ? 0 : 1)
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isModal)
@@ -828,34 +994,58 @@ private struct QuoteGlassOverlay: View {
     private func quoteText(canvas: CGSize, origin: CGPoint) -> some View {
         if let image = controller.quoteImage {
             let target = targetFrame(for: image.size, canvas: canvas)
+            // Verschoben: erst die gemerkte Lage, beim Ziehen dazu der Finger.
+            let settled = Self.clamped(target.offsetBy(dx: controller.textOffset.width,
+                                                       dy: controller.textOffset.height), in: canvas)
+            let moving = Self.clamped(settled.offsetBy(dx: dragOffset.width, dy: dragOffset.height), in: canvas)
             let source = controller.sourceFrame.offsetBy(dx: -origin.x, dy: -origin.y)
             // Bewegung reduzieren: nicht gleiten, nur ein- und ausblenden.
-            let frame = (lifted || reduceMotion) ? target : source
+            let frame = (lifted || reduceMotion) ? moving : source
             Image(uiImage: image)
                 .resizable()
                 .interpolation(.high)
                 .frame(width: frame.width, height: frame.height)
                 .shadow(color: bgColor.opacity(lifted ? 0.9 : 0), radius: 3)
+                .contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 4)
+                    .onChanged { dragOffset = $0.translation }
+                    .onEnded { value in
+                        let end = Self.clamped(settled.offsetBy(dx: value.translation.width,
+                                                                dy: value.translation.height), in: canvas)
+                        controller.textOffset = CGSize(width: end.minX - target.minX, height: end.minY - target.minY)
+                        dragOffset = .zero
+                    })
                 .position(x: frame.midX, y: frame.midY)
                 .opacity(reduceMotion && !lifted ? 0 : 1)
                 .accessibilityLabel(controller.text)
                 .accessibilityAddTraits(.isStaticText)
+                .onChange(of: settled, initial: true) { _, rect in controller.setLayoutFrame(rect) }
             if let caption = controller.caption {
                 // Autor/Quelle: linksbündig unter dem Zitat, wie im Bild.
-                let width = max(0, canvas.width - target.minX - sideInset)
+                let width = max(0, canvas.width - frame.minX - 16)
                 Text(caption)
                     .font(Font(QuoteImageRenderer.captionFont as CTFont))
-                    .foregroundStyle(textColor.opacity(0.75))
+                    .foregroundStyle(Color(controller.textUIColor).opacity(0.75))
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .frame(width: width, height: QuoteImageRenderer.captionHeight, alignment: .leading)
                     .shadow(color: bgColor.opacity(0.9), radius: 3)
-                    .position(x: target.minX + width / 2,
-                              y: target.maxY + QuoteImageRenderer.captionGap + QuoteImageRenderer.captionHeight / 2)
+                    .position(x: frame.minX + width / 2,
+                              y: frame.maxY + QuoteImageRenderer.captionGap + QuoteImageRenderer.captionHeight / 2)
                     .opacity(lifted ? 1 : 0)
+                    .allowsHitTesting(false)
                     .transition(.opacity)
             }
         }
+    }
+
+    /// Hält das Zitat mit etwas Rand im Bildschirm.
+    private static func clamped(_ rect: CGRect, in canvas: CGSize) -> CGRect {
+        let margin: CGFloat = 8
+        var r = rect
+        r.origin.x = min(max(margin, r.minX), max(margin, canvas.width - margin - r.width))
+        r.origin.y = min(max(margin, r.minY), max(margin, canvas.height - margin - r.height))
+        return r
     }
 
     private var sideInset: CGFloat {
@@ -872,7 +1062,7 @@ private struct QuoteGlassOverlay: View {
     private func targetFrame(for size: CGSize, canvas: CGSize) -> CGRect {
         let insets = controller.insets
         let top = max(insets.top, 20) + 16
-        let toggles = hasCaptionToggles ? Self.toggleHeight + Self.toggleSpacing : 0
+        let toggles = Self.toggleHeight + Self.toggleSpacing
         let dots = backdropsAvailable ? Self.dotsHeight + Self.toggleSpacing : 0
         let bottom = max(insets.bottom, 16) + 12 + Self.buttonHeight + toggles + dots + 24
         let side = sideInset
@@ -903,8 +1093,16 @@ private struct QuoteGlassOverlay: View {
             if backdropsAvailable {
                 backdropDots
             }
-            if hasCaptionToggles {
-                HStack(spacing: 10) {
+            if showStylePanel {
+                stylePanel
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+            HStack(spacing: 10) {
+                QuoteChip(title: L("articleReader.quote.style"), systemImage: "textformat",
+                          isOn: showStylePanel, height: Self.toggleHeight, textColor: textColor) {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { showStylePanel.toggle() }
+                }
+                if hasCaptionToggles {
                     if controller.style.author != nil {
                         QuoteCheckbox(title: L("articleReader.quote.showAuthor"),
                                       isOn: controller.showAuthor, height: Self.toggleHeight,
@@ -926,6 +1124,94 @@ private struct QuoteGlassOverlay: View {
         .frame(maxWidth: .infinity)
         .padding(.bottom, max(controller.insets.bottom, 16) + 12)
         .frame(maxHeight: .infinity, alignment: .bottom)
+    }
+
+    // MARK: Schrift, Größe, Farbe
+
+    private var sizeBinding: Binding<Double> {
+        Binding(get: { controller.effectiveTextSize },
+                set: { value in
+                    // „Original“ hat keine eigene Größe: auf neu gesetzten Text wechseln.
+                    if controller.textFont == .original { controller.textFont = .system }
+                    controller.textSize = value.rounded()
+                })
+    }
+
+    private var stylePanel: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(QuoteFont.allCases, id: \.self) { font in
+                        fontButton(font)
+                    }
+                }
+                .padding(.horizontal, 2)
+            }
+            HStack(spacing: 10) {
+                Image(systemName: "textformat.size.smaller")
+                Slider(value: sizeBinding, in: 12...48, step: 1)
+                    .tint(accent)
+                    .accessibilityLabel(L("articleReader.quote.size"))
+                    .accessibilityValue("\(Int(controller.effectiveTextSize)) pt")
+                Image(systemName: "textformat.size.larger")
+            }
+            .foregroundStyle(.secondary)
+            HStack(spacing: 10) {
+                ForEach(QuoteTextColor.allCases, id: \.self) { color in
+                    colorButton(color)
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: 440)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        // Tipps ins Feld schließen weder Feld noch Ansicht.
+        .contentShape(Rectangle())
+        .onTapGesture {}
+        .padding(.horizontal, sideInset)
+    }
+
+    private func fontButton(_ font: QuoteFont) -> some View {
+        let selected = controller.textFont == font
+        return Button {
+            withAnimation(.easeInOut(duration: 0.2)) { controller.textFont = font }
+        } label: {
+            Text(font.title)
+                .font(font == .original ? .footnote.weight(.semibold) : Font(font.uiFont(size: 15) as CTFont))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .padding(.horizontal, 12)
+                .frame(height: 34)
+                .background(Capsule().fill(selected ? accent.opacity(0.35) : Color.primary.opacity(0.07)))
+                .overlay(Capsule().stroke(selected ? accent : .clear, lineWidth: 1.5))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
+    }
+
+    private func colorButton(_ color: QuoteTextColor) -> some View {
+        let selected = controller.textColor == color
+        return Button {
+            if controller.textFont == .original { controller.textFont = .system }
+            controller.textColor = color
+        } label: {
+            Circle()
+                .fill(Color(color.uiColor(auto: controller.style.textColor)))
+                .frame(width: 26, height: 26)
+                .overlay {
+                    if color == .auto {
+                        Text("A")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(bgColor)
+                    }
+                }
+                .overlay(Circle().stroke(selected ? accent : Color.primary.opacity(0.25),
+                                         lineWidth: selected ? 3 : 1)
+                    .padding(selected ? -3 : 0))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(color.title)
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 
     private var actionButtons: some View {
@@ -960,6 +1246,31 @@ private struct QuoteGlassOverlay: View {
                 showSaveFailed = true
             }
         }
+    }
+}
+
+/// Knopf „Aa“ für das Schrift-Feld, im selben Stil wie die Kästchen.
+private struct QuoteChip: View {
+    let title: String
+    let systemImage: String
+    let isOn: Bool
+    let height: CGFloat
+    let textColor: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(textColor)
+                .padding(.horizontal, 14)
+                .frame(height: height)
+                .background(.thinMaterial, in: Capsule())
+                .overlay(Capsule().stroke(textColor.opacity(isOn ? 0.6 : 0), lineWidth: 1.5))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isOn ? [.isSelected] : [])
     }
 }
 
