@@ -962,7 +962,7 @@ struct OnboardingTourView: View {
                 .padding(.top, topInset)
                 .padding(.bottom, bottomInset)
                 .frame(maxWidth: .infinity, maxHeight: .infinity,
-                       alignment: step.cardOnTop ? .top : .bottom)
+                       alignment: cardOnTop(geo: geo) ? .top : .bottom)
                 .zIndex(100)
             }
             .ignoresSafeArea()
@@ -1107,6 +1107,17 @@ struct OnboardingTourView: View {
         guard let key = step.anchorKey else { return nil }
         if key == "plusButton" { return plusButtonFrame }
         return anchors[key]
+    }
+
+    /// Karte oben, wenn der Schritt es verlangt oder das Hervorgehobene in der
+    /// unteren Bildschirmhälfte liegt (z. B. Erinnern/Melden im Lesemenü) –
+    /// sonst läge die Karte darüber.
+    private func cardOnTop(geo: GeometryProxy) -> Bool {
+        if step.cardOnTop { return true }
+        // Ganze Menüs (Schritte Navigations-/Lesemenü) sind bildschirmhoch.
+        guard let rect = spotlightRect(geo: geo),
+              rect.height < geo.size.height * 0.6 else { return false }
+        return rect.midY > geo.size.height / 2
     }
 
     /// Spotlight corner radius for the current step.
