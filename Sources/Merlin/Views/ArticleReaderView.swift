@@ -277,7 +277,11 @@ private let merlinHighlightJS: String = #"""
   // Track whether a finger is currently on screen. While touching, we must not
   // clear the selection state even if it briefly collapses (iOS does this when
   // the user drags a selection handle to extend the range).
-  document.addEventListener('touchstart',()=>{touching=true;clearTimeout(resizeTimer);},{passive:true});
+  document.addEventListener('touchstart',()=>{
+    touching=true;clearTimeout(resizeTimer);
+    // Zitat-Ansicht: Finger auf dem Text hält den 5-s-Timer an (Griff ziehen).
+    if(pendingRange||selectedHighlightId!==null)window.webkit.messageHandlers.selectionToolbar.postMessage({touch:true});
+  },{passive:true});
   document.addEventListener('touchend',()=>{
     touching=false;
     // Keep the live selection intact on finger-lift — collapsing it here used
@@ -303,6 +307,8 @@ private let merlinHighlightJS: String = #"""
   // handles stay draggable while our toolbar lives outside the WebView.
   let selTimer=null,hideTimer=null;
   document.addEventListener('selectionchange',()=>{
+    // Zitat-Ansicht: die Auswahl wurde bewusst aufgehoben, Swift räumt selbst auf.
+    if(quote)return;
     const sel=window.getSelection();
     if(sel&&!sel.isCollapsed&&sel.rangeCount>0){
       const range=sel.getRangeAt(0);
@@ -581,6 +587,89 @@ private let merlinHighlightJS: String = #"""
     delete localEdits[String(id)];
     if(hasPendingWork())deferredHighlights=deferredHighlights||serverHighlights;
     else renderHighlights(serverHighlights);
+  };
+
+  // ── Zitat-Ansicht ──────────────────────────────────────────────────
+  // Bleibt eine Auswahl 5 s stehen, legt Swift Glas über den Reader und
+  // zeigt den markierten Text als freigestelltes Bild darauf. Hier wird die
+  // Auswahl gemerkt (als Zeichen-Offsets, die überstehen ein Neuzeichnen der
+  // Marks) und aufgehoben: damit verschwinden das iOS-Menü, die Griffe und
+  // der Auswahl-Ton. Solange `quote` gesetzt ist, ist der body-Hintergrund
+  // durchsichtig (darunter liegt dieselbe Farbe, siehe PaperBackground), so
+  // enthält der Snapshot nur die Schrift.
+  let quote=null;
+  (function(){
+    const st=document.createElement('style');
+    st.textContent='html.merlin-quote body{background:transparent!important;-webkit-user-select:none!important;user-select:none!important;-webkit-touch-callout:none!important;}html.merlin-quote ::selection{background:transparent!important;}';
+    (document.head||document.documentElement).appendChild(st);
+  })();
+
+  function quoteRange(){
+    if(!quote)return null;
+    const a=pointAt(quote.start,true),b=pointAt(quote.end,false);if(!a||!b)return null;
+    try{const r=document.createRange();r.setStart(a.node,a.offset);r.setEnd(b.node,b.offset);return r.collapsed?null:r;}
+    catch(e){return null;}
+  }
+
+  // Rechtecke nur der Textstücke (und Bilder) in der Range. Range.getClientRects
+  // liefert für ganz enthaltene Absätze zusätzlich deren Block-Rahmen.
+  function quoteClientRects(r){
+    const out=[];
+    let root=r.commonAncestorContainer;if(root.nodeType===3)root=root.parentNode;
+    const w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT|NodeFilter.SHOW_ELEMENT);
+    for(let n=w.currentNode;n;n=w.nextNode()){
+      if(!r.intersectsNode(n))continue;
+      if(n.nodeType===3){
+        const s=n===r.startContainer?r.startOffset:0,e=n===r.endContainer?r.endOffset:n.length;
+        if(e<=s||!/\S/.test(n.data.slice(s,e)))continue;
+        const sub=document.createRange();sub.setStart(n,s);sub.setEnd(n,e);
+        for(const x of sub.getClientRects())out.push(x);
+      }else if(/^(img|video|svg|canvas|picture)$/i.test(n.nodeName)){
+        out.push(n.getBoundingClientRect());
+      }
+    }
+    return out;
+  }
+
+  window.merlinEnterQuoteMode=function(){
+    if(quote)return true;
+    const sel=window.getSelection();
+    let r=null;
+    if(sel&&!sel.isCollapsed&&sel.rangeCount>0)r=sel.getRangeAt(0);else if(pendingRange)r=pendingRange;
+    if(!r||!document.body.contains(r.commonAncestorContainer))return false;
+    const s=textOffset(r.startContainer,r.startOffset),e=textOffset(r.endContainer,r.endOffset);
+    if(s<0||e<=s)return false;
+    // Gezogene Länge einer eigenen Markierung erst übernehmen und speichern.
+    endEditing();
+    quote={start:s,end:e};
+    document.documentElement.classList.add('merlin-quote');
+    clearTimeout(selTimer);clearTimeout(hideTimer);
+    window.getSelection()?.removeAllRanges();
+    pendingRange=null;selectedHighlightId=null;
+    flushDeferred();
+    return true;
+  };
+
+  // Zeilen der Auswahl in Dokument-Koordinaten (der WebView scrollt nicht),
+  // je Zeile ein Rechteck. '' = nichts (mehr) da.
+  window.merlinQuoteRects=function(){
+    const r=quoteRange();if(!r)return '';
+    const lines=[];
+    quoteClientRects(r).filter(x=>x.width>0.5&&x.height>0.5)
+      .sort((a,b)=>a.top-b.top||a.left-b.left)
+      .forEach(x=>{
+        const l=lines.find(l=>Math.min(l.bottom,x.bottom)-Math.max(l.top,x.top)>0.5*Math.min(l.bottom-l.top,x.height));
+        if(l){l.left=Math.min(l.left,x.left);l.right=Math.max(l.right,x.right);l.top=Math.min(l.top,x.top);l.bottom=Math.max(l.bottom,x.bottom);}
+        else lines.push({left:x.left,right:x.right,top:x.top,bottom:x.bottom});
+      });
+    if(!lines.length)return '';
+    return JSON.stringify({text:r.toString(),lines:lines.map(l=>[l.left,l.top,l.right-l.left,l.bottom-l.top])});
+  };
+
+  window.merlinExitQuoteMode=function(){
+    quote=null;
+    document.documentElement.classList.remove('merlin-quote');
+    flushDeferred();
   };
 
   // `saved`: die gerade gespeicherte Markierung – fehlt sie in einer
@@ -953,6 +1042,8 @@ private struct HighlightToolbarView: View {
     let onColor: (String) -> Void
     let onComment: () -> Void
     let onDelete: () -> Void
+    /// VoiceOver-Aktion „Zitat-Ansicht“ (nil = nicht anbieten).
+    var onQuote: (() -> Void)? = nil
 
     /// Mirrors the COLORS table in merlinHighlightJS — keep these in sync.
     private static let colors: [(id: String, hex: String)] = [
@@ -1052,6 +1143,24 @@ private struct HighlightToolbarView: View {
         .padding(.top,    dockTop ? edgeInset : 0)
         .padding(.bottom, dockTop ? 0 : edgeInset)
         .modifier(HighlightToolbarBackground(bgColor: bgColor))
+        .modifier(QuoteAccessibilityAction(action: onQuote))
+    }
+}
+
+/// Bietet VoiceOver an der Markierungsleiste die Zitat-Ansicht an (der
+/// 5-s-Timer startet mit VoiceOver nicht).
+private struct QuoteAccessibilityAction: ViewModifier {
+    let action: (() -> Void)?
+
+    func body(content: Content) -> some View {
+        if let action {
+            // Auf einem Container gilt die Aktion für jedes Element darin,
+            // also für jeden Knopf der Leiste.
+            content
+                .accessibilityAction(named: Text(L("articleReader.quote.open")), action)
+        } else {
+            content
+        }
     }
 }
 
@@ -1424,6 +1533,8 @@ struct ArticleWebView: UIViewRepresentable {
     /// Called once the selection is cleared (deliberately, or via the
     /// debounced collapse-blip guard in the JS layer).
     var onSelectionCleared: (() -> Void)?            = nil
+    /// Finger auf dem Text, während eine Auswahl steht (Zitat-Ansicht: Timer anhalten).
+    var onSelectionTouch: (() -> Void)?              = nil
     /// Bridge that lets the native HighlightToolbarView call back into the
     /// JS highlight logic (colour pick / delete) without SwiftUI needing a
     /// direct reference to the underlying WKWebView.
@@ -1502,6 +1613,7 @@ struct ArticleWebView: UIViewRepresentable {
         context.coordinator.onYouTubeRectChanged = onYouTubeRectChanged
         context.coordinator.onSelectionChanged = onSelectionChanged
         context.coordinator.onSelectionCleared = onSelectionCleared
+        context.coordinator.onSelectionTouch  = onSelectionTouch
         context.coordinator.articleId         = articleId
         actionHandler?.webView = webView
 
@@ -1567,6 +1679,7 @@ struct ArticleWebView: UIViewRepresentable {
         var onYouTubeRectChanged: ((CGRect) -> Void)?
         var onSelectionChanged: ((CGRect, String?) -> Void)?
         var onSelectionCleared: (() -> Void)?
+        var onSelectionTouch: (() -> Void)?
         var onOpenComments: ((Int, String) -> Void)?
         var onCommentAnchor: ((CommentAnchor) -> Void)?
         var onHighlightsChanged: (() -> Void)?
@@ -1641,6 +1754,10 @@ weak var webView:   WKWebView?
                let body = message.body as? [String: Any] {
                 if body["cleared"] as? Bool == true {
                     DispatchQueue.main.async { [weak self] in self?.onSelectionCleared?() }
+                    return
+                }
+                if body["touch"] as? Bool == true {
+                    DispatchQueue.main.async { [weak self] in self?.onSelectionTouch?() }
                     return
                 }
                 if let top    = body["top"]    as? Double,
@@ -2139,6 +2256,10 @@ struct ArticleReaderView: View {
     @State private var handsFreeButton: Bool        = PreferencesStore.shared.readerHandsFreeButton
     /// Scroll-Motor des Freihand-Lesemodus (siehe `AutoScrollController`).
     @State private var autoScroll = AutoScrollController()
+    /// Zitat-Ansicht nach 5 s stehender Auswahl eingeschaltet (Erscheinungsbild).
+    @State private var quoteModeEnabled: Bool = PreferencesStore.shared.readerQuoteMode
+    /// Timer, Abgreifen und Zustand der Zitat-Ansicht (siehe `QuoteMode.swift`).
+    @State private var quote = QuoteModeController()
     @State private var progressEdge:  ProgressEdge = PreferencesStore.shared.progressEdge
     @State private var showSideMenu      = false
     // Suche im Artikel (siehe `findBar`)
@@ -2283,11 +2404,13 @@ struct ArticleReaderView: View {
                             showHighlightToolbar(
                                 SelectionToolbarState(screenRect: screenRect, highlightId: highlightId),
                                 animation: .spring(response: 0.35, dampingFraction: 0.82))
+                            armQuoteTimer()
                         },
                         onSelectionCleared: {
                             toolbarScrollBaseline = nil
                             hideHighlightToolbar()
                         },
+                        onSelectionTouch: { quote.disarm() },
                         actionHandler: highlightActions,
                         scrollOffset: scrollOffset,
                         supportBoxScript: supportBox.flatMap { Self.supportBoxScript(for: $0, seed: current.id) },
@@ -2557,6 +2680,40 @@ struct ArticleReaderView: View {
     // (opacity/scale/offset, which always animate reliably), and only
     // unmount it — invisibly, after the animation has finished — so the
     // glass layer isn't paying a continuous compositing cost forever.
+    // MARK: – Zitat-Ansicht
+    //
+    // Steht eine Auswahl im Text-Artikel 5 s, liegt der markierte Text allein
+    // auf Glas (siehe `QuoteMode.swift`). Jede neue Auswahl startet den Timer
+    // neu, `hideHighlightToolbar` und ein Finger auf dem Text halten ihn an.
+    // Mit VoiceOver startet er nicht; dort gibt es die Aktion an der Leiste.
+
+    private func armQuoteTimer() {
+        guard quoteModeEnabled, !current.isPDF, !UIAccessibility.isVoiceOverRunning else {
+            quote.disarm()
+            return
+        }
+        quote.arm { startQuoteMode() }
+    }
+
+    private func startQuoteMode() {
+        guard toolbarVisible, !quote.isActive, !readerBusy, !autoScroll.isActive || autoScroll.isPaused,
+              let webView = highlightActions.webView else { return }
+        let style = QuoteStyle(tint: UIColor(readerBgColor), isDark: readerIsDark,
+                               opaque: UIAccessibility.isReduceTransparencyEnabled)
+        Task {
+            guard await quote.enter(webView: webView, style: style) else { return }
+            // Die Auswahl ist aufgehoben; die Leiste ist unter dem Glas schon unsichtbar.
+            toolbarScrollBaseline = nil
+            hideHighlightToolbar(animation: .easeOut(duration: 0.1))
+        }
+    }
+
+    /// VoiceOver-Aktion „Zitat-Ansicht“ an der Markierungsleiste (Text-Artikel).
+    private var quoteAccessibilityAction: (() -> Void)? {
+        guard quoteModeEnabled, !current.isPDF else { return nil }
+        return { startQuoteMode() }
+    }
+
     private func showHighlightToolbar(_ state: SelectionToolbarState, animation: Animation) {
         toolbarHideWorkItem?.cancel()
         selectionToolbar = state
@@ -2564,6 +2721,8 @@ struct ArticleReaderView: View {
     }
 
     private func hideHighlightToolbar(animation: Animation = ArticleReaderView.toolbarExitSpring) {
+        // Leiste weg (Auswahl weg, Scrollen, Farbe/Kommentar/Löschen): keine Zitat-Ansicht.
+        quote.disarm()
         guard toolbarVisible || selectionToolbar != nil else { return }
         toolbarHideWorkItem?.cancel()
         withAnimation(animation) { toolbarVisible = false }
@@ -2628,7 +2787,7 @@ struct ArticleReaderView: View {
             .ignoresSafeArea()
 
             // MARK: Reading progress bar (edge configurable in Settings)
-            if progressEdge != .off {
+            if progressEdge != .off && !quote.isActive {
                 GeometryReader { geo in
                     progressBar(in: geo)
                 }
@@ -2659,7 +2818,7 @@ struct ArticleReaderView: View {
             }
 
             // MARK: Landscape action button – ersetzt im Querformat die bottomBar
-            if isCompactLandscape && !autoScroll.isActive {
+            if isCompactLandscape && !autoScroll.isActive && !quote.isActive {
                 landscapeActionButton
                     .environment(\.colorScheme, readerIsDark ? .dark : .light)
                     .transition(.opacity)
@@ -2698,7 +2857,8 @@ struct ArticleReaderView: View {
                             highlightActions.deleteSelected()
                         }
                         hideHighlightToolbar()
-                    })
+                    },
+                    onQuote: quoteAccessibilityAction)
                     // Only matters for the initial mount (a genuine
                     // insertion each time a new selection starts) — the
                     // animated hide further down doesn't rely on this since
@@ -2726,7 +2886,7 @@ struct ArticleReaderView: View {
                         toolbarView
                     }
                 }
-                .opacity(toolbarVisible ? 1 : 0)
+                .opacity(toolbarVisible && !quote.isActive ? 1 : 0)
                 .scaleEffect(toolbarVisible ? 1 : 0.85, anchor: dockTop ? .top : .bottom)
                 .offset(y: toolbarVisible ? 0 : (dockTop ? -40 : 40))
                 .allowsHitTesting(toolbarVisible)
@@ -2888,6 +3048,20 @@ struct ArticleReaderView: View {
             SiteCredentialsView(preselectedDomain: current.requiresLoginDomain)
         }
         .listFlyout(viewModel: viewModel, onNavigate: { dismiss() })
+        .modifier(quoteModeLayer)
+    }
+
+    /// Glas, Statusleiste und Lebenszyklus der Zitat-Ansicht (aus `body`
+    /// ausgelagert, Type-Checker).
+    private var quoteModeLayer: QuoteModeLayer {
+        QuoteModeLayer(controller: quote,
+                       bgColor: readerBgColor,
+                       accent: Color(hexString: accentColorHex) ?? .red,
+                       onAccent: Color(hexString: onAccentHex) ?? .white,
+                       isDark: readerIsDark,
+                       scenePhase: scenePhase,
+                       articleId: current.id,
+                       viewportSize: CGSize(width: viewportWidth, height: viewportHeight))
     }
 
     /// Löscht den (an der Paywall gescheiterten) Artikel und legt ihn mit derselben URL neu an,
@@ -3070,8 +3244,9 @@ struct ArticleReaderView: View {
                         customFontFamily: customFontFamilyBinding, lineHeight: $lineHeight,
                         paperTexture: $paperTexture,
                         handsFreeButton: $handsFreeButton,
+                        quoteMode: $quoteModeEnabled,
                         onAccentColorChange: { pushAppearanceToServer() })
-            .presentationDetents([.height(610), .large])
+            .presentationDetents([.height(680), .large])
             .presentationDragIndicator(.visible)
     }
 
@@ -3637,6 +3812,10 @@ struct ArticleReaderView: View {
         .modifier(HandsFreeLifecycle(controller: autoScroll,
                                      buttonEnabled: handsFreeButton,
                                      shouldPause: handsFreeShouldPause))
+        // Zitat-Ansicht: unter dem Glas keine verwischten Leisten.
+        .opacity(quote.isActive ? 0 : 1)
+        .allowsHitTesting(!quote.isActive)
+        .animation(.easeOut(duration: 0.15), value: quote.isActive)
     }
 
     // MARK: – Suche im Artikel
@@ -4189,7 +4368,13 @@ struct ArticleReaderView: View {
     /// Farbleiste (Scrollen würde sie sofort wegklappen), Sheets, Menüs, Suche,
     /// Overlays und App im Hintergrund.
     private var handsFreeShouldPause: Bool {
-        toolbarVisible || showAppearance || showSideMenu || findActive
+        toolbarVisible || quote.isActive || readerBusy
+    }
+
+    /// Sheets, Menüs, Suche, Overlays oder App nicht im Vordergrund: kein
+    /// Freihand-Scrollen und keine Zitat-Ansicht.
+    private var readerBusy: Bool {
+        showAppearance || showSideMenu || findActive
             || lightboxState != nil || youtubePlayerState != nil || eventSuggestion != nil
             || showTagSheet || commentFocus != nil || tappedLinkURL != nil
             || showReportSheet || showShareLinkSheet || showSiteCredentialsSheet
@@ -5522,6 +5707,8 @@ private struct AppearanceSheet: View {
     @Binding var lineHeight: Double
     @Binding var paperTexture: Bool
     @Binding var handsFreeButton: Bool
+    /// Zitat-Ansicht nach 5 s stehender Auswahl (Standard: an).
+    @Binding var quoteMode: Bool
     var onAccentColorChange: () -> Void = {}
 
     @AppStorage("merlin_accent_progress_color") private var accentColorHex: String = "#FF3B30"
@@ -5539,6 +5726,7 @@ private struct AppearanceSheet: View {
             lineHeightRow
             paperTextureRow
             handsFreeRow
+            quoteModeRow
             accentColorRow
             Spacer(minLength: 0)
         }
@@ -5551,6 +5739,28 @@ private struct AppearanceSheet: View {
         }
         .onChange(of: handsFreeButton) { _, v in
             PreferencesStore.shared.readerHandsFreeButton = v
+        }
+        .onChange(of: quoteMode) { _, v in
+            PreferencesStore.shared.readerQuoteMode = v
+        }
+    }
+
+    /// Zitat-Ansicht: markierter Text allein auf Glas, nach 5 s stehender Auswahl.
+    @ViewBuilder
+    private var quoteModeRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Toggle(isOn: $quoteMode) {
+                Label(L("articleReader.appearance.quoteMode"), systemImage: "text.quote")
+                    .font(.subheadline)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(Color(.secondarySystemGroupedBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            Text(L("articleReader.appearance.quoteModeFooter"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 12)
         }
     }
 

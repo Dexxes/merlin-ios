@@ -135,6 +135,8 @@ final class PreferencesStore: @unchecked Sendable {
         static let paperTexture         = "merlin_reader_paper_texture"
         static let handsFreeButton      = "merlin_reader_hands_free_button"
         static let handsFreeSpeed       = "merlin_reader_hands_free_speed"
+        static let quoteMode            = "merlin_reader_quote_mode"
+        static let quoteHintShown       = "merlin_reader_quote_hint_shown"
         static let progressEdge         = "merlin_progress_edge"
         static let lineHeight           = "merlin_line_height"
         static let saveProgress           = "merlin_save_progress"
@@ -318,6 +320,22 @@ final class PreferencesStore: @unchecked Sendable {
             return min(1, max(0, defaults.double(forKey: Key.handsFreeSpeed)))
         }
         set { defaults.set(newValue, forKey: Key.handsFreeSpeed) }
+    }
+
+    /// Zitat-Ansicht: bleibt eine Auswahl im Reader 5 s stehen, liegt der
+    /// markierte Text allein auf Glas. Nur lokal (wie die Papierstruktur). Standard: an.
+    var readerQuoteMode: Bool {
+        get {
+            guard defaults.object(forKey: Key.quoteMode) != nil else { return true }
+            return defaults.bool(forKey: Key.quoteMode)
+        }
+        set { defaults.set(newValue, forKey: Key.quoteMode) }
+    }
+
+    /// Hinweis „Tippen zum Schließen“ wurde in der Zitat-Ansicht schon einmal gezeigt.
+    var readerQuoteHintShown: Bool {
+        get { defaults.bool(forKey: Key.quoteHintShown) }
+        set { defaults.set(newValue, forKey: Key.quoteHintShown) }
     }
 
     var readerFont: ReaderFont {
