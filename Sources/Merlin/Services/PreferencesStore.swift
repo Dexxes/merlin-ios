@@ -137,6 +137,8 @@ final class PreferencesStore: @unchecked Sendable {
         static let handsFreeSpeed       = "merlin_reader_hands_free_speed"
         static let quoteMode            = "merlin_reader_quote_mode"
         static let quoteHintShown       = "merlin_reader_quote_hint_shown"
+        static let quoteShowAuthor      = "merlin_reader_quote_show_author"
+        static let quoteShowSource      = "merlin_reader_quote_show_source"
         static let progressEdge         = "merlin_progress_edge"
         static let lineHeight           = "merlin_line_height"
         static let saveProgress           = "merlin_save_progress"
@@ -336,6 +338,16 @@ final class PreferencesStore: @unchecked Sendable {
     var readerQuoteHintShown: Bool {
         get { defaults.bool(forKey: Key.quoteHintShown) }
         set { defaults.set(newValue, forKey: Key.quoteHintShown) }
+    }
+
+    /// Zitat-Ansicht: Zeile mit Autor bzw. Quelle unter dem Zitat (Standard: aus).
+    var readerQuoteShowAuthor: Bool {
+        get { defaults.bool(forKey: Key.quoteShowAuthor) }
+        set { defaults.set(newValue, forKey: Key.quoteShowAuthor) }
+    }
+    var readerQuoteShowSource: Bool {
+        get { defaults.bool(forKey: Key.quoteShowSource) }
+        set { defaults.set(newValue, forKey: Key.quoteShowSource) }
     }
 
     var readerFont: ReaderFont {

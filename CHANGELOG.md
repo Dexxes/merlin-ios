@@ -13,7 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   middle of the screen on its own, without the highlight toolbar, bottom
   bar, system menu or status bar, ready for a screenshot. "Save Image" puts
   the same view (without the buttons) into Photos, "Share" opens the share
-  sheet with it. Tapping anywhere else returns to the article; the
+  sheet with it. Two checkboxes, "Author" and "Source", add a line such
+  as "— Jane Doe · spiegel.de" under the quote, on screen and in the image
+  (remembered on the device). Tapping anywhere else returns to the article; the
   selection is gone afterwards. Works for new selections and tapped
   highlights, in portrait and landscape, follows the reader theme, and uses
   a solid background with "Reduce Transparency". Not started automatically

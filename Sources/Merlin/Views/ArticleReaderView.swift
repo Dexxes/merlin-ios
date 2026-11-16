@@ -2698,8 +2698,12 @@ struct ArticleReaderView: View {
     private func startQuoteMode() {
         guard toolbarVisible, !quote.isActive, !readerBusy, !autoScroll.isActive || autoScroll.isPaused,
               let webView = highlightActions.webView else { return }
+        let author = current.author?.trimmingCharacters(in: .whitespacesAndNewlines)
         let style = QuoteStyle(tint: UIColor(readerBgColor), isDark: readerIsDark,
-                               opaque: UIAccessibility.isReduceTransparencyEnabled)
+                               opaque: UIAccessibility.isReduceTransparencyEnabled,
+                               textColor: UIColor(readerFgColor),
+                               author: author?.isEmpty == false ? author : nil,
+                               source: QuoteStyle.source(from: current.url))
         Task {
             guard await quote.enter(webView: webView, style: style) else { return }
             // Die Auswahl ist aufgehoben; die Leiste ist unter dem Glas schon unsichtbar.
@@ -3056,6 +3060,7 @@ struct ArticleReaderView: View {
     private var quoteModeLayer: QuoteModeLayer {
         QuoteModeLayer(controller: quote,
                        bgColor: readerBgColor,
+                       textColor: readerFgColor,
                        accent: Color(hexString: accentColorHex) ?? .red,
                        onAccent: Color(hexString: onAccentHex) ?? .white,
                        isDark: readerIsDark,

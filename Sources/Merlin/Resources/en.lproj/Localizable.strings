@@ -85,6 +85,8 @@
 "articleReader.quote.save" = "Save Image";
 "articleReader.quote.saved" = "Saved";
 "articleReader.quote.share" = "Share";
+"articleReader.quote.showAuthor" = "Author";
+"articleReader.quote.showSource" = "Source";
 "articleReader.quote.hint" = "Tap to close";
 "articleReader.quote.close" = "Close";
 "articleReader.quote.saveFailed" = "The image could not be saved.";

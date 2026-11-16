@@ -33,6 +33,19 @@ struct QuoteStyle {
     var isDark = false
     /// „Transparenz reduzieren“: deckende Fläche statt Glas.
     var opaque = false
+    /// Reader-Schriftfarbe (Zeile mit Autor und Quelle).
+    var textColor: UIColor = .black
+    /// Autor des Artikels, falls bekannt.
+    var author: String?
+    /// Quelle als Domain ohne „www.“, z. B. „spiegel.de“.
+    var source: String?
+
+    /// Domain aus der Artikel-URL, ohne „www.“.
+    static func source(from url: String) -> String? {
+        guard var host = URL(string: url)?.host(), !host.isEmpty else { return nil }
+        if host.hasPrefix("www.") { host.removeFirst(4) }
+        return host
+    }
 }
 
 /// Zeilen der Auswahl in WebView-Koordinaten (der WebView scrollt nie selbst).
@@ -84,6 +97,26 @@ final class QuoteModeController {
     private(set) var isClosing = false
     /// Hinweis „Tippen zum Schließen“ (nur beim allerersten Mal).
     var showHint = false
+    /// Zeile unter dem Zitat: Autor bzw. Quelle zeigen (Schalter in der
+    /// Ansicht, auf dem Gerät gemerkt). Gilt auch für das Bild.
+    var showAuthor = PreferencesStore.shared.readerQuoteShowAuthor {
+        didSet {
+            PreferencesStore.shared.readerQuoteShowAuthor = showAuthor
+            shareImage = nil
+        }
+    }
+    var showSource = PreferencesStore.shared.readerQuoteShowSource {
+        didSet {
+            PreferencesStore.shared.readerQuoteShowSource = showSource
+            shareImage = nil
+        }
+    }
+
+    /// „— Autor · spiegel.de“, je nach Schaltern; nil = keine Zeile.
+    var caption: String? {
+        let parts = [showAuthor ? style.author : nil, showSource ? style.source : nil].compactMap { $0 }
+        return parts.isEmpty ? nil : "— " + parts.joined(separator: " · ")
+    }
 
     @ObservationIgnored private(set) var style = QuoteStyle()
     @ObservationIgnored private weak var webView: WKWebView?
@@ -222,7 +255,7 @@ final class QuoteModeController {
         guard canvas.width > 0, canvas.height > 0 else { return nil }
         let scale = background?.scale ?? webView?.window?.traitCollection.displayScale ?? 2
         let image = QuoteImageRenderer.compose(background: background, quote: quoteImage,
-                                               canvas: canvas, scale: scale, style: style)
+                                               caption: caption, canvas: canvas, scale: scale, style: style)
         shareImage = image
         return image
     }
@@ -260,7 +293,7 @@ enum QuoteImageRenderer {
     /// Bild in Bildschirmgröße: Hintergrund verschwommen und getönt (bzw.
     /// deckend bei „Transparenz reduzieren“), der Text zentriert darauf.
     @MainActor
-    static func compose(background: UIImage?, quote: UIImage, canvas: CGSize,
+    static func compose(background: UIImage?, quote: UIImage, caption: String?, canvas: CGSize,
                         scale: CGFloat, style: QuoteStyle) -> UIImage {
         let rect = CGRect(origin: .zero, size: canvas)
         let blurred = style.opaque ? nil : background.flatMap { blur($0, radius: 14) }
@@ -276,8 +309,37 @@ enum QuoteImageRenderer {
                 style.tint.withAlphaComponent(style.isDark ? 0.22 : 0.25).setFill()
                 ctx.fill(rect)
             }
-            quote.draw(in: fitted(quote.size, in: rect.insetBy(dx: 24, dy: 48)))
+            let area = rect.insetBy(dx: 24, dy: 48)
+            let frame = layout(quote.size, hasCaption: caption != nil, in: area)
+            quote.draw(in: frame)
+            if let caption {
+                let attributes: [NSAttributedString.Key: Any] = [
+                    .font: captionFont,
+                    .foregroundColor: style.textColor.withAlphaComponent(0.75),
+                ]
+                let width = area.maxX - frame.minX
+                NSAttributedString(string: caption, attributes: attributes).draw(
+                    with: CGRect(x: frame.minX, y: frame.maxY + captionGap, width: width, height: captionHeight),
+                    options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], context: nil)
+            }
         }
+    }
+
+    /// Abstand und Höhe der Zeile mit Autor/Quelle unter dem Zitat.
+    static let captionGap: CGFloat = 10
+    static let captionHeight: CGFloat = 22
+    @MainActor static var captionFont: UIFont {
+        UIFont.systemFont(ofSize: UIFont.preferredFont(forTextStyle: .subheadline).pointSize, weight: .medium)
+    }
+
+    /// Lage des Zitats in `area`; mit Zeile darunter wird beides zusammen zentriert.
+    static func layout(_ size: CGSize, hasCaption: Bool, in area: CGRect) -> CGRect {
+        guard hasCaption else { return fitted(size, in: area) }
+        let reserve = captionGap + captionHeight
+        let inner = CGRect(x: area.minX, y: area.minY, width: area.width, height: max(0, area.height - reserve))
+        // Mitte von `inner` liegt um die halbe Reserve höher: Zitat und Zeile
+        // sind damit zusammen mittig in `area`.
+        return fitted(size, in: inner)
     }
 
     /// Größe `size` mittig in `area`, nur verkleinert, nie vergrößert.
@@ -365,6 +427,7 @@ enum QuoteImageActions {
 struct QuoteModeLayer: ViewModifier {
     let controller: QuoteModeController
     let bgColor: Color
+    let textColor: Color
     let accent: Color
     let onAccent: Color
     let isDark: Bool
@@ -376,7 +439,7 @@ struct QuoteModeLayer: ViewModifier {
         content
             .overlay {
                 if controller.quoteImage != nil {
-                    QuoteGlassOverlay(controller: controller, bgColor: bgColor,
+                    QuoteGlassOverlay(controller: controller, bgColor: bgColor, textColor: textColor,
                                       accent: accent, onAccent: onAccent)
                         .environment(\.colorScheme, isDark ? .dark : .light)
                 }
@@ -395,6 +458,7 @@ struct QuoteModeLayer: ViewModifier {
 private struct QuoteGlassOverlay: View {
     let controller: QuoteModeController
     let bgColor: Color
+    let textColor: Color
     let accent: Color
     let onAccent: Color
 
@@ -410,6 +474,8 @@ private struct QuoteGlassOverlay: View {
     private enum SaveState { case idle, saving, saved }
 
     private static let buttonHeight: CGFloat = 46
+    private static let toggleHeight: CGFloat = 34
+    private static let toggleSpacing: CGFloat = 12
 
     var body: some View {
         GeometryReader { geo in
@@ -500,7 +566,31 @@ private struct QuoteGlassOverlay: View {
                 .opacity(reduceMotion && !lifted ? 0 : 1)
                 .accessibilityLabel(controller.text)
                 .accessibilityAddTraits(.isStaticText)
+            if let caption = controller.caption {
+                // Autor/Quelle: linksbündig unter dem Zitat, wie im Bild.
+                let width = max(0, canvas.width - target.minX - sideInset)
+                Text(caption)
+                    .font(Font(QuoteImageRenderer.captionFont as CTFont))
+                    .foregroundStyle(textColor.opacity(0.75))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(width: width, height: QuoteImageRenderer.captionHeight, alignment: .leading)
+                    .shadow(color: bgColor.opacity(0.9), radius: 3)
+                    .position(x: target.minX + width / 2,
+                              y: target.maxY + QuoteImageRenderer.captionGap + QuoteImageRenderer.captionHeight / 2)
+                    .opacity(lifted ? 1 : 0)
+                    .transition(.opacity)
+            }
         }
+    }
+
+    private var sideInset: CGFloat {
+        max(controller.insets.left, controller.insets.right, 16)
+    }
+
+    /// Schalter für Autor bzw. Quelle, sofern der Artikel sie kennt.
+    private var hasCaptionToggles: Bool {
+        controller.style.author != nil || controller.style.source != nil
     }
 
     /// Mitte der Fläche zwischen oberem Rand und den Knöpfen; nur verkleinert,
@@ -508,12 +598,13 @@ private struct QuoteGlassOverlay: View {
     private func targetFrame(for size: CGSize, canvas: CGSize) -> CGRect {
         let insets = controller.insets
         let top = max(insets.top, 20) + 16
-        let bottom = max(insets.bottom, 16) + 12 + Self.buttonHeight + 24
-        let side = max(insets.left, insets.right, 16)
+        let toggles = hasCaptionToggles ? Self.toggleHeight + Self.toggleSpacing : 0
+        let bottom = max(insets.bottom, 16) + 12 + Self.buttonHeight + toggles + 24
+        let side = sideInset
         let area = CGRect(x: side, y: top,
                           width: canvas.width - 2 * side,
                           height: canvas.height - top - bottom)
-        return QuoteImageRenderer.fitted(size, in: area)
+        return QuoteImageRenderer.layout(size, hasCaption: controller.caption != nil, in: area)
     }
 
     @ViewBuilder
@@ -533,6 +624,33 @@ private struct QuoteGlassOverlay: View {
     }
 
     private var buttons: some View {
+        VStack(spacing: Self.toggleSpacing) {
+            if hasCaptionToggles {
+                HStack(spacing: 10) {
+                    if controller.style.author != nil {
+                        QuoteCheckbox(title: L("articleReader.quote.showAuthor"),
+                                      isOn: controller.showAuthor, height: Self.toggleHeight,
+                                      textColor: textColor) {
+                            withAnimation(.easeInOut(duration: 0.25)) { controller.showAuthor.toggle() }
+                        }
+                    }
+                    if controller.style.source != nil {
+                        QuoteCheckbox(title: L("articleReader.quote.showSource"),
+                                      isOn: controller.showSource, height: Self.toggleHeight,
+                                      textColor: textColor) {
+                            withAnimation(.easeInOut(duration: 0.25)) { controller.showSource.toggle() }
+                        }
+                    }
+                }
+            }
+            actionButtons
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.bottom, max(controller.insets.bottom, 16) + 12)
+        .frame(maxHeight: .infinity, alignment: .bottom)
+    }
+
+    private var actionButtons: some View {
         HStack(spacing: 12) {
             QuoteActionButton(title: saveState == .saved ? L("articleReader.quote.saved") : L("articleReader.quote.save"),
                               systemImage: saveState == .saved ? "checkmark" : "square.and.arrow.down",
@@ -545,9 +663,6 @@ private struct QuoteGlassOverlay: View {
                 if let image = controller.makeShareImage() { QuoteImageActions.share(image) }
             }
         }
-        .frame(maxWidth: .infinity)
-        .padding(.bottom, max(controller.insets.bottom, 16) + 12)
-        .frame(maxHeight: .infinity, alignment: .bottom)
     }
 
     private func save() {
@@ -567,6 +682,30 @@ private struct QuoteGlassOverlay: View {
                 showSaveFailed = true
             }
         }
+    }
+}
+
+/// Kleiner Kästchen-Schalter („Autor“, „Quelle“) über den Knöpfen.
+private struct QuoteCheckbox: View {
+    let title: String
+    let isOn: Bool
+    let height: CGFloat
+    let textColor: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label(title, systemImage: isOn ? "checkmark.square.fill" : "square")
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(textColor)
+                .padding(.horizontal, 14)
+                .frame(height: height)
+                .background(.thinMaterial, in: Capsule())
+                .contentShape(Capsule())
+                .contentTransition(.symbolEffect(.replace))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isOn ? [.isSelected] : [])
     }
 }
 
