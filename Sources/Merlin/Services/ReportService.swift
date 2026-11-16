@@ -79,7 +79,7 @@ actor ReportService {
             case .backendURLNotConfigured:
                 return L("report.error.backendNotConfigured")
             case .backendURLInvalid(let url):
-                return L("report.error.backendURLInvalid \(url)")
+                return String(format: L("report.error.backendURLInvalid"), url)
             case .serverError:
                 return L("report.error.serverRejected")
             }

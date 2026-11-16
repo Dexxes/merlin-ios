@@ -206,7 +206,7 @@ final class PiperAudioService: NSObject, ObservableObject {
         } catch {
             await MainActor.run {
                 self.isLoading    = false
-                self.errorMessage = L("tts.error.audioSession \(error.localizedDescription)")
+                self.errorMessage = String(format: L("tts.error.audioSession"), error.localizedDescription)
             }
             return
         }
@@ -240,7 +240,7 @@ final class PiperAudioService: NSObject, ObservableObject {
             if (error as NSError).code == NSURLErrorCancelled { return }
             await MainActor.run {
                 self.isLoading    = false
-                self.errorMessage = L("tts.error.download \(error.localizedDescription)")
+                self.errorMessage = String(format: L("tts.error.download"), error.localizedDescription)
             }
             return
         }
@@ -252,7 +252,7 @@ final class PiperAudioService: NSObject, ObservableObject {
             fh.closeFile()
             await MainActor.run {
                 self.isLoading    = false
-                self.errorMessage = L("tts.error.server \(http.statusCode)")
+                self.errorMessage = String(format: L("tts.error.server"), http.statusCode)
             }
             return
         }
