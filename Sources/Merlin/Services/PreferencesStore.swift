@@ -143,6 +143,7 @@ final class PreferencesStore: @unchecked Sendable {
         static let quoteFont            = "merlin_reader_quote_font"
         static let quoteFontSize        = "merlin_reader_quote_font_size"
         static let quoteTextColor       = "merlin_reader_quote_text_color"
+        static let quoteGlow            = "merlin_reader_quote_glow"
         static let progressEdge         = "merlin_progress_edge"
         static let lineHeight           = "merlin_line_height"
         static let saveProgress           = "merlin_save_progress"
@@ -374,6 +375,14 @@ final class PreferencesStore: @unchecked Sendable {
     var readerQuoteTextColor: Int {
         get { defaults.integer(forKey: Key.quoteTextColor) }
         set { defaults.set(newValue, forKey: Key.quoteTextColor) }
+    }
+    /// Zitat-Ansicht: Schein hinter der Schrift (Standard: an).
+    var readerQuoteGlow: Bool {
+        get {
+            guard defaults.object(forKey: Key.quoteGlow) != nil else { return true }
+            return defaults.bool(forKey: Key.quoteGlow)
+        }
+        set { defaults.set(newValue, forKey: Key.quoteGlow) }
     }
 
     var readerFont: ReaderFont {

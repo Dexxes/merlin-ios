@@ -135,6 +135,10 @@ final class QuoteModeController {
     var textColor: QuoteTextColor = QuoteTextColor(rawValue: PreferencesStore.shared.readerQuoteTextColor) ?? .auto {
         didSet { PreferencesStore.shared.readerQuoteTextColor = textColor.rawValue; shareImage = nil }
     }
+    /// Heller bzw. dunkler Schein in Reader-Farbe hinter der Schrift (gemerkt).
+    var textGlow: Bool = PreferencesStore.shared.readerQuoteGlow {
+        didSet { PreferencesStore.shared.readerQuoteGlow = textGlow; shareImage = nil }
+    }
     /// Vom Nutzer verschoben (Ziehen am Text); gilt nur für dieses Zitat.
     var textOffset: CGSize = .zero
 
@@ -281,8 +285,22 @@ final class QuoteModeController {
             return finish()
         }
         guard id == captureID, isActive else { return }
+        // Sichtbarer Teil des Artikels, extra abfotografiert: `drawHierarchy`
+        // nimmt den Inhalt eines WKWebView nicht immer mit.
+        var page: (image: UIImage, frame: CGRect)?
+        if let window = webView.window {
+            let visible = webView.convert(window.bounds, from: window).intersection(webView.bounds)
+            if !visible.isNull, !visible.isEmpty {
+                let pageConfig = WKSnapshotConfiguration()
+                pageConfig.rect = visible
+                if let image = try? await webView.takeSnapshot(configuration: pageConfig) {
+                    page = (image, webView.convert(visible, to: nil))
+                }
+            }
+        }
+        guard id == captureID, isActive else { return }
         let window = webView.window
-        background = Self.snapshot(of: window)
+        background = Self.snapshot(of: window, page: page)
         insets = window?.safeAreaInsets ?? .zero
         sourceFrame = webView.convert(geometry.bounds, to: nil)
         text = geometry.text
@@ -291,13 +309,14 @@ final class QuoteModeController {
         isRecapturing = false
     }
 
-    private static func snapshot(of window: UIWindow?) -> UIImage? {
+    private static func snapshot(of window: UIWindow?, page: (image: UIImage, frame: CGRect)?) -> UIImage? {
         guard let window, window.bounds.width > 0 else { return nil }
         let format = UIGraphicsImageRendererFormat()
         format.scale = window.traitCollection.displayScale
         format.opaque = true
         return UIGraphicsImageRenderer(bounds: window.bounds, format: format).image { _ in
             _ = window.drawHierarchy(in: window.bounds, afterScreenUpdates: false)
+            page?.image.draw(in: page?.frame ?? .zero)
         }
     }
 
@@ -313,7 +332,7 @@ final class QuoteModeController {
         let scale = background?.scale ?? webView?.window?.traitCollection.displayScale ?? 2
         let behind = backdrop == .article ? background : backdropImage(backdrop)
         let image = QuoteImageRenderer.compose(background: behind, quote: quoteImage, frame: layoutFrame,
-                                               caption: caption, captionColor: textUIColor,
+                                               caption: caption, captionColor: textUIColor, glow: textGlow,
                                                canvas: canvas, scale: scale, style: style)
         shareImage = image
         return image
@@ -640,10 +659,11 @@ enum QuoteImageRenderer {
     /// deckend bei „Transparenz reduzieren“), der Text zentriert darauf.
     @MainActor
     static func compose(background: UIImage?, quote: UIImage, frame quoteFrame: CGRect?,
-                        caption: String?, captionColor: UIColor, canvas: CGSize,
+                        caption: String?, captionColor: UIColor, glow: Bool, canvas: CGSize,
                         scale: CGFloat, style: QuoteStyle) -> UIImage {
         let rect = CGRect(origin: .zero, size: canvas)
-        let blurred = style.opaque ? nil : background.flatMap { blur($0, radius: 14) }
+        // Klappt die Unschärfe nicht, lieber scharf als gar kein Hintergrund.
+        let blurred = style.opaque ? nil : background.map { blur($0, radius: 14) ?? $0 }
         let format = UIGraphicsImageRendererFormat()
         format.scale = scale
         format.opaque = true
@@ -659,6 +679,11 @@ enum QuoteImageRenderer {
             let area = rect.insetBy(dx: 24, dy: 48)
             // Wie auf dem Bildschirm (auch verschoben); sonst mittig.
             let frame = quoteFrame ?? layout(quote.size, hasCaption: caption != nil, in: area)
+            let cg = ctx.cgContext
+            if glow {
+                // Wie `.shadow(radius: 3)` im Overlay: Schein in Reader-Farbe.
+                cg.setShadow(offset: .zero, blur: 6, color: style.tint.withAlphaComponent(0.9).cgColor)
+            }
             quote.draw(in: frame)
             if let caption {
                 let attributes: [NSAttributedString.Key: Any] = [
@@ -670,6 +695,7 @@ enum QuoteImageRenderer {
                     with: CGRect(x: frame.minX, y: frame.maxY + captionGap, width: width, height: captionHeight),
                     options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], context: nil)
             }
+            cg.setShadow(offset: .zero, blur: 0, color: nil)
         }
     }
 
@@ -733,6 +759,9 @@ enum QuoteImageRenderer {
         gaussian.radius = Float(radius * image.scale)
         let color = CIFilter.colorControls()
         color.inputImage = gaussian.outputImage
+        // Alle Werte setzen: ohne Standardwerte wird das Bild sonst flach grau.
+        color.brightness = 0
+        color.contrast = 1
         color.saturation = 1.3
         guard let output = color.outputImage?.cropped(to: input.extent),
               let result = CIContext().createCGImage(output, from: input.extent) else { return nil }
@@ -1005,7 +1034,7 @@ private struct QuoteGlassOverlay: View {
                 .resizable()
                 .interpolation(.high)
                 .frame(width: frame.width, height: frame.height)
-                .shadow(color: bgColor.opacity(lifted ? 0.9 : 0), radius: 3)
+                .shadow(color: bgColor.opacity(lifted && controller.textGlow ? 0.9 : 0), radius: 3)
                 .contentShape(Rectangle())
                 .gesture(DragGesture(minimumDistance: 4)
                     .onChanged { dragOffset = $0.translation }
@@ -1029,7 +1058,7 @@ private struct QuoteGlassOverlay: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .frame(width: width, height: QuoteImageRenderer.captionHeight, alignment: .leading)
-                    .shadow(color: bgColor.opacity(0.9), radius: 3)
+                    .shadow(color: bgColor.opacity(controller.textGlow ? 0.9 : 0), radius: 3)
                     .position(x: frame.minX + width / 2,
                               y: frame.maxY + QuoteImageRenderer.captionGap + QuoteImageRenderer.captionHeight / 2)
                     .opacity(lifted ? 1 : 0)
@@ -1161,6 +1190,12 @@ private struct QuoteGlassOverlay: View {
                     colorButton(color)
                 }
             }
+            Toggle(isOn: Binding(get: { controller.textGlow },
+                                 set: { on in withAnimation(.easeInOut(duration: 0.2)) { controller.textGlow = on } })) {
+                Label(L("articleReader.quote.glow"), systemImage: "sun.max")
+                    .font(.footnote.weight(.medium))
+            }
+            .tint(accent)
         }
         .padding(14)
         .frame(maxWidth: 440)

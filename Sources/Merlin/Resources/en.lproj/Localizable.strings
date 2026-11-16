@@ -88,6 +88,7 @@
 "articleReader.quote.showAuthor" = "Author";
 "articleReader.quote.showSource" = "Source";
 "articleReader.quote.style" = "Font";
+"articleReader.quote.glow" = "Glow behind text";
 "articleReader.quote.size" = "Font size";
 "articleReader.quote.font.original" = "Original";
 "articleReader.quote.font.system" = "Modern";
