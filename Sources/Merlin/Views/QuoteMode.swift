@@ -965,6 +965,8 @@ private struct QuoteGlassOverlay: View {
                 quoteText(canvas: geo.size, origin: origin)
                 topBar
                     .opacity(lifted && !exporting ? 1 : 0)
+                closeButton
+                    .opacity(lifted && !exporting ? 1 : 0)
                 buttons
                     .opacity(lifted && !exporting ? 1 : 0)
             }
@@ -1071,6 +1073,27 @@ private struct QuoteGlassOverlay: View {
         .padding(.top, max(controller.insets.top, 12) + 6)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .allowsHitTesting(false)
+    }
+
+    /// X oben rechts: zurück zum Artikel (wie ein Tipp aufs Glas).
+    private var closeButton: some View {
+        Button {
+            controller.close()
+        } label: {
+            Image(systemName: "xmark")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(textColor)
+                .frame(width: 36, height: 36)
+                .modifier(QuoteGlassCircle())
+                // Größere Tippfläche als der sichtbare Knopf.
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(L("articleReader.quote.close"))
+        .padding(.top, max(controller.insets.top, 12) - 1)
+        .padding(.trailing, max(controller.insets.right, 12))
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
     }
 
     /// Punkte für die Hintergründe; VoiceOver wechselt per Wischen hoch/runter.
@@ -1547,6 +1570,19 @@ struct QuoteOpenButton: View {
 }
 
 /// Liquid Glass ab iOS 26, sonst Material.
+/// Runder Glas-Knopf (X oben rechts): Liquid Glass ab iOS 26, sonst Material.
+private struct QuoteGlassCircle: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.glassEffect(.regular.interactive(), in: Circle())
+        } else {
+            content
+                .background(.ultraThinMaterial, in: Circle())
+                .shadow(color: .black.opacity(0.15), radius: 8, y: 2)
+        }
+    }
+}
+
 private struct QuoteGlassCapsule: ViewModifier {
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {

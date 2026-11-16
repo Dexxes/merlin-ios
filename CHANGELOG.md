@@ -26,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   quote can be dragged anywhere on the screen and pinched to zoom it (just
   the view, the font size setting stays as it is); the saved image keeps
   position and zoom, and with a drawn background it shows exactly what is
-  on screen. Tapping anywhere else returns to the article; the
+  on screen. An X button at the top right or a tap anywhere else returns to the article; the
   selection is gone afterwards. Works for new selections and tapped
   highlights, in portrait and landscape, follows the reader theme, and uses
   a solid background with "Reduce Transparency". With VoiceOver every
