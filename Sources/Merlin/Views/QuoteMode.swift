@@ -139,6 +139,11 @@ final class QuoteModeController {
     var textGlow: Bool = PreferencesStore.shared.readerQuoteGlow {
         didSet { PreferencesStore.shared.readerQuoteGlow = textGlow; shareImage = nil }
     }
+    /// Stärke des Weichzeichners im Glas, in pt (Regler unter „Design“, gemerkt).
+    var glassBlur: Double = PreferencesStore.shared.readerQuoteBlur {
+        didSet { PreferencesStore.shared.readerQuoteBlur = glassBlur; shareImage = nil }
+    }
+    nonisolated static let blurRange: ClosedRange<Double> = 0...40
     /// Vom Nutzer verschoben (Ziehen am Text); gilt nur für dieses Zitat.
     var textOffset: CGSize = .zero
     /// Per Pinch gezoomt; gilt nur für dieses Zitat und ändert die
@@ -255,6 +260,7 @@ final class QuoteModeController {
         textScale = 1
         layoutFrame = nil
         background = nil
+        glassCache = nil
         shareImage = nil
         text = ""
         if wasActive {
@@ -320,6 +326,7 @@ final class QuoteModeController {
         guard id == captureID, isActive else { return }
         let window = webView.window
         background = Self.snapshot(of: window, page: page)
+        glassCache = nil
         insets = window?.safeAreaInsets ?? .zero
         sourceFrame = webView.convert(geometry.bounds, to: nil)
         text = geometry.text
@@ -365,8 +372,7 @@ final class QuoteModeController {
         let canvas = background?.size ?? webView?.window?.bounds.size ?? .zero
         guard canvas.width > 0, canvas.height > 0 else { return nil }
         let scale = background?.scale ?? webView?.window?.traitCollection.displayScale ?? 2
-        let behind = backdrop == .article ? background : backdropImage(backdrop)
-        let image = QuoteImageRenderer.compose(background: behind, quote: quoteImage, frame: layoutFrame,
+        let image = QuoteImageRenderer.compose(background: glassImage(), quote: quoteImage, frame: layoutFrame,
                                                caption: caption, captionColor: textUIColor, glow: textGlow,
                                                canvas: canvas, scale: scale, style: style)
         shareImage = image
@@ -382,6 +388,21 @@ final class QuoteModeController {
             PreferencesStore.shared.readerQuoteBackdrop = backdrop.rawValue
             shareImage = nil
         }
+    }
+
+    @ObservationIgnored private var glassCache: (key: String, image: UIImage)?
+
+    /// Das Glas: Hintergrund (Artikel oder gezeichnet) weichgezeichnet, ohne
+    /// Tönung, also farblos. nil, solange noch nichts abgegriffen ist.
+    func glassImage() -> UIImage? {
+        let source = backdrop == .article ? background : backdropImage(backdrop)
+        guard let source else { return nil }
+        let radius = glassBlur.rounded()
+        let key = "\(backdrop.rawValue)|\(radius)|\(source.size.width)x\(source.size.height)"
+        if let glassCache, glassCache.key == key { return glassCache.image }
+        let image = radius > 0 ? (QuoteImageRenderer.blur(source, radius: CGFloat(radius)) ?? source) : source
+        glassCache = (key, image)
+        return image
     }
 
     @ObservationIgnored private var backdropCache: [QuoteBackdrop: UIImage] = [:]
@@ -699,8 +720,8 @@ enum QuoteImageRenderer {
                         caption: String?, captionColor: UIColor, glow: Bool, canvas: CGSize,
                         scale: CGFloat, style: QuoteStyle) -> UIImage {
         let rect = CGRect(origin: .zero, size: canvas)
-        // Klappt die Unschärfe nicht, lieber scharf als gar kein Hintergrund.
-        let blurred = style.opaque ? nil : background.map { blur($0, radius: 14) ?? $0 }
+        // `background` ist das fertige Glas (siehe `glassImage`).
+        let blurred = style.opaque ? nil : background
         let format = UIGraphicsImageRendererFormat()
         format.scale = scale
         format.opaque = true
@@ -710,9 +731,6 @@ enum QuoteImageRenderer {
             ctx.fill(rect)
             if let blurred {
                 blurred.draw(in: rect)
-                // Entspricht ungefähr Material plus Tönung im Overlay.
-                style.tint.withAlphaComponent(style.isDark ? 0.22 : 0.25).setFill()
-                ctx.fill(rect)
             }
             let area = rect.insetBy(dx: 24, dy: 48)
             // Wie auf dem Bildschirm (auch verschoben); sonst mittig.
@@ -762,6 +780,8 @@ enum QuoteImageRenderer {
         }
     }
 
+    @MainActor private static let ciContext = CIContext()
+
     /// Abstand und Höhe der Zeile mit Autor/Quelle unter dem Zitat.
     static let captionGap: CGFloat = 10
     static let captionHeight: CGFloat = 22
@@ -789,21 +809,24 @@ enum QuoteImageRenderer {
         return CGRect(x: area.midX - w / 2, y: area.midY - h / 2, width: w, height: h)
     }
 
-    private static func blur(_ image: UIImage, radius: CGFloat) -> UIImage? {
+    /// Weichgezeichnet, in 1× (reicht für Unschärfe und ist schnell genug für
+    /// den Regler). `radius` in pt.
+    static func blur(_ image: UIImage, radius: CGFloat) -> UIImage? {
         guard let cg = image.cgImage else { return nil }
-        let input = CIImage(cgImage: cg)
+        let factor = 1 / max(1, image.scale)
+        let input = CIImage(cgImage: cg).transformed(by: CGAffineTransform(scaleX: factor, y: factor))
         let gaussian = CIFilter.gaussianBlur()
         gaussian.inputImage = input.clampedToExtent()
-        gaussian.radius = Float(radius * image.scale)
+        gaussian.radius = Float(radius)
         let color = CIFilter.colorControls()
         color.inputImage = gaussian.outputImage
         // Alle Werte setzen: ohne Standardwerte wird das Bild sonst flach grau.
         color.brightness = 0
         color.contrast = 1
-        color.saturation = 1.3
+        color.saturation = 1.15
         guard let output = color.outputImage?.cropped(to: input.extent),
-              let result = CIContext().createCGImage(output, from: input.extent) else { return nil }
-        return UIImage(cgImage: result, scale: image.scale, orientation: .up)
+              let result = ciContext.createCGImage(output, from: input.extent) else { return nil }
+        return UIImage(cgImage: result, scale: 1, orientation: .up)
     }
 }
 
@@ -934,13 +957,11 @@ private struct QuoteGlassOverlay: View {
         GeometryReader { geo in
             let origin = geo.frame(in: .global).origin
             ZStack(alignment: .topLeading) {
-                backdropLayer(size: geo.size)
-                    .opacity(lifted ? 1 : 0)
-                glass
+                glass(size: geo.size)
                     .opacity(lifted ? 1 : 0)
                 quoteText(canvas: geo.size, origin: origin)
-                hint
-                    .opacity(exporting ? 0 : 1)
+                topBar
+                    .opacity(lifted && !exporting ? 1 : 0)
                 buttons
                     .opacity(lifted && !exporting ? 1 : 0)
             }
@@ -1035,17 +1056,18 @@ private struct QuoteGlassOverlay: View {
         withAnimation(.easeInOut(duration: 0.35)) { controller.stepBackdrop(by: delta) }
     }
 
-    /// Gezeichneter Hintergrund unter dem Glas; bei `.article` scheint der
-    /// Artikel selbst durch.
-    @ViewBuilder
-    private func backdropLayer(size: CGSize) -> some View {
-        if backdropsAvailable, let image = controller.backdropImage(controller.backdrop) {
-            Image(uiImage: image)
-                .resizable()
-                .frame(width: size.width, height: size.height)
-                .id(controller.backdrop)
-                .transition(.opacity)
+    /// Oben unter der Dynamic Island: Punkte für die Hintergründe, darunter
+    /// beim ersten Mal der Hinweis.
+    private var topBar: some View {
+        VStack(spacing: 8) {
+            if backdropsAvailable {
+                backdropDots
+            }
+            hint
         }
+        .padding(.top, max(controller.insets.top, 12) + 6)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .allowsHitTesting(false)
     }
 
     /// Punkte für die Hintergründe; VoiceOver wechselt per Wischen hoch/runter.
@@ -1072,14 +1094,21 @@ private struct QuoteGlassOverlay: View {
         }
     }
 
+    /// Das Glas: der Hintergrund (Artikel oder gezeichnet) farblos
+    /// weichgezeichnet, Stärke nach Regler. Material nur als Notlösung,
+    /// solange es kein Bild gibt.
     @ViewBuilder
-    private var glass: some View {
+    private func glass(size: CGSize) -> some View {
         if reduceTransparency || controller.style.opaque {
             bgColor
+        } else if let image = controller.glassImage() {
+            Image(uiImage: image)
+                .resizable()
+                .frame(width: size.width, height: size.height)
+                .id(controller.backdrop)
+                .transition(.opacity)
         } else {
-            Rectangle()
-                .fill(.ultraThinMaterial)
-                .overlay(bgColor.opacity(0.08))
+            Rectangle().fill(.ultraThinMaterial)
         }
     }
 
@@ -1176,10 +1205,10 @@ private struct QuoteGlassOverlay: View {
     /// wenn der Text sonst nicht hineinpasst.
     private func targetFrame(for size: CGSize, canvas: CGSize) -> CGRect {
         let insets = controller.insets
-        let top = max(insets.top, 20) + 16
+        let dots = backdropsAvailable ? Self.dotsHeight + 8 : 0
+        let top = max(insets.top, 12) + 6 + dots + 16
         let toggles = Self.toggleHeight + Self.toggleSpacing
-        let dots = backdropsAvailable ? Self.dotsHeight + Self.toggleSpacing : 0
-        let bottom = max(insets.bottom, 16) + 12 + Self.buttonHeight + toggles + dots + 24
+        let bottom = max(insets.bottom, 16) + 12 + Self.buttonHeight + toggles + 24
         let side = sideInset
         let area = CGRect(x: side, y: top,
                           width: canvas.width - 2 * side,
@@ -1196,24 +1225,18 @@ private struct QuoteGlassOverlay: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
                 .background(.thinMaterial, in: Capsule())
-                .padding(.top, max(controller.insets.top, 20) + 8)
-                .frame(maxWidth: .infinity, alignment: .top)
-                .allowsHitTesting(false)
                 .transition(.opacity)
         }
     }
 
     private var buttons: some View {
         VStack(spacing: Self.toggleSpacing) {
-            if backdropsAvailable {
-                backdropDots
-            }
             if showStylePanel {
                 stylePanel
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
             HStack(spacing: 10) {
-                QuoteChip(title: L("articleReader.quote.style"), systemImage: "textformat",
+                QuoteChip(title: L("articleReader.quote.style"), systemImage: "paintbrush",
                           isOn: showStylePanel, height: Self.toggleHeight, textColor: textColor) {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { showStylePanel.toggle() }
                 }
@@ -1275,6 +1298,19 @@ private struct QuoteGlassOverlay: View {
                 ForEach(QuoteTextColor.allCases, id: \.self) { color in
                     colorButton(color)
                 }
+            }
+            if backdropsAvailable {
+                HStack(spacing: 10) {
+                    Image(systemName: "drop")
+                    Slider(value: Binding(get: { controller.glassBlur },
+                                          set: { controller.glassBlur = $0.rounded() }),
+                           in: QuoteModeController.blurRange, step: 1)
+                        .tint(accent)
+                        .accessibilityLabel(L("articleReader.quote.blur"))
+                        .accessibilityValue("\(Int(controller.glassBlur))")
+                    Image(systemName: "drop.fill")
+                }
+                .foregroundStyle(.secondary)
             }
             Toggle(isOn: Binding(get: { controller.textGlow },
                                  set: { on in withAnimation(.easeInOut(duration: 0.2)) { controller.textGlow = on } })) {
@@ -1352,13 +1388,13 @@ private struct QuoteGlassOverlay: View {
         }
     }
 
-    /// Bild zum Speichern und Teilen. Mit gezeichnetem Hintergrund ein Abzug
-    /// des Bildschirms (ohne Knöpfe), also genau das, was man sieht; mit dem
-    /// Artikel dahinter neu zusammengesetzt, weil der Abzug den Inhalt des
-    /// WebViews nicht zuverlässig mitnimmt.
+    /// Bild zum Speichern und Teilen: ein Abzug des Bildschirms ohne Knöpfe,
+    /// also genau das, was man sieht. Das Glas ist ein deckendes Bild, der
+    /// WebView darunter muss also nicht mit. Klappt der Abzug nicht, wird
+    /// das Bild neu zusammengesetzt.
     private func exportImage() async -> UIImage? {
         guard !exporting else { return nil }
-        if backdropsAvailable, controller.backdrop != .article {
+        do {
             var instant = Transaction()
             instant.disablesAnimations = true
             withTransaction(instant) { exporting = true }

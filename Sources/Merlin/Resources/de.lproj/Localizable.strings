@@ -87,7 +87,8 @@
 "articleReader.quote.share" = "Teilen";
 "articleReader.quote.showAuthor" = "Autor";
 "articleReader.quote.showSource" = "Quelle";
-"articleReader.quote.style" = "Schrift";
+"articleReader.quote.style" = "Design";
+"articleReader.quote.blur" = "Weichzeichner";
 "articleReader.quote.glow" = "Leuchten hinter der Schrift";
 "articleReader.quote.size" = "Schriftgröße";
 "articleReader.quote.font.original" = "Original";

@@ -144,6 +144,7 @@ final class PreferencesStore: @unchecked Sendable {
         static let quoteFontSize        = "merlin_reader_quote_font_size"
         static let quoteTextColor       = "merlin_reader_quote_text_color"
         static let quoteGlow            = "merlin_reader_quote_glow"
+        static let quoteBlur            = "merlin_reader_quote_blur"
         static let progressEdge         = "merlin_progress_edge"
         static let lineHeight           = "merlin_line_height"
         static let saveProgress           = "merlin_save_progress"
@@ -383,6 +384,14 @@ final class PreferencesStore: @unchecked Sendable {
             return defaults.bool(forKey: Key.quoteGlow)
         }
         set { defaults.set(newValue, forKey: Key.quoteGlow) }
+    }
+    /// Zitat-Ansicht: Stärke des Weichzeichners im Glas, in pt (Standard 16).
+    var readerQuoteBlur: Double {
+        get {
+            guard defaults.object(forKey: Key.quoteBlur) != nil else { return 16 }
+            return defaults.double(forKey: Key.quoteBlur)
+        }
+        set { defaults.set(newValue, forKey: Key.quoteBlur) }
     }
 
     var readerFont: ReaderFont {

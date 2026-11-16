@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Quote view: when selected text in an article stays put for five seconds,
-  frosted glass covers the reader and the selected text glides to the
+  colorless frosted glass covers the reader and the selected text glides to the
   middle of the screen on its own, without the highlight toolbar, bottom
   bar, system menu or status bar, ready for a screenshot. "Save Image" puts
   the same view (without the buttons) into Photos, "Share" opens the share
@@ -17,10 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as "— Jane Doe · spiegel.de" under the quote, on screen and in the image
   (remembered on the device). Swiping sideways changes what lies behind
   the glass: the article itself, colorful bubbles, sunset, ocean, hearts,
-  a rainbow, aurora or candy colors (dots show the position; remembered on
-  the device). "Font" opens a panel with typefaces (Original as in the
+  a rainbow, aurora or candy colors (dots below the Dynamic Island show the
+  position; remembered on the device). "Design" opens a panel with typefaces (Original as in the
   article, Modern, Classic, Rounded, Georgia, Typewriter, Handwriting,
-  Script), a size slider, text colors and a switch for the glow behind the
+  Script), a size slider, text colors, a slider for the glass blur and a switch for the glow behind the
   text; the choice is remembered. The
   quote can be dragged anywhere on the screen and pinched to zoom it (just
   the view, the font size setting stays as it is); the saved image keeps
