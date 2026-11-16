@@ -79,9 +79,9 @@
 "articleReader.appearance.paperTexture" = "Paper texture";
 "articleReader.appearance.handsFree" = "Hands-free reading";
 "articleReader.appearance.handsFreeFooter" = "Shows a button in the bottom bar that scrolls the article by itself.";
-"articleReader.appearance.quoteMode" = "Quote view";
-"articleReader.appearance.quoteModeFooter" = "When selected text stays put for five seconds, it appears on its own on frosted glass, ready to save or share as an image.";
-"articleReader.quote.open" = "Quote view";
+"articleReader.appearance.quoteMode" = "Quote card";
+"articleReader.appearance.quoteModeFooter" = "Selecting text shows a \"Quote card\" button: it puts the text on its own on glass, ready to save or share as an image.";
+"articleReader.quote.open" = "Quote card";
 "articleReader.quote.save" = "Save Image";
 "articleReader.quote.saved" = "Saved";
 "articleReader.quote.share" = "Share";

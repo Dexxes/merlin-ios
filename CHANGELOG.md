@@ -8,8 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Quote view: when selected text in an article stays put for five seconds,
-  colorless frosted glass covers the reader and the selected text glides to the
+- Quote card: selecting text in an article shows a glass "Quote card"
+  button next to the highlight toolbar. Tapping it lets colorless frosted
+  glass cover the reader and the selected text glides to the
   middle of the screen on its own, without the highlight toolbar, bottom
   bar, system menu or status bar, ready for a screenshot. "Save Image" puts
   the same view (without the buttons) into Photos, "Share" opens the share
@@ -28,9 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on screen. Tapping anywhere else returns to the article; the
   selection is gone afterwards. Works for new selections and tapped
   highlights, in portrait and landscape, follows the reader theme, and uses
-  a solid background with "Reduce Transparency". Not started automatically
-  with VoiceOver; there the highlight toolbar offers a "Quote view" action.
-  Can be turned off under "Quote view" in the Appearance sheet. Text
+  a solid background with "Reduce Transparency". With VoiceOver every
+  button of the highlight toolbar also offers a "Quote card" action.
+  The button can be turned off under "Quote card" in the Appearance sheet. Text
   articles only for now.
 - Free font choice in the reader's Appearance sheet: besides the four presets,
   "Installed font" opens a searchable list of every font family installed on

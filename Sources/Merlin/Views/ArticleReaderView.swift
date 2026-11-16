@@ -1160,8 +1160,7 @@ private struct HighlightToolbarView: View {
     }
 }
 
-/// Bietet VoiceOver an der Markierungsleiste die Zitat-Ansicht an (der
-/// 5-s-Timer startet mit VoiceOver nicht).
+/// Bietet VoiceOver an der Markierungsleiste die Zitat-Tafel als Aktion an.
 private struct QuoteAccessibilityAction: ViewModifier {
     let action: (() -> Void)?
 
@@ -2269,7 +2268,7 @@ struct ArticleReaderView: View {
     @State private var handsFreeButton: Bool        = PreferencesStore.shared.readerHandsFreeButton
     /// Scroll-Motor des Freihand-Lesemodus (siehe `AutoScrollController`).
     @State private var autoScroll = AutoScrollController()
-    /// Zitat-Ansicht nach 5 s stehender Auswahl eingeschaltet (Erscheinungsbild).
+    /// Knopf „Zitat-Tafel“ an der Markierungsleiste (Erscheinungsbild).
     @State private var quoteModeEnabled: Bool = PreferencesStore.shared.readerQuoteMode
     /// Timer, Abgreifen und Zustand der Zitat-Ansicht (siehe `QuoteMode.swift`).
     @State private var quote = QuoteModeController()
@@ -2417,7 +2416,6 @@ struct ArticleReaderView: View {
                             showHighlightToolbar(
                                 SelectionToolbarState(screenRect: screenRect, highlightId: highlightId),
                                 animation: .spring(response: 0.35, dampingFraction: 0.82))
-                            armQuoteTimer()
                         },
                         onSelectionCleared: {
                             toolbarScrollBaseline = nil
@@ -2695,18 +2693,9 @@ struct ArticleReaderView: View {
     // glass layer isn't paying a continuous compositing cost forever.
     // MARK: – Zitat-Ansicht
     //
-    // Steht eine Auswahl im Text-Artikel 5 s, liegt der markierte Text allein
-    // auf Glas (siehe `QuoteMode.swift`). Jede neue Auswahl startet den Timer
-    // neu, `hideHighlightToolbar` und ein Finger auf dem Text halten ihn an.
-    // Mit VoiceOver startet er nicht; dort gibt es die Aktion an der Leiste.
-
-    private func armQuoteTimer() {
-        guard quoteModeEnabled, !current.isPDF, !UIAccessibility.isVoiceOverRunning else {
-            quote.disarm()
-            return
-        }
-        quote.arm { startQuoteMode() }
-    }
+    // Der Glas-Knopf „Zitat-Tafel“ an der Markierungsleiste legt den
+    // markierten Text allein auf Glas (siehe `QuoteMode.swift`). VoiceOver
+    // bekommt dieselbe Aktion zusätzlich an jedem Knopf der Leiste.
 
     private func startQuoteMode() {
         guard toolbarVisible, !quote.isActive, !readerBusy, !autoScroll.isActive || autoScroll.isPaused,
@@ -2877,6 +2866,16 @@ struct ArticleReaderView: View {
                         hideHighlightToolbar()
                     },
                     onQuote: quoteAccessibilityAction)
+                // Glas-Knopf „Zitat-Tafel“ auf der Seite der Leiste, die zum
+                // Text zeigt (die Leiste sitzt am Rand weit weg von der Auswahl).
+                let quoteButton = quoteAccessibilityAction.map {
+                    QuoteOpenButton(textColor: readerFgColor, action: $0)
+                }
+                let toolbarStack = VStack(spacing: 10) {
+                    if !dockTop, let quoteButton { quoteButton }
+                    toolbarView
+                    if dockTop, let quoteButton { quoteButton }
+                }
                     // Only matters for the initial mount (a genuine
                     // insertion each time a new selection starts) — the
                     // animated hide further down doesn't rely on this since
@@ -2899,9 +2898,9 @@ struct ArticleReaderView: View {
                 // it afterwards, once it's already invisible.
                 Group {
                     if #available(iOS 26.0, *) {
-                        GlassEffectContainer { toolbarView }
+                        GlassEffectContainer { toolbarStack }
                     } else {
-                        toolbarView
+                        toolbarStack
                     }
                 }
                 .opacity(toolbarVisible && !quote.isActive ? 1 : 0)
@@ -5726,7 +5725,7 @@ private struct AppearanceSheet: View {
     @Binding var lineHeight: Double
     @Binding var paperTexture: Bool
     @Binding var handsFreeButton: Bool
-    /// Zitat-Ansicht nach 5 s stehender Auswahl (Standard: an).
+    /// Knopf „Zitat-Tafel“ bei markiertem Text (Standard: an).
     @Binding var quoteMode: Bool
     var onAccentColorChange: () -> Void = {}
 
@@ -5764,7 +5763,7 @@ private struct AppearanceSheet: View {
         }
     }
 
-    /// Zitat-Ansicht: markierter Text allein auf Glas, nach 5 s stehender Auswahl.
+    /// Zitat-Tafel: Knopf an der Markierungsleiste, Text allein auf Glas.
     @ViewBuilder
     private var quoteModeRow: some View {
         VStack(alignment: .leading, spacing: 6) {

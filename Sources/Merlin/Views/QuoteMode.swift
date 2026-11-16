@@ -1526,6 +1526,39 @@ private struct QuoteActionButton: View {
     }
 }
 
+/// Glas-Knopf „Zitat-Tafel“ an der Markierungsleiste: öffnet die Ansicht
+/// für die aktuelle Auswahl.
+struct QuoteOpenButton: View {
+    let textColor: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label(L("articleReader.quote.open"), systemImage: "text.quote")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(textColor)
+                .padding(.horizontal, 18)
+                .frame(height: 40)
+                .modifier(QuoteGlassCapsule())
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Liquid Glass ab iOS 26, sonst Material.
+private struct QuoteGlassCapsule: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.glassEffect(.regular.interactive(), in: Capsule())
+        } else {
+            content
+                .background(.ultraThinMaterial, in: Capsule())
+                .shadow(color: .black.opacity(0.15), radius: 8, y: 2)
+        }
+    }
+}
+
 private struct QuoteButtonBackground: ViewModifier {
     let accent: Color
 
