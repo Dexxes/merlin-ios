@@ -106,7 +106,7 @@
 "articleReader.quote.color.green" = "Green";
 "articleReader.quote.color.blue" = "Blue";
 "articleReader.quote.color.violet" = "Purple";
-"articleReader.quote.backdrop" = "Background";
+"articleReader.quote.backdropPicker" = "Background";
 "articleReader.quote.backdrop.article" = "Article";
 "articleReader.quote.backdrop.bubbles" = "Colorful bubbles";
 "articleReader.quote.backdrop.sunset" = "Sunset";

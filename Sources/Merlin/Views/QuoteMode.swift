@@ -1086,7 +1086,7 @@ private struct QuoteGlassOverlay: View {
         .padding(.horizontal, 12)
         .background(.thinMaterial, in: Capsule())
         .accessibilityElement()
-        .accessibilityLabel(L("articleReader.quote.backdrop"))
+        .accessibilityLabel(L("articleReader.quote.backdropPicker"))
         .accessibilityValue(controller.backdrop.title)
         .accessibilityAdjustableAction { direction in
             switch direction {
