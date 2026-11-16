@@ -769,6 +769,45 @@ private struct DemoReaderView: View {
     }
 }
 
+// MARK: - Glass card
+
+/// Hintergrund der Schrittkarte: ab iOS 26 Liquid Glass, darunter die
+/// bisherige dunkle Fläche.
+private struct TourGlassCard: ViewModifier {
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 26)
+        if #available(iOS 26.0, *) {
+            content.glassEffect(.regular, in: shape)
+        } else {
+            content.background(
+                shape.fill(Color(white: 0.11))
+                    .overlay(shape.strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5))
+            )
+        }
+    }
+}
+
+/// Weiße Buttons der Tour vor iOS 26.
+private struct FallbackTourButton: View {
+    let title: String
+    let prominent: Bool
+    let action: () -> Void
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(isEnabled ? Color.black : Color.black.opacity(0.3))
+                .frame(maxWidth: .infinity, minHeight: 48)
+                .background(isEnabled ? Color.white : Color.white.opacity(0.4),
+                            in: RoundedRectangle(cornerRadius: 14))
+                .contentShape(RoundedRectangle(cornerRadius: 14))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 // MARK: - Main Tour View
 
 struct OnboardingTourView: View {
@@ -911,12 +950,13 @@ struct OnboardingTourView: View {
                 }
 
                 // Layer 3b – step card (always on top). Unten, außer wenn das
-                // Hervorgehobene unten liegt; nie höher als der Bildschirm
-                // (Querformat, große Schrift).
+                // Hervorgehobene unten liegt. Die Karte ist so hoch wie ihr
+                // Inhalt; reicht der Platz nicht (Querformat, große Schrift),
+                // scrollt der Text (siehe `stepCard`).
                 let bottomInset = geo.safeAreaInsets.bottom + 28
                 let topInset = windowSafeTop + 12
                 VStack(spacing: 0) {
-                    stepCard(maxHeight: max(200, geo.size.height - topInset - bottomInset))
+                    stepCard
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, topInset)
@@ -1077,7 +1117,7 @@ struct OnboardingTourView: View {
 
     // MARK: Step card
 
-    private func stepCard(maxHeight: CGFloat) -> some View {
+    private var stepCard: some View {
         VStack(spacing: 0) {
             // Progress dots
             HStack(spacing: 6) {
@@ -1102,29 +1142,15 @@ struct OnboardingTourView: View {
             }
 
             HStack(spacing: 10) {
-                Button {
+                tourButton(L("common.back"), prominent: false) {
                     withAnimation { stepIndex = currentIndex - 1 }
-                } label: {
-                    Text(L("common.back"))
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(currentIndex == 0 ? Color.black.opacity(0.3) : .black)
-                        .frame(maxWidth: .infinity, minHeight: 48)
-                        .background(currentIndex == 0 ? Color.white.opacity(0.4) : Color.white,
-                                    in: RoundedRectangle(cornerRadius: 14))
-                        .contentShape(RoundedRectangle(cornerRadius: 14))
                 }
                 .disabled(currentIndex == 0)
 
-                Button {
+                tourButton(isLast ? L("onboarding.buttons.getStarted") : L("common.next"),
+                           prominent: true) {
                     if isLast { finish() }
                     else { withAnimation { stepIndex = currentIndex + 1 } }
-                } label: {
-                    Text(isLast ? L("onboarding.buttons.getStarted") : L("common.next"))
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.black)
-                        .frame(maxWidth: .infinity, minHeight: 48)
-                        .background(Color.white, in: RoundedRectangle(cornerRadius: 14))
-                        .contentShape(RoundedRectangle(cornerRadius: 14))
                 }
             }
             .padding(.bottom, isLast ? 20 : 4)
@@ -1145,14 +1171,36 @@ struct OnboardingTourView: View {
             }
         }
         .padding(.horizontal, 18)
+        // Nur die Breite begrenzen: ein `maxHeight` würde die Karte auf die
+        // ganze verfügbare Höhe aufziehen.
         .frame(maxWidth: 520)
-        .frame(maxHeight: maxHeight)
-        .background(
-            RoundedRectangle(cornerRadius: 26)
-                .fill(Color(white: 0.11))
-                .overlay(RoundedRectangle(cornerRadius: 26)
-                    .strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5))
-        )
+        .modifier(TourGlassCard())
+        // Glas und Buttons immer dunkel, damit der weiße Text lesbar bleibt.
+        .environment(\.colorScheme, .dark)
+    }
+
+    /// Zurück/Weiter: ab iOS 26 Liquid-Glass-Buttons (Weiter in der Akzentfarbe),
+    /// darunter die bisherigen weißen Flächen.
+    @ViewBuilder
+    private func tourButton(_ title: String, prominent: Bool,
+                            action: @escaping () -> Void) -> some View {
+        if #available(iOS 26.0, *) {
+            let label = Text(title)
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity, minHeight: 34)
+            if prominent {
+                Button(action: action) { label }
+                    .buttonStyle(.glassProminent)
+                    .tint(Color(hexString: accentColorHex) ?? .red)
+                    .controlSize(.large)
+            } else {
+                Button(action: action) { label }
+                    .buttonStyle(.glass)
+                    .controlSize(.large)
+            }
+        } else {
+            FallbackTourButton(title: title, prominent: prominent, action: action)
+        }
     }
 
     /// Symbol, Titel, Text und ggf. Farbwahl des aktuellen Schritts.

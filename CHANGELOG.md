@@ -123,6 +123,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Article and Create Public Link, and the texts mention switching between
   Text/Video/Audio, sharing files, paper texture and installed fonts, and
   resizing highlights. A "Skip Tour" link ends the tour at any step.
+  On iOS 26 the step card and its buttons use Liquid Glass ("Next" in the
+  accent colour).
 - App icon now has a purple background (#6C4AD0) instead of transparency,
   which App Store Connect rejects. The app itself keeps showing the
   transparent logo, including in the article list's title bar.
