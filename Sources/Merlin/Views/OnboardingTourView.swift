@@ -808,6 +808,47 @@ private struct FallbackTourButton: View {
     }
 }
 
+// MARK: - Accent color picker
+
+/// `UIColorPickerViewController` als Popover-Inhalt: Titel frei wählbar,
+/// ohne Deckkraft, meldet jede Änderung sofort.
+private struct AccentColorPickerSheet: UIViewControllerRepresentable {
+    let title: String
+    let color: UIColor
+    let onChange: (UIColor) -> Void
+    let onDone: () -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    func makeUIViewController(context: Context) -> UIColorPickerViewController {
+        let picker = UIColorPickerViewController()
+        picker.title = title
+        picker.supportsAlpha = false
+        picker.selectedColor = color
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ picker: UIColorPickerViewController, context: Context) {
+        context.coordinator.parent = self
+    }
+
+    @MainActor
+    final class Coordinator: NSObject, UIColorPickerViewControllerDelegate {
+        var parent: AccentColorPickerSheet
+        init(_ parent: AccentColorPickerSheet) { self.parent = parent }
+
+        func colorPickerViewController(_ viewController: UIColorPickerViewController,
+                                       didSelect color: UIColor, continuously: Bool) {
+            parent.onChange(color)
+        }
+
+        func colorPickerViewControllerDidFinish(_ viewController: UIColorPickerViewController) {
+            parent.onDone()
+        }
+    }
+}
+
 // MARK: - Main Tour View
 
 struct OnboardingTourView: View {
@@ -825,6 +866,8 @@ struct OnboardingTourView: View {
     /// Beim Öffnen festgehalten, damit sich die Schrittzahl während der Tour
     /// nicht verschiebt, wenn die Server-Einstellungen später eintreffen.
     @State private var showRetentionStep: Bool? = nil
+    /// Farbwähler für eine eigene Akzentfarbe (Popover über der Karte).
+    @State private var showAccentColorPicker = false
     @Environment(\.colorScheme) private var colorScheme
 
     /// Dim opacity: lighter in dark mode so the spotlight cutout stays visible
@@ -1269,12 +1312,35 @@ struct OnboardingTourView: View {
                 .accessibilityAddTraits(selected ? .isSelected : [])
             }
 
-            ColorPicker(L("onboarding.accentColor.custom"), selection: Binding(
-                get: { Color(hexString: accentColorHex) ?? .red },
-                set: { setAccentColor($0.hexString) }
-            ), supportsOpacity: false)
-            .labelsHidden()
-            .frame(width: 32, height: 32)
+            // Eigener Farbwähler als Popover über der Karte; der SwiftUI-
+            // ColorPicker öffnet ein Sheet von unten, das die Karte verdeckt
+            // und dessen Farbfeld am unteren Rand abgeschnitten war.
+            let isCustom = !accentColorPresets.contains(accentColorHex.uppercased())
+            Button {
+                showAccentColorPicker = true
+            } label: {
+                Circle()
+                    .fill(AngularGradient(colors: [.red, .yellow, .green, .cyan, .blue, .purple, .red],
+                                          center: .center))
+                    .frame(width: 32, height: 32)
+                    .overlay(Circle().strokeBorder(Color.white, lineWidth: isCustom ? 3 : 0))
+                    .overlay(Circle().fill(Color(hexString: accentColorHex) ?? .red)
+                        .padding(8)
+                        .opacity(isCustom ? 1 : 0))
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(L("onboarding.accentColor.custom"))
+            .accessibilityAddTraits(isCustom ? .isSelected : [])
+            .popover(isPresented: $showAccentColorPicker, arrowEdge: .bottom) {
+                AccentColorPickerSheet(
+                    title: L("onboarding.accentColor.custom"),
+                    color: UIColor(Color(hexString: accentColorHex) ?? .red),
+                    onChange: { setAccentColor(Color(uiColor: $0).hexString) },
+                    onDone: { showAccentColorPicker = false })
+                .frame(minWidth: 320, idealWidth: 360, minHeight: 400, idealHeight: 460)
+                .presentationCompactAdaptation(.popover)
+            }
         }
     }
 

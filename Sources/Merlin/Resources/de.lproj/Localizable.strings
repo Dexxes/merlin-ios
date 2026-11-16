@@ -258,7 +258,7 @@
 "navigationMenu.tab.video" = "Video";
 "navigationMenu.tagsHeader" = "Tags";
 "onboarding.accentColor.body" = "Wähle zum Schluss deine Akzentfarbe für Artikelkopf, untere Leiste und Fortschrittsbalken. Ändern kannst du sie jederzeit im Lesemenü unter Erscheinungsbild.";
-"onboarding.accentColor.custom" = "Eigene Farbe";
+"onboarding.accentColor.custom" = "Akzentfarbe";
 "onboarding.accentColor.title" = "Deine Akzentfarbe";
 "onboarding.buttons.skip" = "Tour überspringen";
 "onboarding.buttons.getStarted" = "Los geht's";
