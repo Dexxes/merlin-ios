@@ -87,6 +87,15 @@
 "articleReader.quote.share" = "Teilen";
 "articleReader.quote.showAuthor" = "Autor";
 "articleReader.quote.showSource" = "Quelle";
+"articleReader.quote.backdrop" = "Hintergrund";
+"articleReader.quote.backdrop.article" = "Artikel";
+"articleReader.quote.backdrop.bubbles" = "Bunte Blasen";
+"articleReader.quote.backdrop.sunset" = "Sonnenuntergang";
+"articleReader.quote.backdrop.ocean" = "Ozean";
+"articleReader.quote.backdrop.hearts" = "Herzen";
+"articleReader.quote.backdrop.rainbow" = "Regenbogen";
+"articleReader.quote.backdrop.aurora" = "Polarlicht";
+"articleReader.quote.backdrop.candy" = "Bonbon";
 "articleReader.quote.hint" = "Tippen zum Schließen";
 "articleReader.quote.close" = "Schließen";
 "articleReader.quote.saveFailed" = "Das Bild konnte nicht gespeichert werden.";

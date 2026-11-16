@@ -254,16 +254,234 @@ final class QuoteModeController {
         let canvas = background?.size ?? webView?.window?.bounds.size ?? .zero
         guard canvas.width > 0, canvas.height > 0 else { return nil }
         let scale = background?.scale ?? webView?.window?.traitCollection.displayScale ?? 2
-        let image = QuoteImageRenderer.compose(background: background, quote: quoteImage,
+        let behind = backdrop == .article ? background : backdropImage(backdrop)
+        let image = QuoteImageRenderer.compose(background: behind, quote: quoteImage,
                                                caption: caption, canvas: canvas, scale: scale, style: style)
         shareImage = image
         return image
+    }
+
+    // MARK: Hintergründe
+
+    /// Hintergrund hinter dem Glas; horizontal wischen wechselt ihn.
+    /// `.article` ist der Artikel selbst, die übrigen sind gezeichnet.
+    var backdrop: QuoteBackdrop = QuoteBackdrop(rawValue: PreferencesStore.shared.readerQuoteBackdrop) ?? .article {
+        didSet {
+            PreferencesStore.shared.readerQuoteBackdrop = backdrop.rawValue
+            shareImage = nil
+        }
+    }
+
+    @ObservationIgnored private var backdropCache: [QuoteBackdrop: UIImage] = [:]
+    @ObservationIgnored private var backdropCacheSize: CGSize = .zero
+
+    /// Gezeichneter Hintergrund in Bildschirmgröße (nil für `.article`).
+    /// Auflösung 1×: er liegt ohnehin verschwommen unter dem Glas.
+    func backdropImage(_ backdrop: QuoteBackdrop) -> UIImage? {
+        guard backdrop != .article else { return nil }
+        let size = background?.size ?? webView?.window?.bounds.size ?? .zero
+        if size != backdropCacheSize {
+            backdropCache = [:]
+            backdropCacheSize = size
+        }
+        if let cached = backdropCache[backdrop] { return cached }
+        let image = backdrop.render(size: size)
+        backdropCache[backdrop] = image
+        return image
+    }
+
+    /// Nächster bzw. vorheriger Hintergrund (rundum).
+    func stepBackdrop(by delta: Int) {
+        let all = QuoteBackdrop.allCases
+        guard let index = all.firstIndex(of: backdrop) else { return }
+        backdrop = all[(index + delta + all.count) % all.count]
     }
 
     /// Bild im Voraus bauen, damit beide Knöpfe sofort reagieren.
     func prepareShareImage() {
         guard shareImage == nil, quoteImage != nil else { return }
         _ = makeShareImage()
+    }
+}
+
+// MARK: – Hintergründe hinter dem Glas
+
+/// Wählbare Hintergründe der Zitat-Ansicht. Alle werden mit Core Graphics
+/// gezeichnet (keine Bild-Dateien) und liegen unter dem Glas, also
+/// verschwommen; Formen sind darum groß und kräftig. Zufall mit festem
+/// Startwert, damit ein Hintergrund immer gleich aussieht.
+enum QuoteBackdrop: Int, CaseIterable {
+    case article, bubbles, sunset, ocean, hearts, rainbow, aurora, candy
+
+    var title: String {
+        switch self {
+        case .article: return L("articleReader.quote.backdrop.article")
+        case .bubbles: return L("articleReader.quote.backdrop.bubbles")
+        case .sunset:  return L("articleReader.quote.backdrop.sunset")
+        case .ocean:   return L("articleReader.quote.backdrop.ocean")
+        case .hearts:  return L("articleReader.quote.backdrop.hearts")
+        case .rainbow: return L("articleReader.quote.backdrop.rainbow")
+        case .aurora:  return L("articleReader.quote.backdrop.aurora")
+        case .candy:   return L("articleReader.quote.backdrop.candy")
+        }
+    }
+
+    @MainActor
+    func render(size: CGSize) -> UIImage? {
+        guard self != .article, size.width > 0, size.height > 0 else { return nil }
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        return UIGraphicsImageRenderer(size: size, format: format).image { ctx in
+            let cg = ctx.cgContext
+            let rect = CGRect(origin: .zero, size: size)
+            var rng = SeededRandom(seed: UInt64(rawValue) &* 7919 &+ 17)
+            let w = size.width, h = size.height
+            switch self {
+            case .article:
+                break
+            case .bubbles:
+                Self.linear(cg, [0x312E81, 0x581C87, 0x0F172A],
+                            from: CGPoint(x: 0, y: 0), to: CGPoint(x: w, y: h))
+                let palette: [UInt32] = [0xF472B6, 0x22D3EE, 0xFACC15, 0xA3E635, 0xFB923C, 0xA78BFA, 0x34D399]
+                for _ in 0..<26 {
+                    let r = CGFloat.random(in: 28...110, using: &rng)
+                    let c = CGPoint(x: CGFloat.random(in: 0...w, using: &rng),
+                                    y: CGFloat.random(in: 0...h, using: &rng))
+                    let color = palette[Int.random(in: 0..<palette.count, using: &rng)]
+                    let circle = CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r)
+                    cg.setFillColor(Self.rgb(color, alpha: 0.8).cgColor)
+                    cg.fillEllipse(in: circle)
+                    // Glanzlicht oben links, damit es nach Blase aussieht.
+                    cg.setFillColor(UIColor.white.withAlphaComponent(0.35).cgColor)
+                    cg.fillEllipse(in: CGRect(x: c.x - r * 0.55, y: c.y - r * 0.6,
+                                              width: r * 0.5, height: r * 0.35))
+                }
+            case .sunset:
+                Self.linear(cg, [0x3B0764, 0xBE185D, 0xF97316, 0xFDE68A],
+                            from: CGPoint(x: 0, y: 0), to: CGPoint(x: 0, y: h))
+                Self.blob(cg, center: CGPoint(x: w * 0.5, y: h * 0.72), radius: w * 0.55, color: 0xFFF7AE, alpha: 0.9)
+                Self.blob(cg, center: CGPoint(x: w * 0.1, y: h * 0.25), radius: w * 0.5, color: 0xF472B6, alpha: 0.5)
+            case .ocean:
+                Self.linear(cg, [0x67E8F9, 0x0EA5E9, 0x1D4ED8, 0x1E1B4B],
+                            from: CGPoint(x: w, y: 0), to: CGPoint(x: 0, y: h))
+                Self.blob(cg, center: CGPoint(x: w * 0.8, y: h * 0.2), radius: w * 0.6, color: 0xA7F3D0, alpha: 0.55)
+                Self.blob(cg, center: CGPoint(x: w * 0.15, y: h * 0.8), radius: w * 0.55, color: 0x6366F1, alpha: 0.6)
+            case .hearts:
+                Self.linear(cg, [0xFFE4E6, 0xFBCFE8, 0xF9A8D4],
+                            from: CGPoint(x: 0, y: 0), to: CGPoint(x: w, y: h))
+                let palette: [UInt32] = [0xE11D48, 0xF43F5E, 0xDB2777, 0xEC4899, 0xBE123C, 0xFB7185]
+                for _ in 0..<20 {
+                    let s = CGFloat.random(in: 50...140, using: &rng)
+                    let c = CGPoint(x: CGFloat.random(in: 0...w, using: &rng),
+                                    y: CGFloat.random(in: 0...h, using: &rng))
+                    let angle = CGFloat.random(in: -0.45...0.45, using: &rng)
+                    let color = palette[Int.random(in: 0..<palette.count, using: &rng)]
+                    cg.saveGState()
+                    cg.translateBy(x: c.x, y: c.y)
+                    cg.rotate(by: angle)
+                    cg.addPath(Self.heart(in: CGRect(x: -s / 2, y: -s / 2, width: s, height: s * 0.9)).cgPath)
+                    cg.setFillColor(Self.rgb(color, alpha: 0.85).cgColor)
+                    cg.fillPath()
+                    cg.restoreGState()
+                }
+            case .rainbow:
+                Self.linear(cg, [0x7DD3FC, 0xBAE6FD, 0xF0F9FF],
+                            from: CGPoint(x: 0, y: 0), to: CGPoint(x: 0, y: h))
+                let colors: [UInt32] = [0xEF4444, 0xF97316, 0xFACC15, 0x22C55E, 0x3B82F6, 0x6366F1, 0xA855F7]
+                let center = CGPoint(x: w / 2, y: h * 0.78)
+                let band = max(w, h) * 0.055
+                let outer = max(w, h) * 0.62
+                cg.setLineWidth(band + 1)
+                for (i, color) in colors.enumerated() {
+                    let r = outer - CGFloat(i) * band
+                    cg.setStrokeColor(Self.rgb(color).cgColor)
+                    cg.addArc(center: center, radius: r, startAngle: .pi, endAngle: 2 * .pi, clockwise: false)
+                    cg.strokePath()
+                }
+                // Wolken an den Enden.
+                for x in [w * 0.5 - outer + 3.5 * band, w * 0.5 + outer - 3.5 * band] {
+                    for (dx, dy, r) in [(-0.9, 0.2, 0.9), (0.0, 0.0, 1.2), (0.9, 0.25, 0.85)] as [(CGFloat, CGFloat, CGFloat)] {
+                        let rr = r * band * 2.2
+                        cg.setFillColor(UIColor.white.cgColor)
+                        cg.fillEllipse(in: CGRect(x: x + dx * band * 2.2 - rr, y: center.y + dy * band * 2.2 - rr,
+                                                  width: 2 * rr, height: 2 * rr))
+                    }
+                }
+            case .aurora:
+                cg.setFillColor(Self.rgb(0x0B1026).cgColor)
+                cg.fill(rect)
+                Self.blob(cg, center: CGPoint(x: w * 0.2, y: h * 0.25), radius: w * 0.75, color: 0x22C55E, alpha: 0.75)
+                Self.blob(cg, center: CGPoint(x: w * 0.85, y: h * 0.4), radius: w * 0.7, color: 0x14B8A6, alpha: 0.7)
+                Self.blob(cg, center: CGPoint(x: w * 0.4, y: h * 0.7), radius: w * 0.8, color: 0x8B5CF6, alpha: 0.75)
+                Self.blob(cg, center: CGPoint(x: w * 0.9, y: h * 0.9), radius: w * 0.6, color: 0xEC4899, alpha: 0.6)
+            case .candy:
+                cg.setFillColor(UIColor.white.cgColor)
+                cg.fill(rect)
+                Self.blob(cg, center: CGPoint(x: w * 0.15, y: h * 0.15), radius: w * 0.8, color: 0xF9A8D4, alpha: 0.95)
+                Self.blob(cg, center: CGPoint(x: w * 0.9, y: h * 0.3), radius: w * 0.75, color: 0x93C5FD, alpha: 0.95)
+                Self.blob(cg, center: CGPoint(x: w * 0.25, y: h * 0.75), radius: w * 0.8, color: 0xFDE68A, alpha: 0.95)
+                Self.blob(cg, center: CGPoint(x: w * 0.85, y: h * 0.85), radius: w * 0.7, color: 0x86EFAC, alpha: 0.95)
+            }
+        }
+    }
+
+    private static func rgb(_ hex: UInt32, alpha: CGFloat = 1) -> UIColor {
+        UIColor(red: CGFloat((hex >> 16) & 0xFF) / 255,
+                green: CGFloat((hex >> 8) & 0xFF) / 255,
+                blue: CGFloat(hex & 0xFF) / 255,
+                alpha: alpha)
+    }
+
+    private static func linear(_ cg: CGContext, _ colors: [UInt32], from start: CGPoint, to end: CGPoint) {
+        let cgColors = colors.map { rgb($0).cgColor } as CFArray
+        guard let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: cgColors, locations: nil)
+        else { return }
+        cg.drawLinearGradient(gradient, start: start, end: end,
+                              options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
+    }
+
+    /// Weicher Farbfleck: radialer Verlauf von `color` nach durchsichtig.
+    private static func blob(_ cg: CGContext, center: CGPoint, radius: CGFloat, color: UInt32, alpha: CGFloat) {
+        let cgColors = [rgb(color, alpha: alpha).cgColor, rgb(color, alpha: 0).cgColor] as CFArray
+        guard let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: cgColors, locations: [0, 1])
+        else { return }
+        cg.drawRadialGradient(gradient, startCenter: center, startRadius: 0,
+                              endCenter: center, endRadius: radius, options: [])
+    }
+
+    /// Herz in `r` (Spitze unten).
+    private static func heart(in r: CGRect) -> UIBezierPath {
+        let x = r.minX, y = r.minY, w = r.width, h = r.height
+        let path = UIBezierPath()
+        path.move(to: CGPoint(x: x + w / 2, y: y + h))
+        path.addCurve(to: CGPoint(x: x, y: y + h * 0.3),
+                      controlPoint1: CGPoint(x: x + w * 0.1, y: y + h * 0.75),
+                      controlPoint2: CGPoint(x: x, y: y + h * 0.5))
+        path.addArc(withCenter: CGPoint(x: x + w * 0.25, y: y + h * 0.3), radius: w * 0.25,
+                    startAngle: .pi, endAngle: 0, clockwise: true)
+        path.addArc(withCenter: CGPoint(x: x + w * 0.75, y: y + h * 0.3), radius: w * 0.25,
+                    startAngle: .pi, endAngle: 0, clockwise: true)
+        path.addCurve(to: CGPoint(x: x + w / 2, y: y + h),
+                      controlPoint1: CGPoint(x: x + w, y: y + h * 0.5),
+                      controlPoint2: CGPoint(x: x + w * 0.9, y: y + h * 0.75))
+        path.close()
+        return path
+    }
+}
+
+/// SplitMix64: kleiner Zufallsgenerator mit festem Startwert.
+private struct SeededRandom: RandomNumberGenerator {
+    private var state: UInt64
+
+    init(seed: UInt64) { state = seed }
+
+    mutating func next() -> UInt64 {
+        state &+= 0x9E37_79B9_7F4A_7C15
+        var z = state
+        z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+        z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+        return z ^ (z >> 31)
     }
 }
 
@@ -476,11 +694,14 @@ private struct QuoteGlassOverlay: View {
     private static let buttonHeight: CGFloat = 46
     private static let toggleHeight: CGFloat = 34
     private static let toggleSpacing: CGFloat = 12
+    private static let dotsHeight: CGFloat = 20
 
     var body: some View {
         GeometryReader { geo in
             let origin = geo.frame(in: .global).origin
             ZStack(alignment: .topLeading) {
+                backdropLayer(size: geo.size)
+                    .opacity(lifted ? 1 : 0)
                 glass
                     .opacity(lifted ? 1 : 0)
                 quoteText(canvas: geo.size, origin: origin)
@@ -492,6 +713,12 @@ private struct QuoteGlassOverlay: View {
         }
         .ignoresSafeArea()
         .contentShape(Rectangle())
+        // Horizontal wischen: anderer Hintergrund hinter dem Glas.
+        .gesture(DragGesture(minimumDistance: 24).onEnded { value in
+            let dx = value.translation.width, dy = value.translation.height
+            guard backdropsAvailable, abs(dx) > 50, abs(dx) > abs(dy) else { return }
+            stepBackdrop(dx < 0 ? 1 : -1)
+        })
         .onTapGesture { controller.close() }
         .opacity(controller.isRecapturing ? 0 : 1)
         .accessibilityElement(children: .contain)
@@ -538,6 +765,53 @@ private struct QuoteGlassOverlay: View {
     }
 
     // MARK: Teile
+
+    /// Hintergründe nur, wenn das Glas durchscheint.
+    private var backdropsAvailable: Bool {
+        !(reduceTransparency || controller.style.opaque)
+    }
+
+    private func stepBackdrop(_ delta: Int) {
+        UISelectionFeedbackGenerator().selectionChanged()
+        withAnimation(.easeInOut(duration: 0.35)) { controller.stepBackdrop(by: delta) }
+    }
+
+    /// Gezeichneter Hintergrund unter dem Glas; bei `.article` scheint der
+    /// Artikel selbst durch.
+    @ViewBuilder
+    private func backdropLayer(size: CGSize) -> some View {
+        if backdropsAvailable, let image = controller.backdropImage(controller.backdrop) {
+            Image(uiImage: image)
+                .resizable()
+                .frame(width: size.width, height: size.height)
+                .id(controller.backdrop)
+                .transition(.opacity)
+        }
+    }
+
+    /// Punkte für die Hintergründe; VoiceOver wechselt per Wischen hoch/runter.
+    private var backdropDots: some View {
+        HStack(spacing: 7) {
+            ForEach(QuoteBackdrop.allCases, id: \.self) { item in
+                Circle()
+                    .fill(textColor.opacity(item == controller.backdrop ? 0.9 : 0.3))
+                    .frame(width: 7, height: 7)
+            }
+        }
+        .frame(height: Self.dotsHeight)
+        .padding(.horizontal, 12)
+        .background(.thinMaterial, in: Capsule())
+        .accessibilityElement()
+        .accessibilityLabel(L("articleReader.quote.backdrop"))
+        .accessibilityValue(controller.backdrop.title)
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: stepBackdrop(1)
+            case .decrement: stepBackdrop(-1)
+            @unknown default: break
+            }
+        }
+    }
 
     @ViewBuilder
     private var glass: some View {
@@ -599,7 +873,8 @@ private struct QuoteGlassOverlay: View {
         let insets = controller.insets
         let top = max(insets.top, 20) + 16
         let toggles = hasCaptionToggles ? Self.toggleHeight + Self.toggleSpacing : 0
-        let bottom = max(insets.bottom, 16) + 12 + Self.buttonHeight + toggles + 24
+        let dots = backdropsAvailable ? Self.dotsHeight + Self.toggleSpacing : 0
+        let bottom = max(insets.bottom, 16) + 12 + Self.buttonHeight + toggles + dots + 24
         let side = sideInset
         let area = CGRect(x: side, y: top,
                           width: canvas.width - 2 * side,
@@ -625,6 +900,9 @@ private struct QuoteGlassOverlay: View {
 
     private var buttons: some View {
         VStack(spacing: Self.toggleSpacing) {
+            if backdropsAvailable {
+                backdropDots
+            }
             if hasCaptionToggles {
                 HStack(spacing: 10) {
                     if controller.style.author != nil {

@@ -15,7 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the same view (without the buttons) into Photos, "Share" opens the share
   sheet with it. Two checkboxes, "Author" and "Source", add a line such
   as "— Jane Doe · spiegel.de" under the quote, on screen and in the image
-  (remembered on the device). Tapping anywhere else returns to the article; the
+  (remembered on the device). Swiping sideways changes what lies behind
+  the glass: the article itself, colorful bubbles, sunset, ocean, hearts,
+  a rainbow, aurora or candy colors (dots show the position; remembered on
+  the device). Tapping anywhere else returns to the article; the
   selection is gone afterwards. Works for new selections and tapped
   highlights, in portrait and landscape, follows the reader theme, and uses
   a solid background with "Reduce Transparency". Not started automatically

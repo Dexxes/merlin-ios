@@ -139,6 +139,7 @@ final class PreferencesStore: @unchecked Sendable {
         static let quoteHintShown       = "merlin_reader_quote_hint_shown"
         static let quoteShowAuthor      = "merlin_reader_quote_show_author"
         static let quoteShowSource      = "merlin_reader_quote_show_source"
+        static let quoteBackdrop        = "merlin_reader_quote_backdrop"
         static let progressEdge         = "merlin_progress_edge"
         static let lineHeight           = "merlin_line_height"
         static let saveProgress           = "merlin_save_progress"
@@ -348,6 +349,13 @@ final class PreferencesStore: @unchecked Sendable {
     var readerQuoteShowSource: Bool {
         get { defaults.bool(forKey: Key.quoteShowSource) }
         set { defaults.set(newValue, forKey: Key.quoteShowSource) }
+    }
+
+    /// Zitat-Ansicht: zuletzt gewählter Hintergrund hinter dem Glas
+    /// (`QuoteBackdrop.rawValue`, 0 = der Artikel selbst).
+    var readerQuoteBackdrop: Int {
+        get { defaults.integer(forKey: Key.quoteBackdrop) }
+        set { defaults.set(newValue, forKey: Key.quoteBackdrop) }
     }
 
     var readerFont: ReaderFont {
