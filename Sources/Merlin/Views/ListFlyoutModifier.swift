@@ -453,7 +453,7 @@ struct ListFlyoutModifier: ViewModifier {
             Button(role: .destructive) {
                 tagToDelete = tag
             } label: {
-                Label(L("navigationMenu.deleteTag"), systemImage: "trash")
+                Label(L("navigationMenu.deleteTagAction"), systemImage: "trash")
             }
         }
     }

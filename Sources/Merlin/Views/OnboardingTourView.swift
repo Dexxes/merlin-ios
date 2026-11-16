@@ -651,7 +651,7 @@ private struct DemoReaderView: View {
 
     private var highlightedSampleText: AttributedString {
         var str = AttributedString(L("onboarding.demo.sampleHighlight"))
-        if let range = str.range(of: L("onboarding.demo.sampleHighlight.phrase")) {
+        if let range = str.range(of: L("onboarding.demo.sampleHighlightPhrase")) {
             str[range].backgroundColor = UIColor(Color(hexString: highlightColors[0]) ?? .yellow)
         }
         return str

@@ -4039,7 +4039,7 @@ struct ArticleReaderView: View {
 
             if findHasQuery {
                 Text(findCount > 0
-                     ? String(format: L("articleReader.find.position"), findIndex + 1, findCount)
+                     ? String(format: L("articleReader.find.position"), "\(findIndex + 1)", "\(findCount)")
                      : L("articleReader.find.noMatches"))
                     .font(.footnote.monospacedDigit())
                     .foregroundStyle(readerFgColor.opacity(0.6))
