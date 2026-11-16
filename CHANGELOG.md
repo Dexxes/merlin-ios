@@ -117,6 +117,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "Edit tags" list the tags as an indented tree instead of chips.
 
 ### Changed
+- App tour updated to the current app: a new step explains the reader's
+  bottom bar (back, archive, hands-free reading, share; landscape action
+  button). The demo menus now show Continue reading, App Tour, Find in
+  Article and Create Public Link, and the texts mention switching between
+  Text/Video/Audio, sharing files, paper texture and installed fonts, and
+  resizing highlights. A "Skip Tour" link ends the tour at any step.
 - App icon now has a purple background (#6C4AD0) instead of transparency,
   which App Store Connect rejects. The app itself keeps showing the
   transparent logo, including in the article list's title bar.
@@ -141,6 +147,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - "Open via archive.ph" in the reader's side menu.
 
 ### Fixed
+- App tour: the step card no longer runs off the screen in landscape or with
+  large text sizes (its text scrolls instead), and VoiceOver stays inside the
+  tour and reads the step number. The retention step is no longer shown with
+  the Merlin server, which has no retention period to set.
 - Offline, the side menu no longer shows 0 for every count and no tags: the
   last known counts and tags are stored on the device and shown until the
   server answers again, also after a cold start without a connection. A

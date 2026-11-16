@@ -43,12 +43,19 @@ private struct TourStep {
     var showsAccentPicker: Bool = false
     /// Nur in der Listenansicht zeigen (Wischgesten gibt es nur dort).
     var isListViewOnly: Bool = false
+    /// Karte oben statt unten zeigen, wenn das Hervorgehobene unten liegt.
+    var cardOnTop: Bool = false
+    /// Löschfrist-Schritt (entfällt ohne Löschfrist auf dem Server).
+    var isRetention: Bool = false
 }
 
 /// Text des Löschfrist-Schritts hängt von den Fristen des Servers ab
 /// (`RetentionStore.summaryText`), deshalb werden die Schritte pro Anzeige gebaut.
 /// Teilen per Wischen gibt es nur in der Listenansicht, Karten haben keine Wischgesten.
-private func makeTourSteps(retentionBody: String, isCardView: Bool) -> [TourStep] { [
+/// Den Löschfrist-Schritt gibt es nicht mit dem merlin-standalone-server: der
+/// kennt keine Löschfrist, der Schritt verspräche eine Einstellung, die fehlt.
+private func makeTourSteps(retentionBody: String, isCardView: Bool,
+                           showRetention: Bool) -> [TourStep] { [
     TourStep(systemImage: "hand.wave",
              title: L("onboarding.step1.title"),
              body: L("onboarding.step1.body"),
@@ -99,6 +106,11 @@ private func makeTourSteps(retentionBody: String, isCardView: Bool) -> [TourStep
              body: L("onboarding.step11.body"),
              phase: .reader, anchorKey: "menuReport"),
 
+    TourStep(systemImage: "scroll",
+             title: L("onboarding.bottomBar.title"),
+             body: L("onboarding.bottomBar.body"),
+             phase: .reader, anchorKey: "readerBottomBar", cardOnTop: true),
+
     TourStep(systemImage: "highlighter",
              title: L("onboarding.step12.title"),
              body: L("onboarding.step12.body"),
@@ -107,7 +119,7 @@ private func makeTourSteps(retentionBody: String, isCardView: Bool) -> [TourStep
     TourStep(systemImage: "clock.arrow.circlepath",
              title: L("onboarding.retention.title"),
              body: retentionBody,
-             phase: .list, anchorKey: nil),
+             phase: .list, anchorKey: nil, isRetention: true),
 
     TourStep(systemImage: "arrow.uturn.backward",
              title: L("onboarding.step13.title"),
@@ -119,7 +131,9 @@ private func makeTourSteps(retentionBody: String, isCardView: Bool) -> [TourStep
              body: L("onboarding.accentColor.body"),
              phase: .list, anchorKey: nil,
              showsAccentPicker: true),
-].filter { !(isCardView && $0.isListViewOnly) } }
+].filter {
+    !(isCardView && $0.isListViewOnly) && (showRetention || !$0.isRetention)
+} }
 
 /// Vorschläge für die Akzentfarbe im letzten Tour-Schritt; der Standard
 /// (`#FF3B30`) steht vorn. Jede andere Farbe gibt es über den ColorPicker.
@@ -180,7 +194,8 @@ private struct DemoLeftFlyout: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 4)
                 .padding(.bottom, 6)
-                flyoutRow(icon: "tray.2",           label: L("onboarding.demo.leftFlyout.unread"),  tint: .accentColor)
+                flyoutRow(icon: "book.pages",        label: L("articleList.filter.continueReading"))
+                flyoutRow(icon: "tray.full",         label: L("onboarding.demo.leftFlyout.unread"),  tint: .accentColor)
                 flyoutRow(icon: "star",              label: L("onboarding.demo.leftFlyout.favorites"))
                 flyoutRow(icon: "archivebox",        label: L("onboarding.demo.leftFlyout.archive"))
                 menuDivider
@@ -191,6 +206,7 @@ private struct DemoLeftFlyout: View {
                 menuDivider
                 flyoutRow(icon: "bell",              label: L("onboarding.demo.leftFlyout.reminders"))
                 flyoutRow(icon: "gearshape",         label: L("onboarding.demo.leftFlyout.settings"))
+                flyoutRow(icon: "questionmark.circle", label: L("navigationMenu.appTour"))
                 Spacer()
             }
             .frame(width: 300)
@@ -416,13 +432,8 @@ private struct DemoRowSwipe: View {
                 Text(L("onboarding.demo.sampleArticle.title"))
                     .font(.body.weight(.semibold))
                     .lineLimit(2)
-                HStack(spacing: 6) {
-                    Text("rbb|24")
-                        .font(.caption).foregroundStyle(.secondary)
-                    Text("·").font(.caption).foregroundStyle(.tertiary)
-                    Text("8 min")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
+                Text(L("onboarding.demo.sampleArticle.meta"))
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
         }
@@ -455,10 +466,12 @@ private struct DemoRightFlyout: View {
                 flyoutRow(icon: "speaker.wave.2",         label: L("articleReader.sideMenu.startReadAloud"))
                 flyoutRow(icon: "textformat.size",        label: L("articleReader.sideMenu.appearance"))
                     .tourAnchor("menuAppearance")
+                flyoutRow(icon: "magnifyingglass",        label: L("articleReader.sideMenu.find"))
                 menuDivider
                 flyoutRow(icon: "square.and.arrow.up",    label: L("articleReader.sideMenu.share"))
                 flyoutRow(icon: "safari",                 label: L("articleReader.sideMenu.openInBrowser"))
                 flyoutRow(icon: "link",                   label: L("articleReader.sideMenu.copyLink"))
+                flyoutRow(icon: "link.badge.plus",        label: L("articleReader.sideMenu.publicLink"))
                 menuDivider
                 flyoutRow(icon: "archivebox",             label: L("articleReader.sideMenu.archive"))
                 flyoutRow(icon: "tag",                    label: L("articleReader.sideMenu.editTags"))
@@ -509,7 +522,8 @@ private struct DemoRightFlyout: View {
             Spacer()
         }
         .padding(.horizontal, 18)
-        .padding(.vertical, 12)
+        // Knapp gehalten, damit alle Zeilen auch auf dem iPhone SE Platz haben.
+        .padding(.vertical, 10)
     }
 
     private var menuDivider: some View {
@@ -538,6 +552,12 @@ private struct DemoReaderView: View {
         UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
             .first?.windows.first(where: { $0.isKeyWindow })?.safeAreaInsets.top ?? 44
+    }
+
+    private var safeBottom: CGFloat {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?.windows.first(where: { $0.isKeyWindow })?.safeAreaInsets.bottom ?? 0
     }
 
     private var screenWidth: CGFloat {
@@ -580,6 +600,11 @@ private struct DemoReaderView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(Color(.systemBackground))
+
+            // Untere Leiste wie `ArticleReaderView.bottomBar` (liegt unter dem Lesemenü).
+            if !showHighlights {
+                demoBottomBar
+            }
 
             // Right flyout visible in reader phase, hidden for highlights.
             // Omitted when showFlyout is false (flyout rendered above the dim instead).
@@ -647,6 +672,27 @@ private struct DemoReaderView: View {
             Color.clear.frame(height: 16)
         }
         .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// Zurück, Archivieren, Freihand-Lesen, Teilen – in der Akzentfarbe getönt.
+    private var demoBottomBar: some View {
+        let icons = ["chevron.left", "archivebox.fill", "scroll", "square.and.arrow.up"]
+        return HStack(spacing: 0) {
+            ForEach(icons.indices, id: \.self) { i in
+                if i > 0 {
+                    onAccent.opacity(0.25).frame(width: 0.5)
+                }
+                Image(systemName: icons[i])
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundStyle(onAccent)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .frame(height: 54)
+        .tourAnchor("readerBottomBar")
+        .padding(.bottom, safeBottom)
+        .background(accent.opacity(0.97))
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
     }
 
     private var highlightedSampleText: AttributedString {
@@ -737,16 +783,38 @@ struct OnboardingTourView: View {
     /// Dieselbe Einstellung wie „Akzentfarbe“ im Erscheinungsbild des Lesemenüs.
     @AppStorage("merlin_accent_progress_color") private var accentColorHex: String = "#FF3B30"
     @State private var initialAccentColorHex: String? = nil
+    /// Beim Öffnen festgehalten, damit sich die Schrittzahl während der Tour
+    /// nicht verschiebt, wenn die Server-Einstellungen später eintreffen.
+    @State private var showRetentionStep: Bool? = nil
     @Environment(\.colorScheme) private var colorScheme
 
     /// Dim opacity: lighter in dark mode so the spotlight cutout stays visible
     /// against an already-dark background.
     private var dimOpacity: Double { colorScheme == .dark ? 0.55 : 0.72 }
 
-    private var tourSteps: [TourStep] { makeTourSteps(retentionBody: RetentionStore.shared.summaryText,
-                                                    isCardView: isCardView) }
-    private var step: TourStep { tourSteps[stepIndex] }
-    private var isLast: Bool   { stepIndex == tourSteps.count - 1 }
+    private var tourSteps: [TourStep] {
+        makeTourSteps(retentionBody: RetentionStore.shared.summaryText,
+                      isCardView: isCardView,
+                      showRetention: showRetentionStep ?? retentionStepAvailable)
+    }
+
+    /// Löschfrist-Schritt nur, wenn der Server eine Frist kennt oder es Nextcloud
+    /// ist (deren Einstellungen kommen evtl. erst nach dem Start der Tour);
+    /// der merlin-standalone-server hat keine Löschfrist.
+    private var retentionStepAvailable: Bool {
+        RetentionStore.shared.isSupported || CredentialsStore.shared.supportsNextcloudOnlyFeatures
+    }
+    /// Index auf die vorhandenen Schritte begrenzt (Absturzschutz, falls sich
+    /// die Schrittliste während der Tour ändert).
+    private var currentIndex: Int { min(stepIndex, tourSteps.count - 1) }
+    private var step: TourStep { tourSteps[currentIndex] }
+    private var isLast: Bool   { currentIndex == tourSteps.count - 1 }
+
+    private var windowSafeTop: CGFloat {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?.windows.first(where: { $0.isKeyWindow })?.safeAreaInsets.top ?? 44
+    }
 
     var body: some View {
         GeometryReader { geo in
@@ -842,19 +910,30 @@ struct OnboardingTourView: View {
                     .onDisappear { shakeAngle = 0 }
                 }
 
-                // Layer 3b – step card (always on top)
+                // Layer 3b – step card (always on top). Unten, außer wenn das
+                // Hervorgehobene unten liegt; nie höher als der Bildschirm
+                // (Querformat, große Schrift).
+                let bottomInset = geo.safeAreaInsets.bottom + 28
+                let topInset = windowSafeTop + 12
                 VStack(spacing: 0) {
-                    stepCard
+                    stepCard(maxHeight: max(200, geo.size.height - topInset - bottomInset))
                 }
                 .padding(.horizontal, 20)
-                .padding(.bottom, geo.safeAreaInsets.bottom + 28)
+                .padding(.top, topInset)
+                .padding(.bottom, bottomInset)
+                .frame(maxWidth: .infinity, maxHeight: .infinity,
+                       alignment: step.cardOnTop ? .top : .bottom)
                 .zIndex(100)
             }
             .ignoresSafeArea()
         }
         .ignoresSafeArea()
+        .accessibilityAddTraits(.isModal)
         .onPreferenceChange(TourAnchorKey.self) { anchors = $0 }
-        .onAppear { refreshPlusButton() }
+        .onAppear {
+            if showRetentionStep == nil { showRetentionStep = retentionStepAvailable }
+            refreshPlusButton()
+        }
         .onChange(of: stepIndex) { _, _ in
             if step.anchorKey == "plusButton" {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { refreshPlusButton() }
@@ -918,8 +997,11 @@ struct OnboardingTourView: View {
             DemoRowSwipe()
 
         case .reader:
+            // Lesemenü statisch im Hintergrund, außer es liegt animiert über
+            // dem Dimmer (Schritt Lesemenü) oder die untere Leiste ist dran.
             DemoReaderView(showHighlights: false,
-                           showFlyout: step.anchorKey != "rightFlyout",
+                           showFlyout: step.anchorKey != "rightFlyout"
+                               && step.anchorKey != "readerBottomBar",
                            flyoutAnimated: false)
 
         case .highlights:
@@ -995,30 +1077,101 @@ struct OnboardingTourView: View {
 
     // MARK: Step card
 
-    private var stepCard: some View {
+    private func stepCard(maxHeight: CGFloat) -> some View {
         VStack(spacing: 0) {
             // Progress dots
             HStack(spacing: 6) {
                 ForEach(0 ..< tourSteps.count, id: \.self) { i in
                     Capsule()
-                        .fill(i == stepIndex ? Color.white : Color.white.opacity(0.28))
-                        .frame(width: i == stepIndex ? 22 : 6, height: 6)
+                        .fill(i == currentIndex ? Color.white : Color.white.opacity(0.28))
+                        .frame(width: i == currentIndex ? 22 : 6, height: 6)
                 }
             }
             .padding(.top, 20)
             .padding(.bottom, 16)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(String(format: L("onboarding.progress"),
+                                       currentIndex + 1, tourSteps.count))
 
+            // Passt der Inhalt nicht (Querformat, große Schrift), scrollt er;
+            // Fortschritt und Buttons bleiben sichtbar.
+            ViewThatFits(in: .vertical) {
+                stepContent
+                ScrollView(showsIndicators: true) { stepContent }
+                    .scrollBounceBehavior(.basedOnSize)
+            }
+
+            HStack(spacing: 10) {
+                Button {
+                    withAnimation { stepIndex = currentIndex - 1 }
+                } label: {
+                    Text(L("common.back"))
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(currentIndex == 0 ? Color.black.opacity(0.3) : .black)
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                        .background(currentIndex == 0 ? Color.white.opacity(0.4) : Color.white,
+                                    in: RoundedRectangle(cornerRadius: 14))
+                        .contentShape(RoundedRectangle(cornerRadius: 14))
+                }
+                .disabled(currentIndex == 0)
+
+                Button {
+                    if isLast { finish() }
+                    else { withAnimation { stepIndex = currentIndex + 1 } }
+                } label: {
+                    Text(isLast ? L("onboarding.buttons.getStarted") : L("common.next"))
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.black)
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                        .background(Color.white, in: RoundedRectangle(cornerRadius: 14))
+                        .contentShape(RoundedRectangle(cornerRadius: 14))
+                }
+            }
+            .padding(.bottom, isLast ? 20 : 4)
+
+            // Jederzeit beenden, ohne alle Schritte durchzutippen.
+            if !isLast {
+                Button {
+                    finish(skipped: true)
+                } label: {
+                    Text(L("onboarding.buttons.skip"))
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .frame(maxWidth: .infinity, minHeight: 36)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(.bottom, 6)
+            }
+        }
+        .padding(.horizontal, 18)
+        .frame(maxWidth: 520)
+        .frame(maxHeight: maxHeight)
+        .background(
+            RoundedRectangle(cornerRadius: 26)
+                .fill(Color(white: 0.11))
+                .overlay(RoundedRectangle(cornerRadius: 26)
+                    .strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5))
+        )
+    }
+
+    /// Symbol, Titel, Text und ggf. Farbwahl des aktuellen Schritts.
+    private var stepContent: some View {
+        VStack(spacing: 0) {
             Image(systemName: step.systemImage)
                 .font(.system(size: 36, weight: .medium))
                 .foregroundStyle(step.showsAccentPicker ? (Color(hexString: accentColorHex) ?? .white) : .white)
                 .frame(height: 46)
                 .padding(.bottom, 12)
+                .accessibilityHidden(true)
 
             Text(step.title)
                 .font(.title3.weight(.bold))
                 .foregroundStyle(.white)
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.bottom, 8)
+                .accessibilityAddTraits(.isHeader)
 
             Text(step.body)
                 .font(.subheadline)
@@ -1032,42 +1185,8 @@ struct OnboardingTourView: View {
                 accentColorChooser
                     .padding(.bottom, 24)
             }
-
-            HStack(spacing: 10) {
-                Button {
-                    withAnimation { stepIndex -= 1 }
-                } label: {
-                    Text(L("common.back"))
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(stepIndex == 0 ? Color.black.opacity(0.3) : .black)
-                        .frame(maxWidth: .infinity, minHeight: 48)
-                        .background(stepIndex == 0 ? Color.white.opacity(0.4) : Color.white,
-                                    in: RoundedRectangle(cornerRadius: 14))
-                        .contentShape(RoundedRectangle(cornerRadius: 14))
-                }
-                .disabled(stepIndex == 0)
-
-                Button {
-                    if isLast { finish() }
-                    else { withAnimation { stepIndex += 1 } }
-                } label: {
-                    Text(isLast ? L("onboarding.buttons.getStarted") : L("common.next"))
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.black)
-                        .frame(maxWidth: .infinity, minHeight: 48)
-                        .background(Color.white, in: RoundedRectangle(cornerRadius: 14))
-                        .contentShape(RoundedRectangle(cornerRadius: 14))
-                }
-            }
-            .padding(.bottom, 20)
         }
-        .padding(.horizontal, 18)
-        .background(
-            RoundedRectangle(cornerRadius: 26)
-                .fill(Color(white: 0.11))
-                .overlay(RoundedRectangle(cornerRadius: 26)
-                    .strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5))
-        )
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: Accent color
@@ -1123,11 +1242,15 @@ struct OnboardingTourView: View {
 
     // MARK: Finish
 
-    private func finish() {
+    /// Beendet die Tour. Übersprungen ist der Löschfrist-Schritt ungesehen:
+    /// dann bleibt ein offener Hinweis bestehen und erscheint als Meldung.
+    private func finish(skipped: Bool = false) {
         pushAccentColorIfChanged()
         UserDefaults.standard.set(true, forKey: "merlin_tour_done")
         // Die Tour enthält den Löschfrist-Schritt: ein offener Hinweis ist damit erledigt.
-        Task { await RetentionStore.shared.acknowledgeNotice() }
+        if !skipped, showRetentionStep ?? retentionStepAvailable {
+            Task { await RetentionStore.shared.acknowledgeNotice() }
+        }
         withAnimation(.easeInOut(duration: 0.25)) { isPresented = false }
     }
 }
