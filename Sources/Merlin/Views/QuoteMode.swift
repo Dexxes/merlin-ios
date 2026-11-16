@@ -811,6 +811,7 @@ enum QuoteImageRenderer {
 
     /// Weichgezeichnet, in 1× (reicht für Unschärfe und ist schnell genug für
     /// den Regler). `radius` in pt.
+    @MainActor
     static func blur(_ image: UIImage, radius: CGFloat) -> UIImage? {
         guard let cg = image.cgImage else { return nil }
         let factor = 1 / max(1, image.scale)
