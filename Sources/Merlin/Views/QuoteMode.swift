@@ -936,6 +936,8 @@ private struct QuoteGlassOverlay: View {
     @State private var showSaveFailed = false
     /// Zug am Text, solange der Finger liegt (danach in `controller.textOffset`).
     @State private var dragOffset: CGSize = .zero
+    /// Finger zieht gerade am Text.
+    @State private var dragging = false
     /// Feld für Schrift, Größe und Farbe offen.
     @State private var showStylePanel = false
     /// Zoom, solange zwei Finger liegen (danach in `controller.textScale`).
@@ -1125,25 +1127,44 @@ private struct QuoteGlassOverlay: View {
             let moving = Self.clamped(settled.offsetBy(dx: dragOffset.width, dy: dragOffset.height), in: canvas)
             let source = controller.sourceFrame.offsetBy(dx: -origin.x, dy: -origin.y)
             // Bewegung reduzieren: nicht gleiten, nur ein- und ausblenden.
-            let frame = (lifted || reduceMotion) ? moving : source
+            let frame = (lifted || reduceMotion) ? settled : source
+            // Beim Ziehen nur verschieben (Offset), nicht neu anordnen: das
+            // läuft flüssig mit dem Finger.
+            let shift = (lifted || reduceMotion)
+                ? CGSize(width: moving.minX - settled.minX, height: moving.minY - settled.minY) : .zero
             Image(uiImage: image)
                 .resizable()
                 .interpolation(.high)
                 .frame(width: frame.width, height: frame.height)
                 .shadow(color: bgColor.opacity(lifted && controller.textGlow ? 0.9 : 0), radius: 3)
                 .contentShape(Rectangle())
-                .gesture(DragGesture(minimumDistance: 4)
+                // Globale Koordinaten: in lokalen wandert der Bezug mit dem
+                // Text mit, und die Bewegung ruckelt.
+                .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
                     .onChanged { value in
                         // Beim Zoomen mit zwei Fingern nicht verschieben.
-                        dragOffset = pinching ? .zero : value.translation
+                        var instant = Transaction()
+                        instant.disablesAnimations = true
+                        withTransaction(instant) { dragOffset = pinching ? .zero : value.translation }
+                        if !dragging, !pinching {
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) { dragging = true }
+                        }
                     }
                     .onEnded { value in
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { dragging = false }
                         guard !pinching else { dragOffset = .zero; return }
                         let end = Self.clamped(settled.offsetBy(dx: value.translation.width,
                                                                 dy: value.translation.height), in: canvas)
-                        controller.textOffset = CGSize(width: end.minX - target.minX, height: end.minY - target.minY)
-                        dragOffset = .zero
+                        var instant = Transaction()
+                        instant.disablesAnimations = true
+                        withTransaction(instant) {
+                            controller.textOffset = CGSize(width: end.minX - target.minX, height: end.minY - target.minY)
+                            dragOffset = .zero
+                        }
                     })
+                // Leicht angehoben, solange der Finger zieht.
+                .scaleEffect(dragging ? 1.03 : 1)
+                .offset(shift)
                 .position(x: frame.midX, y: frame.midY)
                 .opacity(reduceMotion && !lifted ? 0 : 1)
                 .accessibilityLabel(controller.text)
@@ -1160,6 +1181,7 @@ private struct QuoteGlassOverlay: View {
                     .truncationMode(.tail)
                     .frame(width: width, height: QuoteImageRenderer.captionHeight, alignment: .leading)
                     .shadow(color: bgColor.opacity(controller.textGlow ? 0.9 : 0), radius: 3)
+                    .offset(shift)
                     .position(x: frame.minX + width / 2,
                               y: frame.maxY + QuoteImageRenderer.captionGap + QuoteImageRenderer.captionHeight / 2)
                     .opacity(lifted ? 1 : 0)
