@@ -22,8 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   article, Modern, Classic, Rounded, Georgia, Typewriter, Handwriting,
   Script), a size slider, text colors and a switch for the glow behind the
   text; the choice is remembered. The
-  quote can be dragged anywhere on the screen, and the saved image keeps
-  that position. Tapping anywhere else returns to the article; the
+  quote can be dragged anywhere on the screen and pinched to zoom it (just
+  the view, the font size setting stays as it is); the saved image keeps
+  position and zoom, and with a drawn background it shows exactly what is
+  on screen. Tapping anywhere else returns to the article; the
   selection is gone afterwards. Works for new selections and tapped
   highlights, in portrait and landscape, follows the reader theme, and uses
   a solid background with "Reduce Transparency". Not started automatically

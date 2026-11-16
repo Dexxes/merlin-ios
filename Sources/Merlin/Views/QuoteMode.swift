@@ -141,6 +141,13 @@ final class QuoteModeController {
     }
     /// Vom Nutzer verschoben (Ziehen am Text); gilt nur für dieses Zitat.
     var textOffset: CGSize = .zero
+    /// Per Pinch gezoomt; gilt nur für dieses Zitat und ändert die
+    /// eingestellte Schriftgröße nicht.
+    var textScale: CGFloat = 1 {
+        didSet { shareImage = nil }
+    }
+    /// Erlaubter Bereich für `textScale`.
+    nonisolated static let scaleRange: ClosedRange<CGFloat> = 0.4...4
 
     /// Schriftgröße, die gerade gilt.
     var effectiveTextSize: Double { textSize > 0 ? textSize : Double(style.fontSize) }
@@ -156,11 +163,14 @@ final class QuoteModeController {
         let side = max(insets.left, insets.right, 16)
         let width = min(max(120, canvasWidth - 2 * side - 8), 620)
         let size = effectiveTextSize
-        let key = "\(textFont.rawValue)|\(size)|\(textColor.rawValue)|\(width)|\(style.isDark)|\(text.hashValue)"
+        // Gezoomt: in höherer Auflösung setzen, damit die Schrift scharf bleibt.
+        let display = webView?.window?.traitCollection.displayScale ?? 3
+        let zoom = (min(max(textScale, 1), Self.scaleRange.upperBound) * 2).rounded(.up) / 2
+        let key = "\(textFont.rawValue)|\(size)|\(textColor.rawValue)|\(width)|\(style.isDark)|\(zoom)|\(text.hashValue)"
         if let cached = renderedCache, cached.key == key { return cached.image }
         let image = QuoteImageRenderer.renderText(text, font: textFont.uiFont(size: CGFloat(size)),
                                                   color: textUIColor, maxWidth: width,
-                                                  scale: capturedImage.scale)
+                                                  scale: display * zoom)
         renderedCache = (key, image)
         return image
     }
@@ -242,6 +252,7 @@ final class QuoteModeController {
         showHint = false
         capturedImage = nil
         textOffset = .zero
+        textScale = 1
         layoutFrame = nil
         background = nil
         shareImage = nil
@@ -257,6 +268,7 @@ final class QuoteModeController {
         guard isActive, !isClosing, capturedImage != nil else { return }
         isRecapturing = true
         textOffset = .zero
+        textScale = 1
         Task { @MainActor [weak self] in
             // Drehung und Neu-Umbruch abwarten.
             try? await Task.sleep(for: .milliseconds(350))
@@ -281,6 +293,13 @@ final class QuoteModeController {
         let config = WKSnapshotConfiguration()
         config.rect = geometry.bounds
         config.afterScreenUpdates = true
+        // Doppelte Auflösung, damit „Original“ auch gezoomt scharf bleibt
+        // (bei sehr langen Auswahlen nicht, wegen des Speichers).
+        let displayScale = webView.window?.traitCollection.displayScale ?? 3
+        let pixels = geometry.bounds.width * geometry.bounds.height * displayScale * displayScale
+        if pixels * 4 <= 16_000_000 {
+            config.snapshotWidth = NSNumber(value: Double(geometry.bounds.width * 2))
+        }
         guard let snapshot = try? await webView.takeSnapshot(configuration: config) else {
             return finish()
         }
@@ -321,6 +340,22 @@ final class QuoteModeController {
     }
 
     // MARK: Bild zum Speichern und Teilen
+
+    /// Abzug des Fensters, genau wie auf dem Bildschirm (Glas und
+    /// gezeichneter Hintergrund inklusive). Das Overlay blendet vorher die
+    /// Knöpfe aus. Die Statusleiste ist in der Ansicht ohnehin verborgen.
+    func screenImage() -> UIImage? {
+        guard let window = webView?.window, window.bounds.width > 0, window.bounds.height > 0 else { return nil }
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = window.traitCollection.displayScale
+        format.opaque = true
+        format.preferredRange = .standard
+        var drawn = false
+        let image = UIGraphicsImageRenderer(bounds: window.bounds, format: format).image { _ in
+            drawn = window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }
+        return drawn ? image : nil
+    }
 
     /// So wie die Ansicht, nur ohne Knöpfe: verschwommener Artikel, getönt,
     /// der Text in der Mitte. Wird beim ersten Bedarf gebaut und gemerkt.
@@ -479,6 +514,7 @@ enum QuoteBackdrop: Int, CaseIterable {
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
         format.opaque = true
+        format.preferredRange = .standard
         return UIGraphicsImageRenderer(size: size, format: format).image { ctx in
             let cg = ctx.cgContext
             let rect = CGRect(origin: .zero, size: size)
@@ -643,7 +679,8 @@ enum QuoteImageRenderer {
         let origin = geometry.bounds.origin
         let size = geometry.bounds.size
         let format = UIGraphicsImageRendererFormat()
-        format.scale = snapshot.scale
+        // Größer abfotografiert (siehe `capture`): Auflösung behalten.
+        format.scale = snapshot.scale * max(1, snapshot.size.width / max(1, size.width))
         format.opaque = false
         return UIGraphicsImageRenderer(size: size, format: format).image { _ in
             let path = UIBezierPath()
@@ -667,6 +704,7 @@ enum QuoteImageRenderer {
         let format = UIGraphicsImageRendererFormat()
         format.scale = scale
         format.opaque = true
+        format.preferredRange = .standard
         return UIGraphicsImageRenderer(size: canvas, format: format).image { ctx in
             style.tint.setFill()
             ctx.fill(rect)
@@ -876,6 +914,14 @@ private struct QuoteGlassOverlay: View {
     @State private var dragOffset: CGSize = .zero
     /// Feld für Schrift, Größe und Farbe offen.
     @State private var showStylePanel = false
+    /// Zoom, solange zwei Finger liegen (danach in `controller.textScale`).
+    @State private var pinchScale: CGFloat = 1
+    /// Gerade (oder eben noch) gezoomt: kein Hintergrund-Wischen auslösen.
+    @State private var pinching = false
+    /// Größter Zoom, bei dem das Zitat noch in den Bildschirm passt.
+    @State private var scaleLimit: CGFloat = QuoteModeController.scaleRange.upperBound
+    /// Knöpfe kurz ausgeblendet, während das Bild abgezogen wird.
+    @State private var exporting = false
 
     private enum SaveState { case idle, saving, saved }
 
@@ -894,8 +940,9 @@ private struct QuoteGlassOverlay: View {
                     .opacity(lifted ? 1 : 0)
                 quoteText(canvas: geo.size, origin: origin)
                 hint
+                    .opacity(exporting ? 0 : 1)
                 buttons
-                    .opacity(lifted ? 1 : 0)
+                    .opacity(lifted && !exporting ? 1 : 0)
             }
             .frame(width: geo.size.width, height: geo.size.height)
         }
@@ -904,9 +951,26 @@ private struct QuoteGlassOverlay: View {
         // Horizontal wischen: anderer Hintergrund hinter dem Glas.
         .gesture(DragGesture(minimumDistance: 24).onEnded { value in
             let dx = value.translation.width, dy = value.translation.height
-            guard backdropsAvailable, abs(dx) > 50, abs(dx) > abs(dy) else { return }
+            guard backdropsAvailable, !pinching, abs(dx) > 50, abs(dx) > abs(dy) else { return }
             stepBackdrop(dx < 0 ? 1 : -1)
         })
+        // Zwei Finger: Zitat zoomen (nur die Darstellung, nicht die Schriftgröße).
+        .simultaneousGesture(MagnifyGesture()
+            .onChanged { value in
+                pinching = true
+                pinchScale = value.magnification
+            }
+            .onEnded { value in
+                let range = QuoteModeController.scaleRange
+                let scale = min(max(controller.textScale * value.magnification, range.lowerBound),
+                                min(range.upperBound, scaleLimit))
+                controller.textScale = scale
+                pinchScale = 1
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(300))
+                    pinching = false
+                }
+            })
         .onTapGesture {
             // Erst das Schrift-Feld schließen, dann die Ansicht.
             if showStylePanel {
@@ -1022,7 +1086,9 @@ private struct QuoteGlassOverlay: View {
     @ViewBuilder
     private func quoteText(canvas: CGSize, origin: CGPoint) -> some View {
         if let image = controller.quoteImage {
-            let target = targetFrame(for: image.size, canvas: canvas)
+            let fitted = targetFrame(for: image.size, canvas: canvas)
+            let limit = Self.maxScale(for: fitted.size, canvas: canvas)
+            let target = Self.scaled(fitted, by: min(controller.textScale * pinchScale, limit))
             // Verschoben: erst die gemerkte Lage, beim Ziehen dazu der Finger.
             let settled = Self.clamped(target.offsetBy(dx: controller.textOffset.width,
                                                        dy: controller.textOffset.height), in: canvas)
@@ -1037,8 +1103,12 @@ private struct QuoteGlassOverlay: View {
                 .shadow(color: bgColor.opacity(lifted && controller.textGlow ? 0.9 : 0), radius: 3)
                 .contentShape(Rectangle())
                 .gesture(DragGesture(minimumDistance: 4)
-                    .onChanged { dragOffset = $0.translation }
+                    .onChanged { value in
+                        // Beim Zoomen mit zwei Fingern nicht verschieben.
+                        dragOffset = pinching ? .zero : value.translation
+                    }
                     .onEnded { value in
+                        guard !pinching else { dragOffset = .zero; return }
                         let end = Self.clamped(settled.offsetBy(dx: value.translation.width,
                                                                 dy: value.translation.height), in: canvas)
                         controller.textOffset = CGSize(width: end.minX - target.minX, height: end.minY - target.minY)
@@ -1049,6 +1119,7 @@ private struct QuoteGlassOverlay: View {
                 .accessibilityLabel(controller.text)
                 .accessibilityAddTraits(.isStaticText)
                 .onChange(of: settled, initial: true) { _, rect in controller.setLayoutFrame(rect) }
+                .onChange(of: limit, initial: true) { _, value in scaleLimit = value }
             if let caption = controller.caption {
                 // Autor/Quelle: linksbündig unter dem Zitat, wie im Bild.
                 let width = max(0, canvas.width - frame.minX - 16)
@@ -1066,6 +1137,21 @@ private struct QuoteGlassOverlay: View {
                     .transition(.opacity)
             }
         }
+    }
+
+    /// `rect` um seine Mitte vergrößert bzw. verkleinert.
+    private static func scaled(_ rect: CGRect, by scale: CGFloat) -> CGRect {
+        guard scale != 1 else { return rect }
+        let w = rect.width * scale, h = rect.height * scale
+        return CGRect(x: rect.midX - w / 2, y: rect.midY - h / 2, width: w, height: h)
+    }
+
+    /// Größter Zoom, bei dem ein Zitat der Größe `size` noch ganz zu sehen ist.
+    private static func maxScale(for size: CGSize, canvas: CGSize) -> CGFloat {
+        let range = QuoteModeController.scaleRange
+        guard size.width > 0, size.height > 0 else { return range.upperBound }
+        let fit = min((canvas.width - 16) / size.width, (canvas.height - 16) / size.height)
+        return min(range.upperBound, max(1, fit))
     }
 
     /// Hält das Zitat mit etwas Rand im Bildschirm.
@@ -1259,15 +1345,40 @@ private struct QuoteGlassOverlay: View {
             QuoteActionButton(title: L("articleReader.quote.share"),
                               systemImage: "square.and.arrow.up",
                               height: Self.buttonHeight, accent: accent, onAccent: onAccent) {
-                if let image = controller.makeShareImage() { QuoteImageActions.share(image) }
+                Task { @MainActor in
+                    if let image = await exportImage() { QuoteImageActions.share(image) }
+                }
             }
         }
     }
 
+    /// Bild zum Speichern und Teilen. Mit gezeichnetem Hintergrund ein Abzug
+    /// des Bildschirms (ohne Knöpfe), also genau das, was man sieht; mit dem
+    /// Artikel dahinter neu zusammengesetzt, weil der Abzug den Inhalt des
+    /// WebViews nicht zuverlässig mitnimmt.
+    private func exportImage() async -> UIImage? {
+        guard !exporting else { return nil }
+        if backdropsAvailable, controller.backdrop != .article {
+            var instant = Transaction()
+            instant.disablesAnimations = true
+            withTransaction(instant) { exporting = true }
+            // Einen Bildaufbau abwarten, damit die Knöpfe sicher weg sind.
+            try? await Task.sleep(for: .milliseconds(80))
+            let image = controller.screenImage()
+            withTransaction(instant) { exporting = false }
+            if let image { return image }
+        }
+        return controller.makeShareImage()
+    }
+
     private func save() {
-        guard saveState == .idle, let image = controller.makeShareImage() else { return }
+        guard saveState == .idle else { return }
         saveState = .saving
         Task { @MainActor in
+            guard let image = await exportImage() else {
+                saveState = .idle
+                return
+            }
             switch await QuoteImageActions.save(image) {
             case .saved:
                 withAnimation(.easeInOut(duration: 0.2)) { saveState = .saved }
