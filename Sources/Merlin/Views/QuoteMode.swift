@@ -966,13 +966,16 @@ private struct QuoteGlassOverlay: View {
             ZStack(alignment: .topLeading) {
                 glass(size: geo.size)
                     .opacity(lifted ? 1 : 0)
+                // Beim Drehen bleibt das Glas (deckend, solange neu abgegriffen
+                // wird); nur Text und Knöpfe warten auf das neue Bild.
                 quoteText(canvas: geo.size, origin: origin)
+                    .opacity(controller.isRecapturing ? 0 : 1)
                 topBar
-                    .opacity(lifted && !exporting ? 1 : 0)
+                    .opacity(lifted && !exporting && !controller.isRecapturing ? 1 : 0)
                 closeButton
-                    .opacity(lifted && !exporting ? 1 : 0)
+                    .opacity(lifted && !exporting && !controller.isRecapturing ? 1 : 0)
                 buttons
-                    .opacity(lifted && !exporting ? 1 : 0)
+                    .opacity(lifted && !exporting && !controller.isRecapturing ? 1 : 0)
             }
             .frame(width: geo.size.width, height: geo.size.height)
             .onChange(of: geo.size, initial: true) { _, size in
@@ -1016,7 +1019,6 @@ private struct QuoteGlassOverlay: View {
                 controller.close()
             }
         }
-        .opacity(controller.isRecapturing ? 0 : 1)
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isModal)
         .accessibilityAction(.escape) { controller.close() }
@@ -1143,16 +1145,20 @@ private struct QuoteGlassOverlay: View {
     /// solange es kein Bild gibt.
     @ViewBuilder
     private func glass(size: CGSize) -> some View {
-        if reduceTransparency || controller.style.opaque {
+        if reduceTransparency || controller.style.opaque || controller.isRecapturing {
+            // Während des Drehens und Neu-Abgreifens: einfarbig statt eines
+            // Bildes im alten Format (und nie der Artikel dahinter).
             bgColor
-        } else if let image = controller.glassImage() {
+        } else if let image = controller.glassImage(),
+                  (image.size.width > image.size.height) == (size.width > size.height) {
             Image(uiImage: image)
                 .resizable()
                 .frame(width: size.width, height: size.height)
                 .id(controller.backdrop)
                 .transition(.opacity)
         } else {
-            Rectangle().fill(.ultraThinMaterial)
+            // Noch kein (passendes) Bild: Reader-Farbe, damit der Artikel nicht durchscheint.
+            bgColor
         }
     }
 
