@@ -99,6 +99,10 @@ final class QuoteModeController {
     /// Zählt jedes fertige Abgreifen hoch; das Overlay blendet damit altes und
     /// neues Bild über (nach dem Drehen) statt zu springen.
     private(set) var generation = 0
+    /// Das alte Glas, das nach dem Drehen noch über dem neuen liegt und
+    /// ausblendet; so scheint beim Überblenden nie der Artikel durch.
+    private(set) var outgoingGlass: UIImage?
+    private(set) var outgoingAlpha: Double = 0
     /// Schließen angefordert: das Overlay spielt die Animation und ruft `finish()`.
     private(set) var isClosing = false
     /// Hinweis „Tippen zum Schließen“ (nur beim allerersten Mal).
@@ -264,6 +268,8 @@ final class QuoteModeController {
         layoutFrame = nil
         background = nil
         glassCache = nil
+        outgoingGlass = nil
+        outgoingAlpha = 0
         shareImage = nil
         text = ""
         if wasActive {
@@ -353,6 +359,8 @@ final class QuoteModeController {
             ? Self.pageBackground(tint: style.tint, window: window, page: page)
             : Self.snapshot(of: window, page: page)
         let newText = QuoteImageRenderer.cutOut(snapshot, geometry: geometry)
+        // Das alte Glas merken, bevor der neue Hintergrund gilt.
+        let oldGlass = recapturing ? glassImage() : nil
         let apply = { [self] in
             background = newBackground
             glassCache = nil
@@ -369,11 +377,18 @@ final class QuoteModeController {
             generation += 1
             isRecapturing = false
         }
-        if recapturing {
-            withAnimation(.easeInOut(duration: 0.25)) { apply() }
-        } else {
-            apply()
-        }
+        guard recapturing else { return apply() }
+        // Neues Glas sofort voll deckend unter das alte legen (ohne Animation),
+        // erst dann das alte ausblenden.
+        outgoingGlass = oldGlass
+        outgoingAlpha = 1
+        withAnimation(.easeInOut(duration: 0.25)) { apply() }
+        let stamp = generation
+        try? await Task.sleep(for: .milliseconds(50))
+        guard stamp == generation, isActive else { return }
+        withAnimation(.easeInOut(duration: 0.3)) { outgoingAlpha = 0 }
+        try? await Task.sleep(for: .milliseconds(350))
+        if stamp == generation { outgoingGlass = nil }
     }
 
     /// Hintergrund aus dem Artikel-Snapshot allein, auf der Reader-Farbe.
@@ -1204,19 +1219,32 @@ private struct QuoteGlassOverlay: View {
         } else if let image = controller.glassImage() {
             // Gefüllt und beschnitten: nach dem Drehen füllt das alte, ohnehin
             // weiche Bild den neuen Bildschirm, bis das neue fertig ist.
-            Color.clear
-                .overlay {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFill()
+            // Unten das aktuelle Glas, darüber (nur nach dem Drehen) das alte,
+            // das ausblendet.
+            ZStack {
+                glassFill(image)
+                    .id(controller.backdrop)
+                    .transition(.opacity)
+                if let old = controller.outgoingGlass {
+                    glassFill(old)
+                        .opacity(controller.outgoingAlpha)
+                        .allowsHitTesting(false)
                 }
-                .clipped()
-                .id("\(controller.backdrop.rawValue)-\(controller.generation)")
-                .transition(.opacity)
+            }
         } else {
             // Noch kein Bild: Reader-Farbe, damit der Artikel nicht durchscheint.
             bgColor
         }
+    }
+
+    private func glassFill(_ image: UIImage) -> some View {
+        Color.clear
+            .overlay {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            }
+            .clipped()
     }
 
     @ViewBuilder

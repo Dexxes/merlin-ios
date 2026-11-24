@@ -178,8 +178,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Quote card: rotating the phone no longer flashes the article or a blank
-  screen. The old text and glass stay in place, fitted to the new screen, and
-  cross-fade to the freshly captured version as soon as it is ready.
+  screen. The old text and glass stay in place, fitted to the new screen; the
+  new glass is drawn underneath, fully opaque, and only then does the old one
+  fade out.
 - App tour: the step card no longer runs off the screen in landscape or with
   large text sizes (its text scrolls instead), and VoiceOver stays inside the
   tour and reads the step number. The retention step is no longer shown with
