@@ -96,6 +96,9 @@ final class QuoteModeController {
     private(set) var insets = UIEdgeInsets.zero
     /// Nach dem Drehen wird neu abgegriffen; das Overlay ist solange verborgen.
     private(set) var isRecapturing = false
+    /// Zählt jedes fertige Abgreifen hoch; das Overlay blendet damit altes und
+    /// neues Bild über (nach dem Drehen) statt zu springen.
+    private(set) var generation = 0
     /// Schließen angefordert: das Overlay spielt die Animation und ruft `finish()`.
     private(set) var isClosing = false
     /// Hinweis „Tippen zum Schließen“ (nur beim allerersten Mal).
@@ -164,7 +167,7 @@ final class QuoteModeController {
     var quoteImage: UIImage? {
         guard let capturedImage else { return nil }
         guard textFont != .original, !text.isEmpty else { return capturedImage }
-        let canvasWidth = background?.size.width ?? webView?.window?.bounds.width ?? capturedImage.size.width
+        let canvasWidth = webView?.window?.bounds.width ?? background?.size.width ?? capturedImage.size.width
         let side = max(insets.left, insets.right, 16)
         let width = min(max(120, canvasWidth - 2 * side - 8), 620)
         let size = effectiveTextSize
@@ -272,13 +275,25 @@ final class QuoteModeController {
     /// Text und Hintergrund neu abgreifen.
     func recapture() {
         guard isActive, !isClosing, capturedImage != nil else { return }
+        // Das alte Bild bleibt stehen (das Overlay passt es ins neue Format ein),
+        // bis das neue fertig ist.
         isRecapturing = true
-        textOffset = .zero
-        textScale = 1
         Task { @MainActor [weak self] in
-            // Drehung und Neu-Umbruch abwarten.
-            try? await Task.sleep(for: .milliseconds(350))
             await self?.capture()
+        }
+    }
+
+    /// Wartet, bis der WebView nach dem Drehen seine neue Größe hat und sie
+    /// kurz behält (Neu-Umbruch), höchstens ~0,8 s.
+    private func waitForLayoutToSettle() async {
+        var last = webView?.bounds.size ?? .zero
+        var stable = 0
+        for _ in 0..<20 {
+            try? await Task.sleep(for: .milliseconds(40))
+            let now = webView?.bounds.size ?? .zero
+            stable = now == last ? stable + 1 : 0
+            last = now
+            if stable >= 3 { return }
         }
     }
 
@@ -287,8 +302,14 @@ final class QuoteModeController {
     private func capture() async {
         captureID += 1
         let id = captureID
-        // iOS-Menü, Auswahl-Ton und ausgeblendete Leisten sind dann sicher weg.
-        try? await Task.sleep(for: .milliseconds(250))
+        let recapturing = isRecapturing
+        if recapturing {
+            // Nach dem Drehen: Größe abwarten statt fester Zeiten.
+            await waitForLayoutToSettle()
+        } else {
+            // iOS-Menü, Auswahl-Ton und ausgeblendete Leisten sind dann sicher weg.
+            try? await Task.sleep(for: .milliseconds(250))
+        }
         guard id == captureID, isActive, let webView else { return }
         let json = (try? await webView.evaluateJavaScript(
             "window.merlinQuoteRects?window.merlinQuoteRects():''")) as? String ?? ""
@@ -325,14 +346,48 @@ final class QuoteModeController {
         }
         guard id == captureID, isActive else { return }
         let window = webView.window
-        background = Self.snapshot(of: window, page: page)
-        glassCache = nil
-        insets = window?.safeAreaInsets ?? .zero
-        sourceFrame = webView.convert(geometry.bounds, to: nil)
-        text = geometry.text
-        shareImage = nil
-        capturedImage = QuoteImageRenderer.cutOut(snapshot, geometry: geometry)
-        isRecapturing = false
+        // Beim Drehen liegt das Overlay über dem Fenster: kein Fenster-Abzug,
+        // sondern der Artikel allein auf der Reader-Farbe (Leisten sind in der
+        // Zitat-Tafel ohnehin weg).
+        let newBackground = recapturing
+            ? Self.pageBackground(tint: style.tint, window: window, page: page)
+            : Self.snapshot(of: window, page: page)
+        let newText = QuoteImageRenderer.cutOut(snapshot, geometry: geometry)
+        let apply = { [self] in
+            background = newBackground
+            glassCache = nil
+            insets = window?.safeAreaInsets ?? .zero
+            sourceFrame = webView.convert(geometry.bounds, to: nil)
+            text = geometry.text
+            shareImage = nil
+            capturedImage = newText
+            if recapturing {
+                // Neues Format, neues Bild: Lage und Zoom beginnen neu.
+                textOffset = .zero
+                textScale = 1
+            }
+            generation += 1
+            isRecapturing = false
+        }
+        if recapturing {
+            withAnimation(.easeInOut(duration: 0.25)) { apply() }
+        } else {
+            apply()
+        }
+    }
+
+    /// Hintergrund aus dem Artikel-Snapshot allein, auf der Reader-Farbe.
+    private static func pageBackground(tint: UIColor, window: UIWindow?,
+                                       page: (image: UIImage, frame: CGRect)?) -> UIImage? {
+        guard let window, window.bounds.width > 0 else { return nil }
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = window.traitCollection.displayScale
+        format.opaque = true
+        return UIGraphicsImageRenderer(bounds: window.bounds, format: format).image { ctx in
+            tint.setFill()
+            ctx.fill(window.bounds)
+            page?.image.draw(in: page?.frame ?? .zero)
+        }
     }
 
     private static func snapshot(of window: UIWindow?, page: (image: UIImage, frame: CGRect)?) -> UIImage? {
@@ -412,7 +467,7 @@ final class QuoteModeController {
     /// Auflösung 1×: er liegt ohnehin verschwommen unter dem Glas.
     func backdropImage(_ backdrop: QuoteBackdrop) -> UIImage? {
         guard backdrop != .article else { return nil }
-        let size = background?.size ?? webView?.window?.bounds.size ?? .zero
+        let size = webView?.window?.bounds.size ?? background?.size ?? .zero
         if size != backdropCacheSize {
             backdropCache = [:]
             backdropCacheSize = size
@@ -966,16 +1021,15 @@ private struct QuoteGlassOverlay: View {
             ZStack(alignment: .topLeading) {
                 glass(size: geo.size)
                     .opacity(lifted ? 1 : 0)
-                // Beim Drehen bleibt das Glas (deckend, solange neu abgegriffen
-                // wird); nur Text und Knöpfe warten auf das neue Bild.
+                // Beim Drehen bleibt alles stehen (Text eingepasst, Glas gefüllt)
+                // und wird durch das neu abgegriffene Bild überblendet.
                 quoteText(canvas: geo.size, origin: origin)
-                    .opacity(controller.isRecapturing ? 0 : 1)
                 topBar
-                    .opacity(lifted && !exporting && !controller.isRecapturing ? 1 : 0)
+                    .opacity(lifted && !exporting ? 1 : 0)
                 closeButton
-                    .opacity(lifted && !exporting && !controller.isRecapturing ? 1 : 0)
+                    .opacity(lifted && !exporting ? 1 : 0)
                 buttons
-                    .opacity(lifted && !exporting && !controller.isRecapturing ? 1 : 0)
+                    .opacity(lifted && !exporting ? 1 : 0)
             }
             .frame(width: geo.size.width, height: geo.size.height)
             .onChange(of: geo.size, initial: true) { _, size in
@@ -1145,19 +1199,22 @@ private struct QuoteGlassOverlay: View {
     /// solange es kein Bild gibt.
     @ViewBuilder
     private func glass(size: CGSize) -> some View {
-        if reduceTransparency || controller.style.opaque || controller.isRecapturing {
-            // Während des Drehens und Neu-Abgreifens: einfarbig statt eines
-            // Bildes im alten Format (und nie der Artikel dahinter).
+        if reduceTransparency || controller.style.opaque {
             bgColor
-        } else if let image = controller.glassImage(),
-                  (image.size.width > image.size.height) == (size.width > size.height) {
-            Image(uiImage: image)
-                .resizable()
-                .frame(width: size.width, height: size.height)
-                .id(controller.backdrop)
+        } else if let image = controller.glassImage() {
+            // Gefüllt und beschnitten: nach dem Drehen füllt das alte, ohnehin
+            // weiche Bild den neuen Bildschirm, bis das neue fertig ist.
+            Color.clear
+                .overlay {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                }
+                .clipped()
+                .id("\(controller.backdrop.rawValue)-\(controller.generation)")
                 .transition(.opacity)
         } else {
-            // Noch kein (passendes) Bild: Reader-Farbe, damit der Artikel nicht durchscheint.
+            // Noch kein Bild: Reader-Farbe, damit der Artikel nicht durchscheint.
             bgColor
         }
     }
@@ -1213,6 +1270,8 @@ private struct QuoteGlassOverlay: View {
                 .scaleEffect(dragging ? 1.03 : 1)
                 .offset(shift)
                 .position(x: frame.midX, y: frame.midY)
+                .id(controller.generation)
+                .transition(.opacity)
                 .opacity(reduceMotion && !lifted ? 0 : 1)
                 .accessibilityLabel(controller.text)
                 .accessibilityAddTraits(.isStaticText)
