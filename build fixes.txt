@@ -1,0 +1,7 @@
+Alle gefixten Probleme in der Kette:
+
+Verwaiste Prozesse + .build auf langsamem /mnt/c (9p) → .build als Symlink auf natives WSL-FS (~/build-cache/merlin-ios)
+actool/Assets.xcassets nicht unterstützt unter Linux (xtool#310) → Package.swift schließt den Ordner unter Linux komplett aus
+Swift-Toolchain zu alt für das SDK → auf 6.4.3 aktualisiert (lokal per .swift-version gepinnt)
+NEON-Builtin-Konstanten-Mismatch zwischen Apple-SDK-Headern und Swiftlys Clang → betroffene ARM-Intrinsic-Header lokal ersetzt (Original-Backup unter .apple-arm-headers-backup)
+Signing-Fehler bei der Share-Extension (zsign-Bug, xtool#379) → xtool auf 2.0.0-beta.1 aktualisiert
