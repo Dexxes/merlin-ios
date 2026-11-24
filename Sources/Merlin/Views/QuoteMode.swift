@@ -948,6 +948,10 @@ private struct QuoteGlassOverlay: View {
     @State private var scaleLimit: CGFloat = QuoteModeController.scaleRange.upperBound
     /// Knöpfe kurz ausgeblendet, während das Bild abgezogen wird.
     @State private var exporting = false
+    /// Bildschirmgröße des Overlays (Hoch- oder Querformat).
+    @State private var canvasSize: CGSize = .zero
+    /// Hinweis „Für 16:9 Handy drehen“ bzw. „Für 9:16 …“, kurz nach dem Öffnen.
+    @State private var showRotateHint = false
 
     private enum SaveState { case idle, saving, saved }
 
@@ -971,6 +975,13 @@ private struct QuoteGlassOverlay: View {
                     .opacity(lifted && !exporting ? 1 : 0)
             }
             .frame(width: geo.size.width, height: geo.size.height)
+            .onChange(of: geo.size, initial: true) { _, size in
+                // Gedreht: der Hinweis hat sich erledigt.
+                if (size.width > size.height) != (canvasSize.width > canvasSize.height) {
+                    showRotateHint = false
+                }
+                canvasSize = size
+            }
         }
         .ignoresSafeArea()
         .contentShape(Rectangle())
@@ -1019,7 +1030,13 @@ private struct QuoteGlassOverlay: View {
                 if controller.showHint {
                     try? await Task.sleep(for: .milliseconds(900))
                     withAnimation(.easeOut(duration: 0.3)) { controller.showHint = false }
+                    try? await Task.sleep(for: .milliseconds(300))
                 }
+                // Bei jedem Öffnen: Hinweis aufs andere Format, ein paar Sekunden lang.
+                guard !controller.isClosing, controller.isActive else { return }
+                withAnimation(.easeOut(duration: 0.3)) { showRotateHint = true }
+                try? await Task.sleep(for: .seconds(3))
+                withAnimation(.easeOut(duration: 0.4)) { showRotateHint = false }
             }
         }
         .onChange(of: controller.isClosing) { _, closing in
@@ -1069,6 +1086,7 @@ private struct QuoteGlassOverlay: View {
                 backdropDots
             }
             hint
+            rotateHint
         }
         .padding(.top, max(controller.insets.top, 12) + 6)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -1266,6 +1284,22 @@ private struct QuoteGlassOverlay: View {
     private var hint: some View {
         if controller.showHint {
             Text(L("articleReader.quote.hint"))
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(.thinMaterial, in: Capsule())
+                .transition(.opacity)
+        }
+    }
+
+    /// „Für 16:9 Handy drehen“ im Hochformat, „Für 9:16 …“ im Querformat.
+    @ViewBuilder
+    private var rotateHint: some View {
+        if showRotateHint {
+            let landscape = canvasSize.width > canvasSize.height
+            Label(L(landscape ? "articleReader.quote.rotateTo916" : "articleReader.quote.rotateTo169"),
+                  systemImage: landscape ? "iphone" : "iphone.landscape")
                 .font(.footnote.weight(.medium))
                 .foregroundStyle(.primary)
                 .padding(.horizontal, 14)

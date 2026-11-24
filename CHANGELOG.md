@@ -26,7 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   quote can be dragged anywhere on the screen and pinched to zoom it (just
   the view, the font size setting stays as it is); the saved image keeps
   position and zoom, and with a drawn background it shows exactly what is
-  on screen. An X button at the top right or a tap anywhere else returns to the article; the
+  on screen. A few seconds after opening, a hint suggests turning the phone
+  for the other format ("Rotate phone for 16:9" in portrait, "... for 9:16" in
+  landscape), so images come out as 9:16 or 16:9. An X button at the top
+  right or a tap anywhere else returns to the article; the
   selection is gone afterwards. Works for new selections and tapped
   highlights, in portrait and landscape, follows the reader theme, and uses
   a solid background with "Reduce Transparency". With VoiceOver every

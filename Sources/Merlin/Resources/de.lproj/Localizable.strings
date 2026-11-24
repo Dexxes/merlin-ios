@@ -116,6 +116,8 @@
 "articleReader.quote.backdrop.aurora" = "Polarlicht";
 "articleReader.quote.backdrop.candy" = "Bonbon";
 "articleReader.quote.hint" = "Tippen zum Schließen";
+"articleReader.quote.rotateTo169" = "Für 16:9 Handy drehen";
+"articleReader.quote.rotateTo916" = "Für 9:16 Handy drehen";
 "articleReader.quote.close" = "Schließen";
 "articleReader.quote.saveFailed" = "Das Bild konnte nicht gespeichert werden.";
 "articleReader.quote.photosDenied.title" = "Kein Zugriff auf Fotos";
