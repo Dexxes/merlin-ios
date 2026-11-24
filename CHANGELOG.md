@@ -26,7 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   quote can be dragged anywhere on the screen and pinched to zoom it (just
   the view, the font size setting stays as it is); the saved image keeps
   position and zoom, and with a drawn background it shows exactly what is
-  on screen. Tapping anywhere else returns to the article; the
+  on screen. A few seconds after opening, a hint suggests turning the phone
+  for the other format ("Rotate phone for 16:9" in portrait, "... for 9:16" in
+  landscape), so images come out as 9:16 or 16:9. An X button at the top
+  right or a tap anywhere else returns to the article; the
   selection is gone afterwards. Works for new selections and tapped
   highlights, in portrait and landscape, follows the reader theme, and uses
   a solid background with "Reduce Transparency". With VoiceOver every
@@ -142,6 +145,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "Edit tags" list the tags as an indented tree instead of chips.
 
 ### Changed
+- App tour updated to the current app: a new step explains the reader's
+  bottom bar (back, archive, hands-free reading, share; landscape action
+  button). The demo menus now show Continue reading, App Tour, Find in
+  Article and Create Public Link, and the texts mention switching between
+  Text/Video/Audio, sharing files, paper texture and installed fonts, and
+  resizing highlights. A "Skip Tour" link ends the tour at any step.
+  On iOS 26 the step card and its buttons use Liquid Glass ("Next" in the
+  accent colour).
 - App icon now has a purple background (#6C4AD0) instead of transparency,
   which App Store Connect rejects. The app itself keeps showing the
   transparent logo, including in the article list's title bar.
@@ -166,6 +177,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - "Open via archive.ph" in the reader's side menu.
 
 ### Fixed
+- App tour: the step card no longer runs off the screen in landscape or with
+  large text sizes (its text scrolls instead), and VoiceOver stays inside the
+  tour and reads the step number. The retention step is no longer shown with
+  the Merlin server, which has no retention period to set.
 - Offline, the side menu no longer shows 0 for every count and no tags: the
   last known counts and tags are stored on the device and shown until the
   server answers again, also after a cold start without a connection. A
