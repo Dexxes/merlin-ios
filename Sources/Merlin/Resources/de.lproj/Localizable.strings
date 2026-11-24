@@ -304,6 +304,12 @@
 "onboarding.accentColor.body" = "Wähle zum Schluss deine Akzentfarbe für Artikelkopf, untere Leiste und Fortschrittsbalken. Ändern kannst du sie jederzeit im Lesemenü unter Erscheinungsbild.";
 "onboarding.accentColor.custom" = "Akzentfarbe";
 "onboarding.accentColor.title" = "Deine Akzentfarbe";
+"onboarding.crossPromo.body" = "Speichere unterwegs über das Teilen-Menü, am Rechner im Browser und aus E-Mails in Thunderbird. Lies dann auf jedem Gerät weiter, wo du aufgehört hast, mit denselben Markierungen und Schlagworten.";
+"onboarding.crossPromo.shareLink" = "Link teilen";
+"onboarding.crossPromo.thunderbird" = "Thunderbird: Links und ganze E-Mails speichern";
+"onboarding.crossPromo.title" = "Merlin entfaltet sich im Zusammenspiel";
+"onboarding.crossPromo.web" = "Im Browser: deine Leseliste auf deinem Server, mit Kommentaren und Freigaben";
+"onboarding.crossPromo.webAction" = "Öffnen";
 "onboarding.buttons.skip" = "Tour überspringen";
 "onboarding.buttons.getStarted" = "Los geht's";
 "onboarding.bottomBar.title" = "Untere Leiste";

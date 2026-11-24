@@ -47,6 +47,8 @@ private struct TourStep {
     var cardOnTop: Bool = false
     /// Löschfrist-Schritt (entfällt ohne Löschfrist auf dem Server).
     var isRetention: Bool = false
+    /// Zeigt in der Karte die anderen Merlin-Apps (Web, Thunderbird, …).
+    var showsCrossPromo: Bool = false
 }
 
 /// Text des Löschfrist-Schritts hängt von den Fristen des Servers ab
@@ -126,6 +128,12 @@ private func makeTourSteps(retentionBody: String, isCardView: Bool,
              body: L("onboarding.step13.body"),
              phase: .list, anchorKey: nil),
 
+    TourStep(systemImage: "laptopcomputer.and.iphone",
+             title: L("onboarding.crossPromo.title"),
+             body: L("onboarding.crossPromo.body"),
+             phase: .list, anchorKey: nil,
+             showsCrossPromo: true),
+
     TourStep(systemImage: "paintpalette",
              title: L("onboarding.accentColor.title"),
              body: L("onboarding.accentColor.body"),
@@ -134,6 +142,23 @@ private func makeTourSteps(retentionBody: String, isCardView: Bool,
 ].filter {
     !(isCardView && $0.isListViewOnly) && (showRetention || !$0.isRetention)
 } }
+
+/// Store-Seiten der anderen Merlin-Apps für den Schritt „Merlin entfaltet sich
+/// im Zusammenspiel“. Nur, was es öffentlich gibt: Die Firefox-Erweiterung ist
+/// noch nicht gelistet, Chrome unveröffentlicht. Android wird hier bewusst
+/// nicht genannt (App Review Guideline 2.3.10).
+private enum MerlinPlatformLinks {
+    static let thunderbird = URL(string: "https://addons.thunderbird.net/thunderbird/addon/merlin/")!
+
+    /// Web-Oberfläche auf dem angemeldeten Server: bei Nextcloud die App unter
+    /// `/index.php/apps/merlin/`, beim Standalone-Server die Startseite.
+    static var web: URL? {
+        let base = CredentialsStore.shared.nextcloudUrl
+        guard !base.isEmpty else { return nil }
+        let path = CredentialsStore.shared.supportsNextcloudOnlyFeatures ? "/index.php/apps/merlin/" : "/"
+        return URL(string: base + path)
+    }
+}
 
 /// Vorschläge für die Akzentfarbe im letzten Tour-Schritt; der Standard
 /// (`#FF3B30`) steht vorn. Jede andere Farbe gibt es über den ColorPicker.
@@ -1287,8 +1312,64 @@ struct OnboardingTourView: View {
                 accentColorChooser
                     .padding(.bottom, 24)
             }
+
+            if step.showsCrossPromo {
+                crossPromoList
+                    .padding(.bottom, 24)
+            }
         }
         .frame(maxWidth: .infinity)
+    }
+
+    // MARK: Other Merlin apps
+
+    /// Die anderen Merlin-Apps, je Zeile Nutzen und Aktion. Die Web-Oberfläche
+    /// öffnet sich direkt; Erweiterungen installiert man am Rechner, deshalb
+    /// wird ihr Store-Link geteilt (Mail, Nachrichten, AirDrop) statt geöffnet.
+    private var crossPromoList: some View {
+        VStack(spacing: 10) {
+            if let web = MerlinPlatformLinks.web {
+                crossPromoRow(icon: "globe", text: L("onboarding.crossPromo.web")) {
+                    Link(destination: web) { crossPromoActionLabel(L("onboarding.crossPromo.webAction")) }
+                }
+            }
+            crossPromoRow(icon: "envelope", text: L("onboarding.crossPromo.thunderbird")) {
+                ShareLink(item: MerlinPlatformLinks.thunderbird) {
+                    crossPromoActionLabel(L("onboarding.crossPromo.shareLink"))
+                }
+            }
+        }
+    }
+
+    private func crossPromoRow<Action: View>(icon: String, text: String,
+                                             @ViewBuilder action: () -> Action) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 20, weight: .medium))
+                .foregroundStyle(.white)
+                .frame(width: 28)
+                .accessibilityHidden(true)
+            Text(text)
+                .font(.footnote)
+                .foregroundStyle(.white.opacity(0.9))
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            action()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func crossPromoActionLabel(_ title: String) -> some View {
+        Text(title)
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Color(hexString: accentColorHex) ?? .red, in: Capsule())
+            .fixedSize()
     }
 
     // MARK: Accent color
