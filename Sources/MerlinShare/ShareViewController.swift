@@ -1,55 +1,24 @@
 import UIKit
 import UniformTypeIdentifiers
-import Security
+import MerlinShared
 
 class ShareViewController: UIViewController {
 
     // MARK: – Keychain credential store
-    // Reads from the same Keychain access group as the main Merlin app.
-    // No App Groups required — Keychain sharing is provisioned via xtool.
+    // Same store as CredentialsStore in the main app (MerlinShared): the
+    // shared app group first, then the app's old Keychain group. The old
+    // fixed group alone was not readable here once xtool signed the extension
+    // with its own keychain-access-groups (see KeychainAccessGroups).
 
-    // Identisch mit dem accessGroup-Wert in CredentialsStore der Hauptapp.
-    private let keychainAccessGroup = "2R735BXV66.XTL-2R735BXV66.dev.merlin.app"
-    private let keychainService     = "dev.merlin.app"
-
-    private enum Account: String {
-        case nextcloudUrl = "nextcloudUrl"
-        case username     = "username"
-        case appPassword  = "appPassword"
-        case backendKind  = "backendKind"
-    }
+    private let keychain = SharedKeychain.current
+    private typealias Account = SharedKeychain.Account
 
     private func keychainRead(_ account: Account) -> String? {
-        let query: [CFString: Any] = [
-            kSecClass:           kSecClassGenericPassword,
-            kSecAttrService:     keychainService,
-            kSecAttrAccount:     account.rawValue,
-            kSecAttrAccessGroup: keychainAccessGroup,
-            kSecReturnData:      true,
-            kSecMatchLimit:      kSecMatchLimitOne,
-        ]
-        var result: AnyObject?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-              let data   = result as? Data,
-              let string = String(data: data, encoding: .utf8)
-        else { return nil }
-        return string
+        keychain.read(account)
     }
 
     private func keychainWrite(_ value: String, for account: Account) {
-        guard let data = value.data(using: .utf8) else { return }
-        let query: [CFString: Any] = [
-            kSecClass:           kSecClassGenericPassword,
-            kSecAttrService:     keychainService,
-            kSecAttrAccount:     account.rawValue,
-            kSecAttrAccessGroup: keychainAccessGroup,
-        ]
-        let status = SecItemUpdate(query as CFDictionary, [kSecValueData: data] as CFDictionary)
-        if status == errSecItemNotFound {
-            var newItem = query
-            newItem[kSecValueData] = data
-            SecItemAdd(newItem as CFDictionary, nil)
-        }
+        keychain.write(value, for: account)
     }
 
     private var storedURL: String {

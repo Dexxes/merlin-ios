@@ -1,28 +1,20 @@
 import Foundation
-import Security
+import MerlinShared
 
-/// Stores Nextcloud credentials in the shared iOS Keychain.
-/// Both the main app and the Share Extension access the same Keychain item via
-/// the shared access group "2R735BXV66.dev.merlin" (provisioned by xtool).
-/// UserDefaults is NOT used for credentials — Keychain is more secure and works
-/// across process boundaries without requiring App Groups.
+/// Stores Nextcloud credentials in the iOS Keychain, shared with the Share
+/// Extension through `SharedKeychain` (MerlinShared): the app group
+/// `group.dev.merlin` (under xtool `group.XTL-<Team>.dev.merlin`) is the
+/// shared Keychain access group, the app's old own group is still read and
+/// migrated at launch. See `KeychainAccessGroups` for why a fixed group does
+/// not work with xtool.
 /// Thread-safe: SecItem* functions are thread-safe, @unchecked Sendable is safe here.
 final class CredentialsStore: @unchecked Sendable {
 
     static let shared = CredentialsStore()
     private init() {}
 
-    private let service     = "dev.merlin.app"
-    // Application Identifier der Hauptapp aus dem xtool-Provisioning-Profile.
-    // Extension darf darauf zugreifen, weil ihr Profile "2R735BXV66.*" erlaubt.
-    private let accessGroup = "2R735BXV66.XTL-2R735BXV66.dev.merlin.app"
-
-    private enum Account: String {
-        case nextcloudUrl = "nextcloudUrl"
-        case username     = "username"
-        case appPassword  = "appPassword"
-        case backendKind  = "backendKind"
-    }
+    private let keychain = SharedKeychain.current
+    private typealias Account = SharedKeychain.Account
 
     /// Welche Art Backend hinter `nextcloudUrl` steckt - steuert API-URL-Präfix,
     /// Login-Flow-Start-URL und ob Nextcloud-only-Features (TTS/SSE/Settings-
@@ -81,84 +73,37 @@ final class CredentialsStore: @unchecked Sendable {
     // MARK: - Keychain
 
     private func keychainRead(_ account: Account) -> String? {
-        let query: [CFString: Any] = [
-            kSecClass:           kSecClassGenericPassword,
-            kSecAttrService:     service,
-            kSecAttrAccount:     account.rawValue,
-            kSecAttrAccessGroup: accessGroup,
-            kSecReturnData:      true,
-            kSecMatchLimit:      kSecMatchLimitOne,
-        ]
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        guard status == errSecSuccess,
-              let data   = result as? Data,
-              let string = String(data: data, encoding: .utf8)
-        else { return nil }
-        return string
+        keychain.read(account)
     }
 
     @discardableResult
     private func keychainWrite(_ value: String, for account: Account) -> Bool {
-        guard let data = value.data(using: .utf8) else { return false }
-
-        let query: [CFString: Any] = [
-            kSecClass:           kSecClassGenericPassword,
-            kSecAttrService:     service,
-            kSecAttrAccount:     account.rawValue,
-            kSecAttrAccessGroup: accessGroup,
-        ]
-        var status = SecItemUpdate(query as CFDictionary, [kSecValueData: data] as CFDictionary)
-        if status == errSecItemNotFound {
-            var newItem = query
-            newItem[kSecValueData] = data
-            status = SecItemAdd(newItem as CFDictionary, nil)
-        }
-        if status != errSecSuccess {
-            print("[CredentialsStore] Keychain write FAILED for '\(account.rawValue)': OSStatus \(status)")
-        } else {
-            print("[CredentialsStore] Keychain write OK for '\(account.rawValue)'")
-        }
-        return status == errSecSuccess
+        let ok = keychain.write(value, for: account)
+        print("[CredentialsStore] Keychain write \(ok ? "OK" : "FAILED") for '\(account.rawValue)'")
+        return ok
     }
 
     private func keychainDelete(_ account: Account) {
-        let query: [CFString: Any] = [
-            kSecClass:           kSecClassGenericPassword,
-            kSecAttrService:     service,
-            kSecAttrAccount:     account.rawValue,
-            kSecAttrAccessGroup: accessGroup,
-        ]
-        SecItemDelete(query as CFDictionary)
+        keychain.delete(account)
     }
 
     // MARK: - Debug
 
-    /// Schreibt einen Testwert in die Keychain und liest ihn sofort zurück.
-    /// Gibt "OK" oder den OSStatus-Fehlercode zurück.
+    /// Schreibt einen Testwert in die Keychain und liest ihn sofort zurück,
+    /// in jeder Access-Group, die Hauptapp und Share-Extension nutzen.
     func debugWriteTest() -> String {
-        let testKey  = "merlin_debug_test"
-        let testVal  = "ping"
-        guard let data = testVal.data(using: .utf8) else { return "data encoding failed" }
-
-        // Aufräumen
-        let delQuery: [CFString: Any] = [kSecClass: kSecClassGenericPassword, kSecAttrService: service, kSecAttrAccount: testKey, kSecAttrAccessGroup: accessGroup]
-        SecItemDelete(delQuery as CFDictionary)
-
-        // Schreiben
-        let addQuery: [CFString: Any] = [kSecClass: kSecClassGenericPassword, kSecAttrService: service, kSecAttrAccount: testKey, kSecAttrAccessGroup: accessGroup, kSecValueData: data]
-        let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
-        guard addStatus == errSecSuccess else { return "write failed: OSStatus \(addStatus)" }
-
-        // Lesen
-        let readQuery: [CFString: Any] = [kSecClass: kSecClassGenericPassword, kSecAttrService: service, kSecAttrAccount: testKey, kSecAttrAccessGroup: accessGroup, kSecReturnData: true, kSecMatchLimit: kSecMatchLimitOne]
-        var result: AnyObject?
-        let readStatus = SecItemCopyMatching(readQuery as CFDictionary, &result)
-        guard readStatus == errSecSuccess, let d = result as? Data, String(data: d, encoding: .utf8) == testVal
-        else { return "read failed: OSStatus \(readStatus)" }
-
-        SecItemDelete(delQuery as CFDictionary)
-        return "OK – Keychain funktioniert"
+        let backend = SystemKeychainBackend()
+        let testKey = "merlin_debug_test"
+        let testVal = "ping"
+        return keychain.groups.map { group in
+            backend.delete(service: SharedKeychain.service, account: testKey, group: group)
+            defer { backend.delete(service: SharedKeychain.service, account: testKey, group: group) }
+            guard backend.write(testVal, service: SharedKeychain.service, account: testKey, group: group)
+            else { return "\(group): write failed" }
+            guard backend.read(service: SharedKeychain.service, account: testKey, group: group) == testVal
+            else { return "\(group): read failed" }
+            return "\(group): OK"
+        }.joined(separator: "\n")
     }
 
     // MARK: - Clear
@@ -174,6 +119,13 @@ final class CredentialsStore: @unchecked Sendable {
     /// Call once on app launch. Moves credentials that were stored in UserDefaults
     /// (before the Keychain migration) into the Keychain.
     func migrateToGroupDefaultsIfNeeded() {
+        // Login aus der alten Keychain-Group der Hauptapp in die geteilte
+        // App-Group kopieren, damit die Share-Extension sie findet.
+        let copied = keychain.migrateIfNeeded()
+        if !copied.isEmpty {
+            print("[CredentialsStore] Keychain migrated to shared group: \(copied.map(\.rawValue))")
+        }
+
         guard nextcloudUrl.isEmpty else { return } // Already in Keychain, nothing to do
 
         let groupDefaults = UserDefaults(suiteName: "group.dev.merlin")
