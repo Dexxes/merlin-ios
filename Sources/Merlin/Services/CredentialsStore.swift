@@ -106,6 +106,9 @@ final class CredentialsStore: @unchecked Sendable {
         }.joined(separator: "\n")
     }
 
+    /// Bundle-ID, App-Groups aus dem Profil und Lesestatus je Keychain-Gruppe.
+    var keychainDiagnostics: String { keychain.diagnostics() }
+
     // MARK: - Clear
 
     func clearCredentials() {

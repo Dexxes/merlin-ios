@@ -705,7 +705,6 @@ private struct CredentialDebugView: View {
                 .foregroundStyle(.secondary)
                 .padding(.bottom, 2)
 
-            row("accessGroup", value: "2R735BXV66.dev.merlin")
             row("kc.url",      value: store.nextcloudUrl.isEmpty  ? "<nil>" : store.nextcloudUrl)
             row("kc.user",     value: store.username.isEmpty      ? "<nil>" : store.username)
             row("kc.pass",     value: store.appPassword.isEmpty   ? "<nil>" : "<gesetzt>")
@@ -713,6 +712,14 @@ private struct CredentialDebugView: View {
             Divider()
 
             row("isConfigured", value: store.isConfigured ? "✓ true" : "✗ false")
+
+            Divider()
+
+            // Gleiche Ausgabe wie in der Share-Extension (Logo lange drücken):
+            // Bundle-ID, App-Groups aus dem Profil, Keychain-Gruppen.
+            Text(store.keychainDiagnostics)
+                .font(.system(size: 11, design: .monospaced))
+                .textSelection(.enabled)
         }
         .font(.system(size: 12, design: .monospaced))
         .padding(10)

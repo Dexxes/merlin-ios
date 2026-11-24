@@ -570,6 +570,12 @@ class ShareViewController: UIViewController {
         tagChipsStack.addArrangedSubview(tagsLoadingLabel)
 
         saveButton.addTarget(self, action: #selector(saveCredentials), for: .touchUpInside)
+        // Logo lange drücken: zeigt, welche Keychain-Gruppen die Extension
+        // lesen kann (Fehlersuche, wenn sie den Login der App nicht findet).
+        iconView.isUserInteractionEnabled = true
+        iconView.addGestureRecognizer(
+            UILongPressGestureRecognizer(target: self, action: #selector(showKeychainDiagnostics(_:)))
+        )
         confirmSaveButton.addTarget(self, action: #selector(confirmSave), for: .touchUpInside)
         tagsField.delegate = self
 
@@ -694,6 +700,17 @@ class ShareViewController: UIViewController {
     }
 
     // MARK: – Settings actions
+
+    @objc private func showKeychainDiagnostics(_ gesture: UILongPressGestureRecognizer) {
+        guard gesture.state == .began, presentedViewController == nil else { return }
+        let text = keychain.diagnostics()
+        let alert = UIAlertController(title: "Keychain", message: text, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Copy", style: .default) { _ in
+            UIPasteboard.general.string = text
+        })
+        alert.addAction(UIAlertAction(title: L("common.ok"), style: .cancel))
+        present(alert, animated: true)
+    }
 
     @objc private func saveCredentials() {
         let url  = urlField.text ?? ""

@@ -54,17 +54,40 @@ public enum KeychainAccessGroups {
         return nil
     }
 
-    /// The groups to use, in order: the shared app group first (written to
-    /// and read from), then the legacy group (only read, for logins stored
-    /// before this change).
-    public static func groups(forBundleIdentifier bundleID: String?) -> [String] {
-        var groups: [String] = []
+    /// Whether an app group ID is Merlin's (`group.dev.merlin`, also with any
+    /// xtool prefix, e.g. an older `group.XTL-<other>.dev.merlin` that xtool
+    /// reuses because it matches by the unprefixed name).
+    public static func isMerlinAppGroup(_ groupID: String) -> Bool {
+        guard groupID.hasPrefix("group.") else { return false }
+        let rest = groupID.dropFirst("group.".count)
+        return rest == appGroupBase || rest.hasSuffix(".\(appGroupBase)") && rest.hasPrefix("XTL-")
+    }
+
+    /// The app groups in the bundle's embedded.mobileprovision: the groups
+    /// xtool really provisioned (and signed into the entitlements), whatever
+    /// name they got. The file is a CMS envelope around an XML plist.
+    public static func appGroups(fromMobileprovision data: Data) -> [String] {
+        guard let start = data.range(of: Data("<?xml".utf8)),
+              let end = data.range(of: Data("</plist>".utf8), in: start.lowerBound..<data.endIndex),
+              let plist = try? PropertyListSerialization.propertyList(
+                  from: data.subdata(in: start.lowerBound..<end.upperBound), format: nil
+              ) as? [String: Any],
+              let entitlements = plist["Entitlements"] as? [String: Any],
+              let groups = entitlements["com.apple.security.application-groups"] as? [String]
+        else { return [] }
+        return groups
+    }
+
+    /// The groups to use, in order: Merlin's app groups from the provisioning
+    /// profile, then the one derived from the bundle ID (written to the first
+    /// that accepts it), then the legacy group (read, and migrated from).
+    public static func groups(forBundleIdentifier bundleID: String?, provisionedAppGroups: [String] = []) -> [String] {
+        var groups: [String] = provisionedAppGroups.filter(isMerlinAppGroup)
         if let bundleID, let appGroup = appGroupID(forBundleIdentifier: bundleID) {
             groups.append(appGroup)
         }
-        if !groups.contains(legacyGroup) {
-            groups.append(legacyGroup)
-        }
-        return groups
+        groups.append(legacyGroup)
+        var seen = Set<String>()
+        return groups.filter { seen.insert($0).inserted }
     }
 }

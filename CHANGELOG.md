@@ -183,7 +183,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   app's group. The login is now kept in the app group that both share
   (`group.dev.merlin`, under xtool `group.XTL-<Team>.dev.merlin`); the app
   copies an existing login there at launch, so open Merlin once after
-  updating. Shared code lives in the new `MerlinShared` target, with tests.
+  updating. The group names come from the embedded provisioning profile,
+  because xtool may reuse an app group created earlier under another name.
+  Long-pressing the logo in the share extension (and the developer section
+  in Settings) shows which Keychain groups can be read. Shared code lives in
+  the new `MerlinShared` target, with tests.
 - Quote card: rotating the phone no longer flashes the article or a blank
   screen. The old text and glass stay in place, fitted to the new screen; the
   new glass is drawn underneath, fully opaque, and only then does the old one

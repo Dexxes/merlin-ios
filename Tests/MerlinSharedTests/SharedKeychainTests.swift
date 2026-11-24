@@ -69,6 +69,58 @@ final class KeychainAccessGroupsTests: XCTestCase {
         XCTAssertNil(KeychainAccessGroups.appGroupID(forBundleIdentifier: "xdev.merlin.app"))
     }
 
+    func testMerlinAppGroups() {
+        XCTAssertTrue(KeychainAccessGroups.isMerlinAppGroup("group.dev.merlin"))
+        XCTAssertTrue(KeychainAccessGroups.isMerlinAppGroup("group.XTL-2R735BXV66.dev.merlin"))
+        XCTAssertTrue(KeychainAccessGroups.isMerlinAppGroup("group.XTL-OLDID.dev.merlin"))
+        XCTAssertFalse(KeychainAccessGroups.isMerlinAppGroup("group.com.example.dev.merlin"))
+        XCTAssertFalse(KeychainAccessGroups.isMerlinAppGroup("group.dev.merlin.other"))
+        XCTAssertFalse(KeychainAccessGroups.isMerlinAppGroup("dev.merlin"))
+    }
+
+    /// xtool reuses an existing app group by its unprefixed name, so the
+    /// provisioned group can differ from the one derived from the bundle ID.
+    /// The profile wins.
+    func testProvisionedGroupComesFirst() {
+        XCTAssertEqual(
+            KeychainAccessGroups.groups(
+                forBundleIdentifier: "XTL-2R735BXV66.dev.merlin.app.MerlinShare",
+                provisionedAppGroups: ["group.XTL-OLDID.dev.merlin", "group.other"]
+            ),
+            ["group.XTL-OLDID.dev.merlin", "group.XTL-2R735BXV66.dev.merlin", KeychainAccessGroups.legacyGroup]
+        )
+    }
+
+    func testAppGroupsFromMobileprovision() {
+        let plist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>Name</key><string>XTool XTL-2R735BXV66 dev merlin app MerlinShare</string>
+            <key>Entitlements</key>
+            <dict>
+                <key>application-identifier</key><string>2R735BXV66.XTL-2R735BXV66.dev.merlin.app.MerlinShare</string>
+                <key>com.apple.security.application-groups</key>
+                <array><string>group.XTL-2R735BXV66.dev.merlin</string></array>
+                <key>keychain-access-groups</key>
+                <array><string>2R735BXV66.*</string></array>
+            </dict>
+        </dict>
+        </plist>
+        """
+        // CMS envelope: binary bytes before and after the plist.
+        var data = Data([0x30, 0x80, 0x06, 0x09, 0x2A, 0x86, 0x00, 0xFF])
+        data.append(Data(plist.utf8))
+        data.append(Data([0x00, 0xA0, 0x82, 0x0B, 0xFE]))
+        XCTAssertEqual(KeychainAccessGroups.appGroups(fromMobileprovision: data), ["group.XTL-2R735BXV66.dev.merlin"])
+    }
+
+    func testMobileprovisionWithoutGroups() {
+        XCTAssertEqual(KeychainAccessGroups.appGroups(fromMobileprovision: Data()), [])
+        XCTAssertEqual(KeychainAccessGroups.appGroups(fromMobileprovision: Data("garbage".utf8)), [])
+    }
+
     func testGroupsOrder() {
         XCTAssertEqual(
             KeychainAccessGroups.groups(forBundleIdentifier: "XTL-2R735BXV66.dev.merlin.app.MerlinShare"),

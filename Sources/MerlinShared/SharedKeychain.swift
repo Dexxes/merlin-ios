@@ -158,8 +158,64 @@ public struct SystemKeychainBackend: KeychainBackend {
 extension SharedKeychain {
     /// The store for the running bundle (app or extension).
     public static let current = SharedKeychain(
-        groups: KeychainAccessGroups.groups(forBundleIdentifier: Bundle.main.bundleIdentifier),
+        groups: KeychainAccessGroups.groups(
+            forBundleIdentifier: Bundle.main.bundleIdentifier,
+            provisionedAppGroups: provisionedAppGroups
+        ),
         backend: SystemKeychainBackend()
     )
+
+    /// App groups from this bundle's embedded.mobileprovision (empty in the
+    /// simulator and in App Store builds, which have none).
+    public static var provisionedAppGroups: [String] {
+        guard let url = Bundle.main.url(forResource: "embedded", withExtension: "mobileprovision"),
+              let data = try? Data(contentsOf: url)
+        else { return [] }
+        return KeychainAccessGroups.appGroups(fromMobileprovision: data)
+    }
+
+    /// The Keychain group this bundle writes to when none is given: the first
+    /// entry of its signed keychain-access-groups.
+    public static var defaultAccessGroup: String? {
+        let probe: [CFString: Any] = [
+            kSecClass:       kSecClassGenericPassword,
+            kSecAttrService: "dev.merlin.probe",
+            kSecAttrAccount: "probe",
+        ]
+        SecItemDelete(probe as CFDictionary)
+        var added = probe
+        added[kSecValueData] = Data("1".utf8)
+        added[kSecReturnAttributes] = true
+        var result: AnyObject?
+        guard SecItemAdd(added as CFDictionary, &result) == errSecSuccess else { return nil }
+        SecItemDelete(probe as CFDictionary)
+        return (result as? [String: Any])?[kSecAttrAccessGroup as String] as? String
+    }
+
+    /// One line per fact, for the debug output in app and extension: bundle
+    /// ID, provisioned app groups, default group, and per group whether the
+    /// login can be read (OSStatus).
+    public func diagnostics() -> String {
+        var lines = [
+            "bundle: \(Bundle.main.bundleIdentifier ?? "-")",
+            "profile groups: \(Self.provisionedAppGroups.joined(separator: ", "))",
+            "default group: \(Self.defaultAccessGroup ?? "-")",
+        ]
+        for group in groups {
+            let query: [CFString: Any] = [
+                kSecClass:           kSecClassGenericPassword,
+                kSecAttrService:     Self.service,
+                kSecAttrAccount:     Account.appPassword.rawValue,
+                kSecAttrAccessGroup: group,
+                kSecMatchLimit:      kSecMatchLimitOne,
+            ]
+            let status = SecItemCopyMatching(query as CFDictionary, nil)
+            let text = status == errSecSuccess ? "found"
+                : status == errSecItemNotFound ? "empty"
+                : "OSStatus \(status)"
+            lines.append("\(group): \(text)")
+        }
+        return lines.joined(separator: "\n")
+    }
 }
 #endif
