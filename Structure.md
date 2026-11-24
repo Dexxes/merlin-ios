@@ -8,7 +8,7 @@ Merlin iOS ist ein Leselisten-Client für Nextcloud (iOS 17+, Swift 6, SwiftUI).
 
 | Datei | Zweck |
 |-------|-------|
-| `Package.swift` | Swift Package Manager-Konfiguration; definiert die beiden Targets `Merlin` und `MerlinShare`, iOS-Mindestversion (17+) und Swift-Version (6.0) |
+| `Package.swift` | Swift Package Manager-Konfiguration; definiert die Targets `Merlin`, `MerlinShare` und `MerlinShared` (von beiden genutzt) sowie `MerlinSharedTests`, iOS-Mindestversion (17+) und Swift-Version (6.0) |
 | `xtool.yml` | Build-Konfiguration für das xtool-Buildsystem; legt App-Name, Bundle-ID (`dev.merlin.app`), Icon-Pfad und Share-Extension-Metadaten fest |
 | `Sources/Merlin/Info.plist` | App-Metadaten: Bundle-ID, Anzeigename, unterstützte Orientierungen (Portrait + Landscape), Launch-Screen |
 | `Sources/MerlinShare/Info.plist` | Metadaten und Konfiguration der Share-Extension |
@@ -52,7 +52,7 @@ Zustandslose bzw. aktorbasierte Dienste, die Netzwerk, Authentifizierung, Cachin
 |-------|-------|
 | `MerlinAPI.swift` | Zentraler REST-API-Client für das Nextcloud-Backend (thread-sicher via `actor`); stellt alle API-Methoden bereit: Artikel laden/erstellen/löschen/suchen, Status toggeln (favorit/archiviert), Tags verwalten, Highlights CRUD, Counts, Settings lesen/schreiben, Verbindungstest, TTS-Stream-URL, Paywall-Abo-Zugangsdaten (`getSiteCredentials`/`updateSiteCredential`/`deleteSiteCredential`, eigene Statuscode-Behandlung für `{message, reason}`-Fehler); implementiert außerdem einen SSE-Stream (`articleUpdateStream`) für Echtzeit-Updates beim Artikel-Verarbeiten |
 | `CommentStore.swift` | `@Observable`-Zustand der Kommentare des offenen Artikels; hält den SSE-Push-Kanal (`MerlinAPI.commentStream`) offen, verbindet nach ~50 s bzw. Netzfehlern neu, stoppt bei `.closed` (kein Share-Link) und im Hintergrund; liefert Zähler je Markierung und das JS für den WebView (`webViewScript`); bei merlin-server (`404`) `isAvailable == false` |
-| `CredentialsStore.swift` | Sichert Nextcloud-Zugangsdaten (URL, Nutzername, App-Passwort) im **iOS-Schlüsselbund** über die geteilte Access-Group `2R735BXV66.XTL-2R735BXV66.dev.merlin.app`, damit Hauptapp und Share-Extension dieselben Credentials nutzen; migriert beim Start ältere `UserDefaults`/App-Group-Daten in den Schlüsselbund (`migrateToGroupDefaultsIfNeeded`) |
+| `CredentialsStore.swift` | Sichert Nextcloud-Zugangsdaten (URL, Nutzername, App-Passwort, Backend-Art) im **iOS-Schlüsselbund** über `SharedKeychain` (Target `MerlinShared`), damit Hauptapp und Share-Extension dieselben Credentials nutzen; migriert beim Start den Login aus der alten Access-Group `2R735BXV66.XTL-2R735BXV66.dev.merlin.app` in die geteilte App-Group sowie ältere `UserDefaults`-Daten in den Schlüsselbund (`migrateToGroupDefaultsIfNeeded`) |
 | `LoginFlowService.swift` | Implementiert den Nextcloud Login Flow v2 (OAuth-ähnlich): öffnet Browser-Login, pollt alle 5 Sekunden auf Abschluss (Timeout: 5 min), speichert erhaltene Credentials im `CredentialsStore` |
 | `InstalledFonts.swift` | Listet installierte Schriftfamilien (`UIFont.familyNames`, nur mit lateinischen Grundzeichen) für die freie Schriftwahl im Erscheinungsbild-Sheet |
 | `PreferencesStore.swift` | Persistiert Nutzerpräferenzen (kein Login-bezogenes): Standard-Filter, Thumbnail-Anzeige, Reader-Schriftgröße/-Theme/-Schriftart (inkl. lokal gespeicherter installierter Schrift `readerCustomFontFamily`), Fortschrittsbalken-Position (`progressEdge`), Lese-/Scrollpositions-Speicherung (`saveProgress`, `resumeOnOpen`), Bild-Prefetch nur über WLAN (`prefetchImagesOnWifiOnly`), ausgeblendete Tags (`excludedTagIds`) sowie Leseposition pro Artikel; postet `articleProgressDidUpdate`-Notification |
@@ -139,13 +139,23 @@ SwiftUI-Views, die ausschließlich für Darstellung und Nutzereingabe zuständig
 
 ---
 
+## Geteilter Code (`Sources/MerlinShared/`)
+
+Von Hauptapp und Share-Extension genutzt, Tests in `Tests/MerlinSharedTests/`
+(laufen ohne iOS-SDK, auch unter Linux).
+
+| Datei | Zweck |
+|-------|-------|
+| `KeychainAccessGroups.swift` | Welche Keychain-Access-Groups den Login teilen: xtool ersetzt `keychain-access-groups` jedes Bundles durch dessen eigene Gruppe (`<Team>.<Bundle-ID>`), die Extension kann die Gruppe der App deshalb nicht lesen. Geteilt wird über die App-Group aus den Entitlements; ihr von xtool umgeschriebener Name (`group.XTL-<Team>.dev.merlin`, ohne xtool `group.dev.merlin`) wird zur Laufzeit aus der Bundle-ID abgeleitet. Danach die alte Gruppe `2R735BXV66.XTL-2R735BXV66.dev.merlin.app` (nur Lesen/Migration) |
+| `SharedKeychain.swift` | Login-Speicher über ein `KeychainBackend` (echt: `SystemKeychainBackend` mit `SecItem*`): liest die Gruppen der Reihe nach, schreibt in die erste, die es annimmt (und aktualisiert vorhandene Kopien in den anderen), löscht in allen; `migrateIfNeeded()` kopiert Werte aus der alten Gruppe in die App-Group (ruft die Hauptapp beim Start auf, nur sie kann die alte Gruppe lesen) |
+
 ## Share-Extension (`Sources/MerlinShare/`)
 
 Eigenständiges Target, das im iOS-Teilen-Menü erscheint.
 
 | Datei | Zweck |
 |-------|-------|
-| `ShareViewController.swift` | Herzstück der Share-Extension; drei UI-Modi: *Settings* (Zugangsdaten einrichten), *Staging* (URL-Vorschau bzw. Dateiname/Anzahl + Größe, dazu Tag-Auswahl als eingerückter Baum; ein Unter-Tag wählt seine Eltern-Tags mit aus, ein abgewählter Tag seine Unter-Tags ab), *Saving* (Fortschrittsanzeige, beim Hochladen mit Balken „Datei x von y“); extrahiert URLs aus `NSExtensionItem` und, wenn keine Web-URL dabei ist, Dateien (Fotos, Videos, Audios, PDFs, sonstige Dokumente; kopiert per `loadFileRepresentation` in einen eigenen Temp-Ordner); lädt Tag-Liste vom Server; erstellt Artikel via POST; teilt Credentials über den Schlüsselbund-Access-Group mit der Hauptapp |
+| `ShareViewController.swift` | Herzstück der Share-Extension; drei UI-Modi: *Settings* (Zugangsdaten einrichten), *Staging* (URL-Vorschau bzw. Dateiname/Anzahl + Größe, dazu Tag-Auswahl als eingerückter Baum; ein Unter-Tag wählt seine Eltern-Tags mit aus, ein abgewählter Tag seine Unter-Tags ab), *Saving* (Fortschrittsanzeige, beim Hochladen mit Balken „Datei x von y“); extrahiert URLs aus `NSExtensionItem` und, wenn keine Web-URL dabei ist, Dateien (Fotos, Videos, Audios, PDFs, sonstige Dokumente; kopiert per `loadFileRepresentation` in einen eigenen Temp-Ordner); lädt Tag-Liste vom Server; erstellt Artikel via POST; teilt Credentials über `SharedKeychain` (App-Group als Schlüsselbund-Access-Group) mit der Hauptapp |
 | `ImageCompressor.swift` | Komprimierungsstufen für geteilte Fotos (stark: 1600 px/JPEG 0,55, schwach: 4096 px/JPEG 0,8, unkomprimiert) über ImageIO, je mit Gesamtgröße und Vorschau-Ausschnitt; GIF/SVG bleiben unverändert |
 | `TextRecognizer.swift` | Texterkennung (Vision `VNRecognizeTextRequest`, genau, Sprache automatisch) in geteilten Fotos nach der Komprimierung; der Text geht als `text` an `POST /files` |
 | `CompressionTile.swift` | Kachel einer Komprimierungsstufe im Share-Sheet (Vorschau, Titel, Größe) |

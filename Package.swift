@@ -18,6 +18,52 @@ let assetsExclude: [String] = []
 let assetsResources: [Resource] = [.process("Assets.xcassets")]
 #endif
 
+// Targets als eigene, typisierte Konstanten: in einem einzigen
+// Package(...)-Ausdruck schafft der Typechecker die Array-Verknuepfungen
+// (assetsExclude + [...]) nicht mehr in vertretbarer Zeit.
+let sharedTargets: [Target] = [
+    // Shared by app and Share Extension: the Keychain login store
+    // (KeychainAccessGroups, SharedKeychain). Foundation only on Linux,
+    // so its tests run without an iOS SDK.
+    .target(
+        name: "MerlinShared"
+    ),
+    .testTarget(
+        name: "MerlinSharedTests",
+        dependencies: ["MerlinShared"]
+    ),
+]
+
+let appExclude: [String] = ["Info.plist", "Merlin.entitlements", "PrivacyInfo.xcprivacy"] + assetsExclude
+let appResources: [Resource] = assetsResources + [
+    .process("Resources"),
+    .copy("no-img.png"),
+    .copy("merlin-logo.png"),
+    .copy("paper-texture.png"),
+]
+let shareExclude: [String] = ["Info.plist", "MerlinShare.entitlements", "PrivacyInfo.xcprivacy"] + assetsExclude
+let shareResources: [Resource] = assetsResources + [
+    .process("Resources"),
+    // Logo as a plain file: SwiftPM builds (xtool) don't compile
+    // the asset catalog, so UIImage(named:) can't find it there.
+    .copy("merlin-logo.png"),
+]
+
+let targets: [Target] = sharedTargets + [
+    .target(
+        name: "Merlin",
+        dependencies: ["MerlinShared"],
+        exclude: appExclude,
+        resources: appResources
+    ),
+    .target(
+        name: "MerlinShare",
+        dependencies: ["MerlinShared"],
+        exclude: shareExclude,
+        resources: shareResources
+    ),
+]
+
 let package = Package(
     name: "Merlin",
     // Erforderlich, sobald lokalisierte Resources (en.lproj/de.lproj) im
@@ -39,26 +85,5 @@ let package = Package(
             targets: ["MerlinShare"]
         ),
     ],
-    targets: [
-        .target(
-            name: "Merlin",
-            exclude: ["Info.plist", "Merlin.entitlements", "PrivacyInfo.xcprivacy"] + assetsExclude,
-            resources: assetsResources + [
-                .process("Resources"),
-                .copy("no-img.png"),
-                .copy("merlin-logo.png"),
-                .copy("paper-texture.png"),
-            ]
-        ),
-        .target(
-            name: "MerlinShare",
-            exclude: ["Info.plist", "MerlinShare.entitlements", "PrivacyInfo.xcprivacy"] + assetsExclude,
-            resources: assetsResources + [
-                .process("Resources"),
-                // Logo as a plain file: SwiftPM builds (xtool) don't compile
-                // the asset catalog, so UIImage(named:) can't find it there.
-                .copy("merlin-logo.png"),
-            ]
-        ),
-    ]
+    targets: targets
 )
