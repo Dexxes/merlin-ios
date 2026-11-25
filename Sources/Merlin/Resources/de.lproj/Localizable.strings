@@ -355,6 +355,12 @@
 "onboarding.step8.title" = "Erscheinungsbild";
 "onboarding.step9.body" = "Organisiere deine Leseliste mit Tags. Füge sie jederzeit über das Lesemenü hinzu oder entferne sie.";
 "onboarding.step9.title" = "Tags";
+"readInMerlin.errorNoUrl" = "In diesem Inhalt wurde kein Link gefunden.";
+"readInMerlin.errorNotLoggedIn" = "Bitte melde dich zuerst in Merlin an und versuche es dann noch einmal.";
+"readInMerlin.errorOpenApp" = "Merlin konnte nicht geöffnet werden. Öffne Merlin und füge den Link dort hinzu.";
+"readInMerlin.errorSave" = "Der Artikel konnte nicht gespeichert werden: %@";
+"readInMerlin.menuTitle" = "Jetzt in Merlin lesen";
+"readInMerlin.tapToClose" = "Tippe, um zu schließen.";
 "reminders.error.permissionDenied" = "Bitte erlaube Benachrichtigungen in den Einstellungen, um Erinnerungen zu setzen.";
 "reminders.list.emptyMessage" = "Tippe im Artikelmenü auf \"Erinnern\", um eine Erinnerung zu setzen.";
 "reminders.list.emptyTitle" = "Keine Erinnerungen";

@@ -148,6 +148,7 @@ Von Hauptapp und Share-Extension genutzt, Tests in `Tests/MerlinSharedTests/`
 |-------|-------|
 | `KeychainAccessGroups.swift` | Welche Keychain-Access-Groups den Login teilen: xtool ersetzt `keychain-access-groups` jedes Bundles durch dessen eigene Gruppe (`<Team>.<Bundle-ID>`), die Extension kann die Gruppe der App deshalb nicht lesen. Geteilt wird über die App-Group aus den Entitlements; ihr von xtool umgeschriebener Name (`group.XTL-<Team>.dev.merlin`, ohne xtool `group.dev.merlin`) wird zur Laufzeit aus der Bundle-ID abgeleitet. Danach die alte Gruppe `2R735BXV66.XTL-2R735BXV66.dev.merlin.app` (nur Lesen/Migration) |
 | `SharedKeychain.swift` | Login-Speicher über ein `KeychainBackend` (echt: `SystemKeychainBackend` mit `SecItem*`): liest die Gruppen der Reihe nach, schreibt in die erste, die es annimmt (und aktualisiert vorhandene Kopien in den anderen), löscht in allen; `migrateIfNeeded()` kopiert Werte aus der alten Gruppe in die App-Group (ruft die Hauptapp beim Start auf, nur sie kann die alte Gruppe lesen) |
+| `ReadInMerlinLink.swift` | Deep-Link `merlin://read?url=…` zwischen „Jetzt in Merlin lesen“ und der Hauptapp: baut ihn aus einer http(s)-URL (alles außer unreservierten Zeichen kodiert) und liest die Artikel-URL wieder heraus |
 
 ## Share-Extension (`Sources/MerlinShare/`)
 
@@ -160,6 +161,17 @@ Eigenständiges Target, das im iOS-Teilen-Menü erscheint.
 | `TextRecognizer.swift` | Texterkennung (Vision `VNRecognizeTextRequest`, genau, Sprache automatisch) in geteilten Fotos nach der Komprimierung; der Text geht als `text` an `POST /files` |
 | `CompressionTile.swift` | Kachel einer Komprimierungsstufe im Share-Sheet (Vorschau, Titel, Größe) |
 | `FileUploader.swift` | Lädt geteilte Dateien in den Nextcloud-Ordner „Merlin Dateien“ (nur merlin-nextcloud ab 1.0.18): `POST /files/target` (Zielpfad im Unterordner der Dateiart), WebDAV-Upload (ein `PUT` bis 10 MB, darüber Chunked Upload v2 mit 10-MB-Stücken, einzelne Wiederholung je Stück), dann `POST /files` (Eintrag in der Liste mit Tags) |
+
+## Aktion „Jetzt in Merlin lesen“ (`Sources/MerlinRead/`)
+
+Action-Extension (`com.apple.ui-services`), erscheint im Teilen-Menü als „Jetzt in Merlin lesen“ / „Read in Merlin“, also auch nach langem Drücken auf einen Link → „Teilen…“.
+
+| Datei | Zweck |
+|-------|-------|
+| `ActionViewController.swift` | Holt die URL aus dem geteilten Inhalt (Web-URL, sonst erster Link im Text), öffnet die Hauptapp per `merlin://read?url=…` (über die Responder-Kette, `UIApplication.open`) und schließt sich sofort; braucht weder Login noch Netzwerk. Ohne Link oder wenn die App nicht aufgeht, ein kurzer Hinweis zum Wegtippen |
+| `BundleRoot/<lang>.lproj/InfoPlist.strings` | Übersetzter Menütitel (`CFBundleDisplayName`); `xtool.yml` kopiert die Ordner in den Bundle-Root, weil iOS den Namen nur dort liest |
+
+Die Hauptapp registriert das Schema `merlin` (`Info.plist`), `MerlinApp` reicht die URL über `AppNavigator.urlToRead` an `ArticleListView` weiter: ist der Link schon in der Liste, öffnet der Reader ihn direkt, sonst wird er wie ein geteilter Link gespeichert (`addArticle`) und sofort geöffnet; der Reader zeigt den Lade-Spinner, bis der Server den Inhalt extrahiert hat.
 
 ---
 

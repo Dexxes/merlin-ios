@@ -158,6 +158,10 @@ struct ArticleListView: View {
                 // Retry after articles finish loading (app was cold-started by tap)
                 openArticle(id: navigator.articleIdToOpen)
             }
+            // Deep-link: "Read in Merlin" from the share sheet → save and open
+            .onChange(of: navigator.urlToRead, initial: true) { _, url in
+                readURL(url)
+            }
             .sheet(isPresented: $showTagFilter) {
                 TagFilterSheet(
                     allTags: viewModel.allTags,
@@ -660,6 +664,34 @@ struct ArticleListView: View {
         let serverTs  = article.scrollUpdatedAt ?? 0
         let serverPct = CGFloat(article.scrollProgress ?? 0)
         return serverTs > localTs ? serverPct : localPct
+    }
+
+    /// Handles "Read in Merlin": opens the article if this URL is already in
+    /// the list, otherwise saves it like a shared link and opens it right away.
+    /// The reader shows the processing spinner until the server has extracted
+    /// the content (the view model polls for it after `addArticle`).
+    private func readURL(_ url: String?) {
+        guard let url else { return }
+        navigator.urlToRead = nil
+        guard CredentialsStore.shared.isConfigured else {
+            viewModel.error = L("readInMerlin.errorNotLoggedIn")
+            return
+        }
+        Task {
+            // Cold start: let the first load finish so a saved article is found.
+            for _ in 0..<50 where viewModel.isLoading {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
+            if let existing = viewModel.articles.first(where: { $0.url == url }) {
+                selectedArticle = existing
+                return
+            }
+            do {
+                selectedArticle = try await viewModel.addArticle(url: url)
+            } catch {
+                viewModel.error = String(format: L("readInMerlin.errorSave"), error.localizedDescription)
+            }
+        }
     }
 
     /// Opens the article with `id`, resolving it from the loaded list, a direct

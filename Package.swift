@@ -49,6 +49,11 @@ let shareResources: [Resource] = assetsResources + [
     .copy("merlin-logo.png"),
 ]
 
+// "Read in Merlin" action extension. BundleRoot/ holds the localized
+// InfoPlist.strings (menu title), which xtool.yml copies into the bundle root.
+let readExclude: [String] = ["Info.plist", "PrivacyInfo.xcprivacy", "BundleRoot"]
+let readResources: [Resource] = [.process("Resources")]
+
 let targets: [Target] = sharedTargets + [
     .target(
         name: "Merlin",
@@ -61,6 +66,12 @@ let targets: [Target] = sharedTargets + [
         dependencies: ["MerlinShared"],
         exclude: shareExclude,
         resources: shareResources
+    ),
+    .target(
+        name: "MerlinRead",
+        dependencies: ["MerlinShared"],
+        exclude: readExclude,
+        resources: readResources
     ),
 ]
 
@@ -83,6 +94,11 @@ let package = Package(
         .library(
             name: "MerlinShare",
             targets: ["MerlinShare"]
+        ),
+        // "Read in Merlin" action extension
+        .library(
+            name: "MerlinRead",
+            targets: ["MerlinRead"]
         ),
     ],
     targets: targets

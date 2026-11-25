@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- "Read in Merlin" ("Jetzt in Merlin lesen") in the share sheet, also after
+  long-pressing a link and choosing "Share…": the link is saved like a
+  shared one and the article opens in the reader right away (while the
+  server is still extracting it, the reader shows its loading spinner). A
+  link that is already in the list opens directly without being saved
+  twice. Implemented as a separate action extension (`MerlinRead`) that
+  hands the URL to the app via `merlin://read?url=…`.
 - Quote card: selecting text in an article shows a glass "Quote card"
   button next to the highlight toolbar. Tapping it lets colorless frosted
   glass cover the reader and the selected text glides to the

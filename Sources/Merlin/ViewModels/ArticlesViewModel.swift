@@ -673,7 +673,8 @@ final class ArticlesViewModel {
 
     // MARK: – Add
 
-    func addArticle(url: String, tagIds: [Int] = []) async throws {
+    @discardableResult
+    func addArticle(url: String, tagIds: [Int] = []) async throws -> Article {
         let article = try await MerlinAPI.shared.createArticle(url: url, tagIds: tagIds)
         articles.insert(article, at: 0)
         // Kategorie steht erst nach der (async) Extraktion fest - optimistisch als
@@ -682,6 +683,7 @@ final class ArticlesViewModel {
         await ArticleCacheService.shared.upsert(article)
         prefetchImages(for: [article])
         startProcessingListenerIfNeeded()
+        return article
     }
 
     /// Retries extraction for an article that got stuck without content
