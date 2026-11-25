@@ -376,8 +376,38 @@ class ShareViewController: UIViewController {
     }
 
     private var didAnimateIn = false
+    private static let dimmingOverhang: CGFloat = 2000
 
-    /// Dims the host app behind the sheet.
+    /// The system wraps the extension's view in a white, rounded card (its
+    /// own views, which the presentation style above doesn't remove). That
+    /// card showed up as a white area behind the dimming. Makes every
+    /// superview see-through and unclipped, so only our dimming and the
+    /// sheet remain visible over the host app.
+    private func makeSystemCardTransparent() {
+        var sv = view.superview
+        while let s = sv {
+            s.backgroundColor = .clear
+            s.clipsToBounds = false
+            s.layer.masksToBounds = false
+            s.layer.shadowOpacity = 0
+            s.layer.cornerRadius = 0
+            sv = s.superview
+        }
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        makeSystemCardTransparent()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        makeSystemCardTransparent()
+    }
+
+    /// Dims the host app behind the sheet. It reaches far beyond the view on
+    /// every side, because the system card around the view is inset from the
+    /// top and rounded (see makeSystemCardTransparent).
     private let dimmingView: UIView = {
         let v = UIView()
         v.backgroundColor = UIColor.black.withAlphaComponent(0.4)
@@ -399,6 +429,7 @@ class ShareViewController: UIViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        makeSystemCardTransparent()
         if !didAnimateIn {
             didAnimateIn = true
             slideSheetIn()
@@ -467,10 +498,10 @@ class ShareViewController: UIViewController {
         view.backgroundColor = .clear
         view.addSubview(dimmingView)
         NSLayoutConstraint.activate([
-            dimmingView.topAnchor.constraint(equalTo: view.topAnchor),
-            dimmingView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            dimmingView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            dimmingView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            dimmingView.topAnchor.constraint(equalTo: view.topAnchor, constant: -Self.dimmingOverhang),
+            dimmingView.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: Self.dimmingOverhang),
+            dimmingView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: -Self.dimmingOverhang),
+            dimmingView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: Self.dimmingOverhang),
         ])
 
         view.addSubview(containerView)
