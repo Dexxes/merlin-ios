@@ -177,6 +177,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - "Open via archive.ph" in the reader's side menu.
 
 ### Fixed
+- Share extension: no white card unfolds behind the dimmed background any
+  more when it opens; the app behind it stays visible under the dimming.
 - Share extension: it asked for the server, username and app password
   although the app was logged in. Builds with xtool 2.0 sign the extension
   with its own Keychain access group only, so it could no longer read the

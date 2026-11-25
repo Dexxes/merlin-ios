@@ -353,12 +353,31 @@ class ShareViewController: UIViewController {
 
     // MARK: – Lifecycle
 
-    private var didForceFullScreen = false
+    /// The system shows a share extension as a page sheet by default: a
+    /// white card of its own slides up behind our view, and our dimming
+    /// covered it instead of the host app. Over full screen there is no such
+    /// card; the host app stays visible and only our dimming and sheet sit
+    /// on top. The system reads this before it presents the extension.
+    override init(nibName nibNameOrNil: String?, bundle nibBundleOrNil: Bundle?) {
+        super.init(nibName: nibNameOrNil, bundle: nibBundleOrNil)
+        configurePresentation()
+    }
 
-    /// Dims the host app behind the sheet. It reaches far beyond the view on
-    /// every side (superviews don't clip, see viewWillAppear): the system may
-    /// lay the view out again below the status bar after we forced it to
-    /// full screen, and the dimming then stopped short of the top edge.
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        configurePresentation()
+    }
+
+    /// Fades in instead of sliding up: the dimming fades with the view, and
+    /// the sheet slides up on its own (see viewWillAppear).
+    private func configurePresentation() {
+        modalPresentationStyle = .overFullScreen
+        modalTransitionStyle = .crossDissolve
+    }
+
+    private var didAnimateIn = false
+
+    /// Dims the host app behind the sheet.
     private let dimmingView: UIView = {
         let v = UIView()
         v.backgroundColor = UIColor.black.withAlphaComponent(0.4)
@@ -366,7 +385,6 @@ class ShareViewController: UIViewController {
         v.translatesAutoresizingMaskIntoConstraints = false
         return v
     }()
-    private static let dimmingOverhang: CGFloat = 2000
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -381,14 +399,9 @@ class ShareViewController: UIViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        // Force full-screen here — view is already in the window so superviews are
-        // reachable, but the presentation animation hasn't started yet so there's
-        // no visible frame jump. Guard ensures we only do this once.
-        if !didForceFullScreen {
-            didForceFullScreen = true
-            view.frame = UIScreen.main.bounds
-            var sv = view.superview
-            while let s = sv { s.clipsToBounds = false; sv = s.superview }
+        if !didAnimateIn {
+            didAnimateIn = true
+            slideSheetIn()
         }
         NotificationCenter.default.addObserver(self,
             selector: #selector(keyboardWillShow(_:)),
@@ -396,6 +409,18 @@ class ShareViewController: UIViewController {
         NotificationCenter.default.addObserver(self,
             selector: #selector(keyboardWillHide(_:)),
             name: UIResponder.keyboardWillHideNotification, object: nil)
+    }
+
+    /// Moves the sheet up from below the screen edge while the view fades in.
+    private func slideSheetIn() {
+        view.layoutIfNeeded()
+        containerView.transform = CGAffineTransform(
+            translationX: 0, y: containerView.bounds.height + view.safeAreaInsets.bottom)
+        UIView.animate(withDuration: 0.35, delay: 0,
+                       usingSpringWithDamping: 1, initialSpringVelocity: 0,
+                       options: [.curveEaseOut, .allowUserInteraction]) {
+            self.containerView.transform = .identity
+        }
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -442,10 +467,10 @@ class ShareViewController: UIViewController {
         view.backgroundColor = .clear
         view.addSubview(dimmingView)
         NSLayoutConstraint.activate([
-            dimmingView.topAnchor.constraint(equalTo: view.topAnchor, constant: -Self.dimmingOverhang),
-            dimmingView.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: Self.dimmingOverhang),
-            dimmingView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: -Self.dimmingOverhang),
-            dimmingView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: Self.dimmingOverhang),
+            dimmingView.topAnchor.constraint(equalTo: view.topAnchor),
+            dimmingView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            dimmingView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            dimmingView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
         ])
 
         view.addSubview(containerView)
