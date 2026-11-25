@@ -14,6 +14,18 @@
 	</array>
 	<key>CFBundleDisplayName</key>
 	<string>Merlin</string>
+	<!-- merlin://read?url=… kommt von "Jetzt in Merlin lesen" (MerlinRead). -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>dev.merlin.app.read</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>merlin</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleExecutable</key>
 	<string>Merlin</string>
 	<key>CFBundleIdentifier</key>

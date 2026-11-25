@@ -16,3 +16,11 @@ extensions:
     entitlementsPath: Sources/MerlinShare/MerlinShare.entitlements
     resources:
       - Sources/MerlinShare/PrivacyInfo.xcprivacy
+  # "Jetzt in Merlin lesen" im Teilen-Menü: reicht den Link an die App weiter.
+  - product: MerlinRead
+    bundleID: dev.merlin.app.MerlinRead
+    infoPath: Sources/MerlinRead/Info.plist
+    resources:
+      - Sources/MerlinRead/PrivacyInfo.xcprivacy
+      - Sources/MerlinRead/BundleRoot/en.lproj
+      - Sources/MerlinRead/BundleRoot/de.lproj

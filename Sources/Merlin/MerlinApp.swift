@@ -1,6 +1,7 @@
 import SwiftUI
 import Observation
 import UserNotifications
+import MerlinShared
 
 // MARK: – Navigation router
 
@@ -15,6 +16,11 @@ final class AppNavigator {
     /// Set by AppDelegate when the user taps a reminder notification.
     /// ArticleListView observes this and opens the matching article.
     var articleIdToOpen: Int? = nil
+
+    /// Set when "Read in Merlin" (action extension) opens the app with
+    /// `merlin://read?url=…`. ArticleListView saves the URL like a shared
+    /// link and opens the article in the reader.
+    var urlToRead: String? = nil
 }
 
 // MARK: – App delegate
@@ -153,6 +159,11 @@ struct MerlinApp: App {
                 }
             }
             .preferredColorScheme(preferredScheme)
+            .onOpenURL { url in
+                if let articleURL = ReadInMerlinLink.articleURL(from: url) {
+                    AppNavigator.shared.urlToRead = articleURL
+                }
+            }
             .animation(.easeOut(duration: 0.3), value: splashVisible)
             .animation(.easeOut(duration: 0.3), value: showOfflinePrompt)
             .task {
